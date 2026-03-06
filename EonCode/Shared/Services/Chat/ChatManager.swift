@@ -78,17 +78,19 @@ final class ChatManager: ObservableObject {
             tools: nil,
             usePromptCaching: true
         ) { event in
-            switch event {
-            case .contentBlockDelta(_, let delta):
-                if case .text(let chunk) = delta {
-                    fullText += chunk
-                    self.streamingText = fullText
-                    onToken(chunk)
+            Task { @MainActor in
+                switch event {
+                case .contentBlockDelta(_, let delta):
+                    if case .text(let chunk) = delta {
+                        fullText += chunk
+                        self.streamingText = fullText
+                        onToken(chunk)
+                    }
+                case .messageDelta(_, let usage):
+                    finalUsage = usage
+                default:
+                    break
                 }
-            case .messageDelta(_, let usage):
-                finalUsage = usage
-            default:
-                break
             }
         }
 

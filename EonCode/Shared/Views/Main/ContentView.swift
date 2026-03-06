@@ -120,7 +120,7 @@ struct ContentView: View {
             PeerSyncEngine.shared.startBrowsing()
             updateViewContext()
         }
-        .onChange(of: selectedTab) { _ in updateViewContext() }
+        .onChange(of: selectedTab) { updateViewContext() }
     }
 
     private func updateViewContext() {
@@ -454,7 +454,7 @@ struct MacMainView: View {
                 }
             )
             .onAppear { fileContent = (try? String(contentsOfFile: node.path)) ?? "" }
-            .onChange(of: selectedNode?.id) { _ in
+            .onChange(of: selectedNode?.id) {
                 if let n = selectedNode, !n.isDirectory {
                     fileContent = (try? String(contentsOfFile: n.path)) ?? ""
                 }

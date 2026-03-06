@@ -145,10 +145,17 @@ final class MemoryManager: ObservableObject {
     }
 
     private func parseMemoriesJSON(_ text: String) -> [MemoryEntry]? {
-        // Extract JSON from response (may have surrounding text)
-        guard let start = text.range(of: "{"),
-              let end = text.range(of: "}", options: .backwards) else { return nil }
-        let jsonStr = String(text[start.lowerBound...end.upperBound])
+        // Extract top-level JSON object by bracket matching (handles nested objects)
+        guard let startIdx = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var endIdx: String.Index?
+        for i in text.indices[startIdx...] {
+            if text[i] == "{" { depth += 1 }
+            else if text[i] == "}" { depth -= 1 }
+            if depth == 0 { endIdx = i; break }
+        }
+        guard let end = endIdx else { return nil }
+        let jsonStr = String(text[startIdx...end])
         guard let data = jsonStr.data(using: .utf8),
               let parsed = try? JSONDecoder().decode(MemoriesResponse.self, from: data) else { return nil }
         return parsed.memories

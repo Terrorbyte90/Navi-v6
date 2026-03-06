@@ -222,7 +222,7 @@ final class WorkerAgent: ObservableObject, Identifiable {
             output: output,
             filesWritten: filesWritten,
             succeeded: succeeded,
-            ranLocally: !task.requiresTerminal || !UIDevice.isMac,
+            ranLocally: !task.requiresTerminal || UIDevice.isMac,
             durationSeconds: Date().timeIntervalSince(start)
         )
     }

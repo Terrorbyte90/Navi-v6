@@ -43,8 +43,14 @@ class ExchangeRateService: ObservableObject {
         }
     }
 
+    var isStale: Bool {
+        guard let lastUpdated else { return true }
+        return Date().timeIntervalSince(lastUpdated) > 24 * 60 * 60
+    }
+
     func convert(usd: Double) -> Double {
-        usd * usdToSEK
+        if isStale { Task { await refresh() } }
+        return usd * usdToSEK
     }
 
     func formatSEK(_ amount: Double) -> String {

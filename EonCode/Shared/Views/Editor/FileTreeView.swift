@@ -43,6 +43,7 @@ struct FileNodeRow: View {
     @ObservedObject var node: FileNode
     @Binding var selectedNode: FileNode?
     let depth: Int
+    @State private var showDeleteConfirmation = false
 
     private var isSelected: Bool { selectedNode?.id == node.id }
 
@@ -147,8 +148,17 @@ struct FileNodeRow: View {
         #endif
         Divider()
         Button("Ta bort", role: .destructive) {
-            try? FileManager.default.removeItem(atPath: node.path)
+            showDeleteConfirmation = true
         }
+    }
+    .alert("Ta bort \"\(node.name)\"?", isPresented: $showDeleteConfirmation) {
+        Button("Avbryt", role: .cancel) {}
+        Button("Ta bort", role: .destructive) {
+            try? FileManager.default.removeItem(atPath: node.path)
+            if selectedNode?.id == node.id { selectedNode = nil }
+        }
+    } message: {
+        Text(node.isDirectory ? "Mappen och allt dess innehåll tas bort permanent." : "Filen tas bort permanent.")
     }
 }
 

@@ -154,7 +154,7 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
-                                StreamingBubble(text: manager.streamingText)
+                                StreamingBubble(text: ResponseCleaner.clean(manager.streamingText))
                                     .id("streaming")
                             }
                         }
@@ -165,8 +165,8 @@ struct PureChatView: View {
                             .background(Color.chatBackground)
                     }
                     .onAppear { scrollProxy = proxy }
-                    .onChange(of: conv.messages.count) { _ in scrollToBottom(proxy) }
-                    .onChange(of: manager.streamingText) { _ in scrollToBottom(proxy) }
+                    .onChange(of: conv.messages.count) { scrollToBottom(proxy) }
+                    .onChange(of: manager.streamingText) { scrollToBottom(proxy) }
                 }
             } else {
                 ZStack(alignment: .bottom) {
@@ -177,6 +177,9 @@ struct PureChatView: View {
             }
         }
         .background(Color.chatBackground)
+        .sheet(isPresented: $isShowingImagePicker) {
+            ImagePicker(selectedImages: $selectedImages)
+        }
         .onAppear {
             if manager.activeConversation == nil && !manager.conversations.isEmpty {
                 manager.activeConversation = manager.conversations.first

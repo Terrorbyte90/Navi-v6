@@ -71,7 +71,10 @@ final class InstructionQueue: ObservableObject {
         try? await sync.write(instr, to: url)
 
         isProcessing = true
-        defer { isProcessing = false }
+        defer {
+            isProcessing = false
+            if pendingCount > 0 { pendingCount -= 1 }
+        }
 
         let project = await ProjectStore.shared.project(by: instr.projectID)
         // Use the project's active model, fall back to settings default, then Sonnet

@@ -331,6 +331,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
             do {
                 let shouldContinue = try await executeAction(action, pageContent: pageContent, goal: fullGoal, subGoal: subGoalText)
+                consecutiveVisionFallbacks = 0
                 if !shouldContinue { return true }
             } catch {
                 appendLog("Fel: \(error.localizedDescription)", type: .failure, isError: true)
@@ -454,6 +455,10 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
         try await withTimeout(seconds: 30) {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                guard self.navigationID == navID else {
+                    cont.resume(throwing: BrowserError.navigationFailed("Superseded"))
+                    return
+                }
                 self.navigationContinuation = cont
                 self.webView.load(URLRequest(url: url))
             }
@@ -521,8 +526,10 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
+            guard self.navigationContinuation != nil else { return }
             self.navigationContinuation?.resume()
             self.navigationContinuation = nil
+            self.navigationID = nil
             self.currentURL = webView.url
             self.pageTitle = webView.title ?? ""
             self.loadingProgress = 1.0
@@ -532,16 +539,20 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         Task { @MainActor in
             if (error as NSError).code == NSURLErrorCancelled { return }
+            guard self.navigationContinuation != nil else { return }
             self.navigationContinuation?.resume(throwing: error)
             self.navigationContinuation = nil
+            self.navigationID = nil
         }
     }
 
     nonisolated func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         Task { @MainActor in
             if (error as NSError).code == NSURLErrorCancelled { return }
+            guard self.navigationContinuation != nil else { return }
             self.navigationContinuation?.resume(throwing: error)
             self.navigationContinuation = nil
+            self.navigationID = nil
         }
     }
 
