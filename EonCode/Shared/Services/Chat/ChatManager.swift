@@ -105,7 +105,7 @@ final class ChatManager: ObservableObject {
 
         let assistantMsg = PureChatMessage(
             role: .assistant,
-            content: fullText,
+            content: ResponseCleaner.clean(fullText),
             costSEK: costSEK,
             model: conversation.model,
             tokenUsage: finalUsage

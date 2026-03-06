@@ -160,7 +160,7 @@ final class AgentEngine: ObservableObject {
                                 inputTokens: &inputTokens,
                                 outputTokens: &outputTokens
                             )
-                            self?.streamingText = fullText
+                            self?.streamingText = ResponseCleaner.clean(fullText)
                         }
                     }
                 )
@@ -184,16 +184,17 @@ final class AgentEngine: ObservableObject {
                 break
             }
 
-            // Build assistant message
+            // Build assistant message (clean response text from internal artifacts)
+            let cleanedText = ResponseCleaner.clean(fullText)
             var assistantContent: [MessageContent] = []
-            if !fullText.isEmpty { assistantContent.append(.text(fullText)) }
+            if !cleanedText.isEmpty { assistantContent.append(.text(cleanedText)) }
             for tool in toolCalls {
                 assistantContent.append(.toolUse(id: tool.id, name: tool.name, input: tool.input))
             }
             let assistantMsg = ChatMessage(role: .assistant, content: assistantContent, model: currentProject?.activeModel)
             messages.append(assistantMsg)
 
-            if !fullText.isEmpty { onUpdate(fullText) }
+            if !fullText.isEmpty { onUpdate(ResponseCleaner.clean(fullText)) }
 
             // Save checkpoint
             checkpoint.save(taskID: task.id, step: iterationCount, data: ["messages": messages.count, "tools": toolCalls.count])
@@ -370,7 +371,8 @@ final class AgentEngine: ObservableObject {
         let usage = finalUsage ?? TokenUsage(inputTokens: inputTokens, outputTokens: 0, cacheCreationInputTokens: nil, cacheReadInputTokens: nil)
         let (_, costSEK) = CostCalculator.shared.calculate(usage: usage, model: conversation.model)
 
-        var assistantMsg = ChatMessage(role: .assistant, content: [.text(fullText)], model: conversation.model)
+        let cleanedFullText = ResponseCleaner.clean(fullText)
+        var assistantMsg = ChatMessage(role: .assistant, content: [.text(cleanedFullText)], model: conversation.model)
         assistantMsg.inputTokens = usage.inputTokens
         assistantMsg.outputTokens = usage.outputTokens
         assistantMsg.costSEK = costSEK

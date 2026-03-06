@@ -116,7 +116,38 @@ struct ContentView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSidebar)
         .sheet(isPresented: $showNewProject) { NewProjectView() }
-        .onAppear { PeerSyncEngine.shared.startBrowsing() }
+        .onAppear {
+            PeerSyncEngine.shared.startBrowsing()
+            updateViewContext()
+        }
+        .onChange(of: selectedTab) { _ in updateViewContext() }
+    }
+
+    private func updateViewContext() {
+        let viewName: String
+        let viewPurpose: String
+        switch selectedTab {
+        case .chat:
+            viewName = "Chatt"
+            viewPurpose = "Fri konversation utan projektkoppling."
+        case .project:
+            let name = activeProject?.name ?? "inget valt"
+            viewName = "Projekt (\(name))"
+            viewPurpose = "Kodning och filhantering i projektet."
+        case .browser:
+            viewName = "Webb"
+            viewPurpose = "Webbsurfning och research."
+        case .artifacts:
+            viewName = "Artefakter"
+            viewPurpose = "Hantera genererade filer och resurser."
+        case .plan:
+            viewName = "Planera"
+            viewPurpose = "Skapa och hantera projektplaner."
+        case .github:
+            viewName = "GitHub"
+            viewPurpose = "Hantera repos, PRs och issues."
+        }
+        MessageBuilder.currentViewContext = "\(viewName) — \(viewPurpose)"
     }
 
     // MARK: - Top bar

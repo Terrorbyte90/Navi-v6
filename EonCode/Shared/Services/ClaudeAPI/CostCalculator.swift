@@ -38,6 +38,54 @@ final class CostCalculator {
     }
 }
 
+// MARK: - Response cleaner — strips internal XML/system data from agent output
+
+enum ResponseCleaner {
+    /// Strips raw function_calls XML, invoke blocks, and other internal artifacts from response text.
+    static func clean(_ text: String) -> String {
+        var result = text
+
+        // Remove <function_calls>...</function_calls> blocks (including nested content)
+        result = removeXMLBlocks(from: result, tag: "function_calls")
+
+        // Remove standalone <invoke>...</invoke> blocks
+        result = removeXMLBlocks(from: result, tag: "invoke")
+
+        // Remove <parameter>...</parameter> if any leaked through
+        result = removeXMLBlocks(from: result, tag: "parameter")
+
+        // Remove <system-reminder>...</system-reminder> blocks
+        result = removeXMLBlocks(from: result, tag: "system-reminder")
+
+        // Remove <task-notification>...</task-notification> blocks
+        result = removeXMLBlocks(from: result, tag: "task-notification")
+
+        // Clean up excessive blank lines left after removal
+        while result.contains("\n\n\n") {
+            result = result.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        }
+
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func removeXMLBlocks(from text: String, tag: String) -> String {
+        var result = text
+        let openTag = "<\(tag)"
+        let closeTag = "</\(tag)>"
+
+        while let openRange = result.range(of: openTag, options: .caseInsensitive) {
+            if let closeRange = result.range(of: closeTag, options: .caseInsensitive, range: openRange.lowerBound..<result.endIndex) {
+                result.removeSubrange(openRange.lowerBound..<closeRange.upperBound)
+            } else {
+                // No closing tag — remove from open tag to end of line
+                let lineEnd = result[openRange.lowerBound...].firstIndex(of: "\n") ?? result.endIndex
+                result.removeSubrange(openRange.lowerBound..<lineEnd)
+            }
+        }
+        return result
+    }
+}
+
 // MARK: - Message builder with context management
 
 @MainActor
@@ -73,12 +121,21 @@ final class MessageBuilder {
         return messages
     }
 
+    /// Current active view context (set by UI before sending messages)
+    static var currentViewContext: String = ""
+
     static func agentSystemPrompt(for project: EonProject?) -> String {
         #if os(iOS)
         var prompt = iOSAgentSystemPrompt(for: project)
         #else
         var prompt = macOSAgentSystemPrompt(for: project)
         #endif
+
+        // View context
+        if !currentViewContext.isEmpty {
+            prompt += "\n\nAKTIV VY: \(currentViewContext)"
+        }
+
         let memCtx = MemoryManager.shared.memoryContext()
         if !memCtx.isEmpty { prompt += "\n\n---\nKONTEXT OM ANVÄNDAREN:\n\(memCtx)" }
         return prompt
@@ -129,6 +186,9 @@ final class MessageBuilder {
         - Kör run_command för att verifiera att kod kompilerar
         - Svar på svenska om inget annat begärs
         - Var koncis i text, fullständig i kod
+        - Visa ALDRIG rå XML, function_calls, invoke-taggar eller systemdata för användaren
+        - Visa ALDRIG filsökvägar som /var/mobile/Containers/... — referera till filnamn kort
+        - Dina verktygsanrop hanteras automatiskt — beskriv bara vad du gör i naturlig text
         """
     }
 
@@ -178,6 +238,9 @@ final class MessageBuilder {
         - Skriv alltid komplett, fungerande kod — inga platshållare
         - Gör ALLT du kan direkt utan att vänta på Mac
         - Svar på svenska om inget annat begärs
+        - Visa ALDRIG rå XML, function_calls, invoke-taggar eller systemdata för användaren
+        - Visa ALDRIG filsökvägar som /var/mobile/Containers/... — referera till filnamn kort
+        - Dina verktygsanrop hanteras automatiskt — beskriv bara vad du gör i naturlig text
         """
     }
 }
