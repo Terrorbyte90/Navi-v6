@@ -38,6 +38,7 @@ struct ChatView: View {
                     }
                     .padding(.vertical, 16)
                 }
+                .dismissKeyboardOnTap()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
                         if queue.hasActive {
@@ -60,14 +61,15 @@ struct ChatView: View {
                     }
                 }
                 .onChange(of: agent.conversation.messages.count) { _ in
-                    scrollToBottom(proxy: proxy)
+                    scrollToBottom(proxy: proxy, animated: true)
                 }
                 .onChange(of: agent.streamingText) { _ in
-                    scrollToBottom(proxy: proxy)
+                    // No animation during streaming — avoids layout thrash
+                    scrollToBottom(proxy: proxy, animated: false)
                 }
                 .onAppear {
                     scrollProxy = proxy
-                    scrollToBottom(proxy: proxy)
+                    scrollToBottom(proxy: proxy, animated: false)
                 }
             }
             .background(Color.chatBackground)
@@ -97,13 +99,19 @@ struct ChatView: View {
         }
     }
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.2)) {
-            if agent.isRunning {
-                proxy.scrollTo("streaming", anchor: .bottom)
-            } else if let last = agent.conversation.messages.last {
-                proxy.scrollTo(last.id, anchor: .bottom)
-            }
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = false) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.15)) { _scroll(proxy) }
+        } else {
+            _scroll(proxy)
+        }
+    }
+
+    private func _scroll(_ proxy: ScrollViewProxy) {
+        if agent.isRunning {
+            proxy.scrollTo("streaming", anchor: .bottom)
+        } else if let last = agent.conversation.messages.last {
+            proxy.scrollTo(last.id, anchor: .bottom)
         }
     }
 }
@@ -559,19 +567,21 @@ struct CodeBlockView: View {
 
 // MARK: - Smooth streaming buffer
 
-/// Throttles raw streaming tokens into smooth UI updates at ~30fps
+/// Reveals streaming tokens smoothly. Runs at 60fps, reveals up to 18 chars/tick
+/// so fast responses feel instant while still animating nicely.
 @MainActor
 final class StreamingBuffer: ObservableObject {
     @Published private(set) var displayText: String = ""
 
     private var targetText: String = ""
     private var timer: Timer?
-    private let charsPerTick: Int = 4   // characters revealed per frame
+    // 18 chars @ 60fps = ~1080 chars/sec — fast enough to feel instant
+    private let charsPerTick: Int = 18
 
     func update(_ newText: String) {
         targetText = newText
         if timer == nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in self?.tick() }
             }
         }

@@ -159,13 +159,14 @@ struct PureChatView: View {
                         }
                         .padding(.vertical, 16)
                     }
+                    .dismissKeyboardOnTap()
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         chatInputBar
                             .background(Color.chatBackground)
                     }
-                    .onAppear { scrollProxy = proxy }
-                    .onChange(of: conv.messages.count) { scrollToBottom(proxy) }
-                    .onChange(of: manager.streamingText) { scrollToBottom(proxy) }
+                    .onAppear { scrollProxy = proxy; scrollToBottom(proxy, animated: false) }
+                    .onChange(of: conv.messages.count) { scrollToBottom(proxy, animated: true) }
+                    .onChange(of: manager.streamingText) { scrollToBottom(proxy, animated: false) }
                 }
             } else {
                 ZStack(alignment: .bottom) {
@@ -441,16 +442,16 @@ struct PureChatView: View {
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        guard let last = manager.activeConversation?.messages.last else {
-            if manager.isStreaming { proxy.scrollTo("streaming", anchor: .bottom) }
-            return
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false) {
+        let action = {
+            if manager.isStreaming {
+                proxy.scrollTo("streaming", anchor: .bottom)
+            } else if let last = manager.activeConversation?.messages.last {
+                proxy.scrollTo(last.id, anchor: .bottom)
+            }
         }
-        if manager.isStreaming {
-            proxy.scrollTo("streaming", anchor: .bottom)
-        } else {
-            proxy.scrollTo(last.id, anchor: .bottom)
-        }
+        if animated { withAnimation(.easeOut(duration: 0.15)) { action() } }
+        else { action() }
     }
 }
 
@@ -495,6 +496,7 @@ struct PureChatBubble: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     MarkdownTextView(text: message.content)
+                        .equatable()
                         .textSelection(.enabled)
 
                     // Action row (ChatGPT-style)
@@ -574,8 +576,12 @@ struct PureChatBubble: View {
 
 // MARK: - Markdown text renderer
 
-struct MarkdownTextView: View {
+struct MarkdownTextView: View, Equatable {
     let text: String
+
+    static func == (lhs: MarkdownTextView, rhs: MarkdownTextView) -> Bool {
+        lhs.text == rhs.text
+    }
 
     var body: some View {
         let blocks = parseBlocks(text)

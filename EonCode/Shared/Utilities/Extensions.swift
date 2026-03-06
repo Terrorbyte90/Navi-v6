@@ -83,6 +83,19 @@ extension Encodable {
 
 // MARK: - View Modifiers
 extension View {
+    /// Dismisses the software keyboard when the user taps outside a text field.
+    /// No-op on macOS.
+    func dismissKeyboardOnTap() -> some View {
+        #if os(iOS)
+        return self.onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                            to: nil, from: nil, for: nil)
+        }
+        #else
+        return self
+        #endif
+    }
+
     func glassBackground(radius: CGFloat = 16, opacity: Double = 0.15) -> some View {
         self.background(
             RoundedRectangle(cornerRadius: radius)

@@ -602,18 +602,22 @@ struct AgentSettingsEditor: View {
 
                     // ── Modell & Workers ───────────────────────────────────
                     Section {
-                        Picker("Orkestrator-modell", selection: $model) {
-                            ForEach(ClaudeModel.allCases, id: \.self) { m in
-                                Text(m.displayName).tag(m)
-                            }
-                        }
+                        AgentModelCard(
+                            label: "Agentens modell",
+                            subtitle: "Orkestratorn — planerar och resonerar",
+                            icon: "cpu.fill",
+                            color: .accentEon,
+                            selection: $model
+                        )
                         .onChange(of: model) { save() }
 
-                        Picker("Worker-modell", selection: $workerModel) {
-                            ForEach(ClaudeModel.allCases, id: \.self) { m in
-                                Text(m.displayName).tag(m)
-                            }
-                        }
+                        AgentModelCard(
+                            label: "Worker-modell",
+                            subtitle: "Utför parallella deluppgifter",
+                            icon: "person.2.fill",
+                            color: .purple,
+                            selection: $workerModel
+                        )
                         .onChange(of: workerModel) { save() }
 
                         workerStepper
@@ -838,6 +842,73 @@ struct AgentSettingsEditor: View {
     }
 }
 
+// MARK: - Agent Model Card (visual model picker row)
+
+struct AgentModelCard: View {
+    let label: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+    @Binding var selection: ClaudeModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(color.opacity(0.12)).frame(width: 30, height: 30)
+                    Image(systemName: icon).font(.system(size: 13)).foregroundColor(color)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label).font(.system(size: 13, weight: .semibold))
+                    Text(subtitle).font(.system(size: 11)).foregroundColor(.secondary)
+                }
+                Spacer()
+                Menu {
+                    ForEach(ClaudeModel.allCases, id: \.self) { m in
+                        Button {
+                            selection = m
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(m.displayName)
+                                    Text(modelCostHint(m))
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+                                if m == selection { Image(systemName: "checkmark") }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(selection.displayName)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(color)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 10))
+                            .foregroundColor(color.opacity(0.6))
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+            // Cost hint for selected model
+            Text(modelCostHint(selection))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.secondary.opacity(0.7))
+                .padding(.leading, 40)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func modelCostHint(_ m: ClaudeModel) -> String {
+        let inCost = m.inputPricePerMTok
+        let outCost = m.outputPricePerMTok
+        return String(format: "$%.2f / $%.2f per Mtok in/out", inCost, outCost)
+    }
+}
+
 // MARK: - Log entry row
 
 struct AgentLogEntryRow: View {
@@ -1000,12 +1071,20 @@ struct CreateAgentSheet: View {
                 }
 
                 Section {
-                    Picker("Orkestrator-modell", selection: $model) {
-                        ForEach(ClaudeModel.allCases, id: \.self) { m in Text(m.displayName).tag(m) }
-                    }
-                    Picker("Worker-modell", selection: $workerModel) {
-                        ForEach(ClaudeModel.allCases, id: \.self) { m in Text(m.displayName).tag(m) }
-                    }
+                    AgentModelCard(
+                        label: "Agentens modell",
+                        subtitle: "Orkestratorn — planerar och resonerar",
+                        icon: "cpu.fill",
+                        color: .accentEon,
+                        selection: $model
+                    )
+                    AgentModelCard(
+                        label: "Worker-modell",
+                        subtitle: "Utför parallella deluppgifter",
+                        icon: "person.2.fill",
+                        color: .purple,
+                        selection: $workerModel
+                    )
                     // Worker count
                     HStack {
                         Text("Tilldelade workers")
@@ -1025,6 +1104,7 @@ struct CreateAgentSheet: View {
                         }
                     }
                 } header: { Text("Modell & Workers") }
+                  footer: { Text("Agenten orkestrar, workers utför. Välj billigare modell för workers för lägre kostnad.") }
 
                 Section("Kapacitet") {
                     Stepper(
