@@ -557,10 +557,53 @@ struct CodeBlockView: View {
     }
 }
 
-// MARK: - Streaming bubble (Mockup11 / ChatGPT-faithful)
+// MARK: - Smooth streaming buffer
+
+/// Throttles raw streaming tokens into smooth UI updates at ~30fps
+@MainActor
+final class StreamingBuffer: ObservableObject {
+    @Published private(set) var displayText: String = ""
+
+    private var targetText: String = ""
+    private var timer: Timer?
+    private let charsPerTick: Int = 4   // characters revealed per frame
+
+    func update(_ newText: String) {
+        targetText = newText
+        if timer == nil {
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.tick() }
+            }
+        }
+    }
+
+    func flush() {
+        displayText = targetText
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func tick() {
+        guard displayText.count < targetText.count else {
+            if displayText == targetText {
+                timer?.invalidate()
+                timer = nil
+            }
+            return
+        }
+        let endIndex = targetText.index(
+            targetText.startIndex,
+            offsetBy: min(displayText.count + charsPerTick, targetText.count)
+        )
+        displayText = String(targetText[..<endIndex])
+    }
+}
+
+// MARK: - Streaming bubble (smooth, ChatGPT-faithful)
 
 struct StreamingBubble: View {
     let text: String
+    @StateObject private var buffer = StreamingBuffer()
     @State private var cursorVisible = true
 
     var body: some View {
@@ -568,13 +611,12 @@ struct StreamingBubble: View {
             AssistantAvatar()
                 .padding(.top, 2)
 
-            if text.isEmpty {
-                // Three dots while waiting for first token
+            if text.isEmpty && buffer.displayText.isEmpty {
                 TypingIndicator()
                     .padding(.top, 4)
             } else {
                 HStack(alignment: .lastTextBaseline, spacing: 0) {
-                    Text(text.suffix(3000))
+                    Text(buffer.displayText)
                         .font(.callout)
                         .foregroundColor(Color.primary)
                         .lineSpacing(4)
@@ -597,6 +639,12 @@ struct StreamingBubble: View {
             withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
                 cursorVisible = false
             }
+        }
+        .onChange(of: text) { newText in
+            buffer.update(newText)
+        }
+        .onDisappear {
+            buffer.flush()
         }
     }
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppSection: String, Hashable { case project, pureChat, browser, artifacts, planning, github }
+enum AppSection: String, Hashable { case project, pureChat, browser, artifacts, planning, github, agents }
 
 struct ContentView: View {
     @StateObject private var projectStore = ProjectStore.shared
@@ -65,6 +65,8 @@ struct ContentView: View {
             PlanView()
         case .github:
             GitHubView()
+        case .agents:
+            AgentView()
         case .project:
             if let project = activeProject, let agent = activeAgent {
                 MacMainView(project: project, agent: agent)
@@ -146,6 +148,9 @@ struct ContentView: View {
         case .github:
             viewName = "GitHub"
             viewPurpose = "Hantera repos, PRs och issues."
+        case .agents:
+            viewName = "Agenter"
+            viewPurpose = "Autonoma agenter som arbetar mot långsiktiga mål."
         }
         MessageBuilder.currentViewContext = "\(viewName) — \(viewPurpose)"
     }
@@ -280,6 +285,16 @@ struct ContentView: View {
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
             }
+
+        case .agents:
+            HStack(spacing: 5) {
+                Text("Navi")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color.primary)
+                Text("Agenter")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color.secondary)
+            }
         }
     }
 
@@ -343,6 +358,8 @@ struct ContentView: View {
             PlanView()
         case .github:
             GitHubView()
+        case .agents:
+            AgentView()
         }
     }
 
@@ -419,7 +436,7 @@ struct ContentView: View {
 // MARK: - Tabs
 
 enum AppTab: Int, Hashable {
-    case chat, project, browser, artifacts, plan, github
+    case chat, project, browser, artifacts, plan, github, agents
 }
 
 // MARK: - macOS Main View

@@ -22,13 +22,16 @@
 		0CCFF3C029AB20589B476477 /* Instruction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 045176D43F23786A48503C8F /* Instruction.swift */; };
 		0D0F70A4BF563B0EF354DA51 /* BrowserAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377C48BE8E59272A9F8CCC22 /* BrowserAgent.swift */; };
 		0EE5E0EDF5F0EDBC373C9520 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7173C20F146C9FF898DE1E /* SettingsStore.swift */; };
+		0F601222B672AEDFFFAF4491 /* AutonomousAgentRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A709BCBE6621AC584621D06 /* AutonomousAgentRunner.swift */; };
 		107B0EC26C371B6C5FE24AF5 /* BranchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0C42F53C53517B25CB7979 /* BranchManager.swift */; };
+		135435DC340600BE2392322C /* AutonomousAgentRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A709BCBE6621AC584621D06 /* AutonomousAgentRunner.swift */; };
 		1478E02DFA9E00930AE55070 /* ChatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC918D8699DA242B1C26002 /* ChatManager.swift */; };
 		14E9A856D8E7538A42E40764 /* ToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855D00DD3329EAD130B86696 /* ToolExecutor.swift */; };
 		154D22119EAABAEDFDD9C383 /* FileTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E17C3655574D856D8A2FA2B /* FileTreeView.swift */; };
 		1625CED1ECBE2B7E15E61A79 /* Artifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49BB58E98745255FA2D8D44 /* Artifact.swift */; };
 		16C9B5BBC5EB8525261E9F52 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D1BE98E56B93965B664E62 /* ProjectStore.swift */; };
 		188ECCF97D0F5465E70B8D08 /* ClaudeStreamParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575E4CA0542BC12A5D729AB2 /* ClaudeStreamParser.swift */; };
+		1BA880E02D7011DC7390F021 /* AgentDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F45C3172E1F715CA361E70 /* AgentDefinition.swift */; };
 		1CD1C572249C11002D848D63 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C25D02FEE768B0BEF0DBA9 /* AgentEngine.swift */; };
 		1E75BA32FACEA3D1CFDFF84A /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4D9B1368F02F5A7149ABB20 /* SidebarView.swift */; };
 		20EA84745C195114CEE525F1 /* ConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9C294AC6274DEA1FE25D42E /* ConversationStore.swift */; };
@@ -61,6 +64,7 @@
 		472E9F2E97339941B69A9FFE /* PeerSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 487BDC5666192491DD29AC76 /* PeerSyncEngine.swift */; };
 		4765375FE4BB3A6B89E650F8 /* TaskDecomposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCF1D7B590D83732366DAB82 /* TaskDecomposer.swift */; };
 		478A31C5F3D6D284AD2D1472 /* FileSystemAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D402F165B1335F8D7A3A708C /* FileSystemAgent.swift */; };
+		47DDBBDD973EFB568B867C67 /* AgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */; };
 		47F400E93C343AEDF9E835A3 /* InstructionQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 778D32197C8BE96A9E02A02E /* InstructionQueue.swift */; };
 		480C72F250447F0BFB21D1BB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A54C6CEAE134162EADD35FA /* SettingsView.swift */; };
 		4958BCB3590E779F31D0BAC9 /* WorkerAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5507FA5239C43E26C9AD52 /* WorkerAgent.swift */; };
@@ -77,6 +81,7 @@
 		60F963E927EE39B12DD39EEA /* ToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855D00DD3329EAD130B86696 /* ToolExecutor.swift */; };
 		619192741B45500629E98529 /* CostCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C5E877FCBF1B444E5F3AB2 /* CostCalculator.swift */; };
 		62FC4613B8CD5A9DE277245D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F42DAA141734671C814B49 /* ContentView.swift */; };
+		6441DB82B9CA5B454B37375F /* AgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */; };
 		645F61AF4EFBB764D384F09B /* BranchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0C42F53C53517B25CB7979 /* BranchManager.swift */; };
 		65C1F7AD9BD646E529C4F899 /* AgentPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = D366B7022FC3F5CF7F3A9F6A /* AgentPool.swift */; };
 		66A2D0089DF3928E984B7BF5 /* BrowserAgentLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7547E53210F7158811E0657B /* BrowserAgentLogView.swift */; };
@@ -127,6 +132,7 @@
 		A8D09253A642E4D9B3C39358 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D37A1D74CF78B28BDF48081 /* KeychainManager.swift */; };
 		A8D8E988320648E8F0BA4DB5 /* GitHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E27477B59E6BF8D25E72B04 /* GitHubView.swift */; };
 		A9575147ADA2BDB3CDD853CD /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D1BE98E56B93965B664E62 /* ProjectStore.swift */; };
+		B05AD36C3704779D38F8B719 /* AgentDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F45C3172E1F715CA361E70 /* AgentDefinition.swift */; };
 		B115A47BABBD512352CA004B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A54C6CEAE134162EADD35FA /* SettingsView.swift */; };
 		B40C2F87CCB238A4E74F0447 /* iCloudSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 254640204CF8B114163EA1C1 /* iCloudSyncEngine.swift */; };
 		B548411A764EE2FB78BA1916 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81AB7E8B7FB42687CBD3D91 /* BrowserView.swift */; };
@@ -207,10 +213,12 @@
 		434269EF68267911170C2CD5 /* DiffEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffEngine.swift; sourceTree = "<group>"; };
 		487BDC5666192491DD29AC76 /* PeerSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerSyncEngine.swift; sourceTree = "<group>"; };
 		49A6BF9D04A4EB43B7D27EBB /* WorkerPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkerPool.swift; sourceTree = "<group>"; };
+		4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentView.swift; sourceTree = "<group>"; };
 		5072F6FBC2C8CD6FA6720068 /* SearchEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchEngine.swift; sourceTree = "<group>"; };
 		552E6D94B8D8D19A71E46ACB /* TerminalOutputParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalOutputParser.swift; sourceTree = "<group>"; };
 		559B066E2A53DF56232FA29A /* InstructionComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstructionComposer.swift; sourceTree = "<group>"; };
 		575E4CA0542BC12A5D729AB2 /* ClaudeStreamParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStreamParser.swift; sourceTree = "<group>"; };
+		5A709BCBE6621AC584621D06 /* AutonomousAgentRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutonomousAgentRunner.swift; sourceTree = "<group>"; };
 		5B44A0637F872657506FC2BA /* Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Memory.swift; sourceTree = "<group>"; };
 		5FC918D8699DA242B1C26002 /* ChatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatManager.swift; sourceTree = "<group>"; };
 		604C3CFF4DBFB11F945F128E /* BrowserActionDecider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserActionDecider.swift; sourceTree = "<group>"; };
@@ -230,6 +238,7 @@
 		92D7FE88018F0A2EC04931FF /* LocalAgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAgentEngine.swift; sourceTree = "<group>"; };
 		950D59A59B750776CE0BB2D1 /* Version.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Version.swift; sourceTree = "<group>"; };
 		95D1BE98E56B93965B664E62 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		96F45C3172E1F715CA361E70 /* AgentDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDefinition.swift; sourceTree = "<group>"; };
 		97B15C39EA07162888568F9B /* OfflineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineManager.swift; sourceTree = "<group>"; };
 		99E94E2A8CCC206F4C6E351B /* CostTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostTracker.swift; sourceTree = "<group>"; };
 		9D6C4013EA73950913F95986 /* iCloudChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iCloudChatStore.swift; sourceTree = "<group>"; };
@@ -462,6 +471,7 @@
 			isa = PBXGroup;
 			children = (
 				6E0E7932EE183F5CF55F8255 /* Agent */,
+				9A3DAEB5D18E2B3E7DFF1FC9 /* Agents */,
 				632E0272C31790EDD2381CC8 /* Artifacts */,
 				3F38A026C2B5E81866B2D851 /* Browser */,
 				2DDD9D3DF24877E12F5D65C2 /* Chat */,
@@ -481,6 +491,7 @@
 				B5C25D02FEE768B0BEF0DBA9 /* AgentEngine.swift */,
 				FC455BD686DC234E86827CE3 /* AgentPlanner.swift */,
 				D366B7022FC3F5CF7F3A9F6A /* AgentPool.swift */,
+				5A709BCBE6621AC584621D06 /* AutonomousAgentRunner.swift */,
 				26E0F32117BD899767E725C6 /* CheckpointManager.swift */,
 				B86BDB94AFC5468EF1D7AC2A /* OrchestratorAgent.swift */,
 				D27D316CBFB44553F01589B0 /* PromptQueue.swift */,
@@ -527,6 +538,14 @@
 				9D6C4013EA73950913F95986 /* iCloudChatStore.swift */,
 			);
 			path = Chat;
+			sourceTree = "<group>";
+		};
+		9A3DAEB5D18E2B3E7DFF1FC9 /* Agents */ = {
+			isa = PBXGroup;
+			children = (
+				4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */,
+			);
+			path = Agents;
 			sourceTree = "<group>";
 		};
 		9DF676323B20F50CC3C5BB90 /* Keychain */ = {
@@ -617,6 +636,7 @@
 			isa = PBXGroup;
 			children = (
 				CA7B0E1D043971209D35C110 /* AgentAction+Platform.swift */,
+				96F45C3172E1F715CA361E70 /* AgentDefinition.swift */,
 				C09A7E41FD15D6E951893B64 /* AgentTask.swift */,
 				C49BB58E98745255FA2D8D44 /* Artifact.swift */,
 				A865364F7A70D8332F3B693F /* ChatConversation.swift */,
@@ -763,13 +783,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				FCCA2EFFE18526A319DD79F3 /* AgentAction+Platform.swift in Sources */,
+				1BA880E02D7011DC7390F021 /* AgentDefinition.swift in Sources */,
 				3413EAA1855E1413032628E2 /* AgentEngine.swift in Sources */,
 				BB51917AADF64E4DFC8BF177 /* AgentPlanner.swift in Sources */,
 				65C1F7AD9BD646E529C4F899 /* AgentPool.swift in Sources */,
 				E1839C7DDC182A7FCABB7012 /* AgentStatusView.swift in Sources */,
 				8D6405489F7308996866171A /* AgentTask.swift in Sources */,
+				47DDBBDD973EFB568B867C67 /* AgentView.swift in Sources */,
 				1625CED1ECBE2B7E15E61A79 /* Artifact.swift in Sources */,
 				BFAD9B2D3063EE7532775DBC /* ArtifactView.swift in Sources */,
+				135435DC340600BE2392322C /* AutonomousAgentRunner.swift in Sources */,
 				6C03B2D47476F8223151D410 /* BackgroundDaemon.swift in Sources */,
 				107B0EC26C371B6C5FE24AF5 /* BranchManager.swift in Sources */,
 				2C5F257EFF8C7579B561BB7D /* BrowserActionDecider.swift in Sources */,
@@ -854,13 +877,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				76230ED9C7910D0AAFA4C5AA /* AgentAction+Platform.swift in Sources */,
+				B05AD36C3704779D38F8B719 /* AgentDefinition.swift in Sources */,
 				1CD1C572249C11002D848D63 /* AgentEngine.swift in Sources */,
 				CFFE36671C2960B0BB2A9675 /* AgentPlanner.swift in Sources */,
 				BD938F539F093300DBCA0682 /* AgentPool.swift in Sources */,
 				06647DC621A4D3F46D4A49E7 /* AgentStatusView.swift in Sources */,
 				E52C57DFC2855E03B0A99969 /* AgentTask.swift in Sources */,
+				6441DB82B9CA5B454B37375F /* AgentView.swift in Sources */,
 				2156E46EAB813519B9BD7BD4 /* Artifact.swift in Sources */,
 				C886601FC5FE34822F7C9A29 /* ArtifactView.swift in Sources */,
+				0F601222B672AEDFFFAF4491 /* AutonomousAgentRunner.swift in Sources */,
 				645F61AF4EFBB764D384F09B /* BranchManager.swift in Sources */,
 				7EBA6CEECAB9B1FECD8F0304 /* BrowserActionDecider.swift in Sources */,
 				0D0F70A4BF563B0EF354DA51 /* BrowserAgent.swift in Sources */,

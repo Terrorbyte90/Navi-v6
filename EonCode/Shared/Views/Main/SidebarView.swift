@@ -84,6 +84,7 @@ struct SidebarView: View {
                 case .pureChat:  _ = chatManager.newConversation()
                 case .planning:  _ = planManager.newPlan()
                 case .project:   showNewProject = true
+                case .agents:    NotificationCenter.default.post(name: .showCreateAgent, object: nil)
                 default: break
                 }
             } label: {
@@ -102,13 +103,14 @@ struct SidebarView: View {
     }
 
     private var canCreateNew: Bool {
-        section == .pureChat || section == .planning || section == .project
+        section == .pureChat || section == .planning || section == .project || section == .agents
     }
 
     private var newItemTooltip: String {
         switch section {
         case .pureChat:  return "Ny chatt"
         case .planning:  return "Ny plan"
+        case .agents:    return "Ny agent"
         default:         return "Nytt projekt"
         }
     }
@@ -144,6 +146,7 @@ struct SidebarView: View {
         case .planning:  return "Sök planer…"
         case .artifacts: return "Sök artefakter…"
         case .github:    return "Sök repos…"
+        case .agents:    return "Sök agenter…"
         default:         return "Sök projekt…"
         }
     }
@@ -156,12 +159,19 @@ struct SidebarView: View {
             navItem(icon: "folder.fill",                       label: "Projekt",     target: .project)
             navItem(icon: "chevron.left.forwardslash.chevron.right", label: "GitHub", target: .github,
                     badge: githubBadge)
+            navItem(icon: "cpu.fill",                          label: "Agenter",     target: .agents,
+                    badge: agentsBadge)
             navItem(icon: "map.fill",                          label: "Planera",     target: .planning)
             navItem(icon: "globe",                             label: "Webb",        target: .browser)
             navItem(icon: "tray.2.fill",                       label: "Artefakter",  target: .artifacts,
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
         }
         .padding(.horizontal, 6)
+    }
+
+    private var agentsBadge: String? {
+        let running = AutonomousAgentRunner.shared.agents.filter { $0.status.isActive }.count
+        return running > 0 ? "\(running)" : nil
     }
 
     private var githubBadge: String? {
@@ -214,6 +224,7 @@ struct SidebarView: View {
         case .planning:            planList
         case .artifacts:           artifactList
         case .github:              githubRepoList
+        case .agents:              agentSidebarList
         case .project, .browser:   projectList
         }
     }
@@ -454,6 +465,80 @@ struct SidebarView: View {
                 }
             }
             .padding(.bottom, 8)
+        }
+    }
+
+    // MARK: - Agent sidebar list
+
+    var agentSidebarList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 1) {
+                let runner = AutonomousAgentRunner.shared
+                let filtered = searchText.isEmpty ? runner.agents
+                    : runner.agents.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.goal.localizedCaseInsensitiveContains(searchText) }
+
+                if filtered.isEmpty {
+                    emptyHint(icon: "cpu.fill", text: searchText.isEmpty ? "Inga agenter" : "Inga träffar")
+                } else {
+                    let running = filtered.filter { $0.status.isActive }
+                    let other   = filtered.filter { !$0.status.isActive }
+
+                    if !running.isEmpty {
+                        listSectionHeader("Aktiva")
+                        ForEach(running) { agent in agentSidebarRow(agent) }
+                    }
+                    if !other.isEmpty {
+                        listSectionHeader("Övriga")
+                        ForEach(other) { agent in agentSidebarRow(agent) }
+                    }
+                }
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func agentSidebarRow(_ agent: AgentDefinition) -> some View {
+        Button { section = .agents } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(agentSidebarColor(agent).opacity(0.12))
+                        .frame(width: 22, height: 22)
+                    Image(systemName: agent.status.isActive ? "cpu.fill" : "cpu")
+                        .font(.system(size: 10))
+                        .foregroundColor(agentSidebarColor(agent))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(agent.name)
+                        .font(.system(size: 13))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Text(agent.currentTaskDescription.isEmpty ? agent.status.displayName : agent.currentTaskDescription)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .lineLimit(1)
+                }
+                Spacer()
+                if agent.status.isActive {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+    }
+
+    private func agentSidebarColor(_ agent: AgentDefinition) -> Color {
+        switch agent.status {
+        case .running:   return .green
+        case .paused:    return .orange
+        case .completed: return .blue
+        case .failed:    return .red
+        case .idle:      return .secondary
         }
     }
 

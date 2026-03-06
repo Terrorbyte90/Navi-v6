@@ -81,9 +81,10 @@ struct NaviCommands: Commands {
         }
     }
 }
+#endif
 
 extension Notification.Name {
     static let showNewProject = Notification.Name("showNewProject")
     static let startAgent = Notification.Name("startAgent")
+    static let showCreateAgent = Notification.Name("showCreateAgent")
 }
-#endif
