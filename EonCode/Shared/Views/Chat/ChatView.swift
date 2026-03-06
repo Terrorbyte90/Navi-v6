@@ -550,20 +550,15 @@ struct StreamingBubble: View {
 
     var body: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 10))
-                        .foregroundColor(.accentEon)
-                        .symbolEffect(.pulse)
-                    Text("Genererar…")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-
-                Text(text.suffix(2000))  // Show last 2000 chars during streaming
+            if text.isEmpty {
+                // Three dots while waiting for first token
+                TypingIndicator()
+            } else {
+                // Stream text directly — no "Genererar" label
+                Text(text.suffix(3000))
                     .font(.system(size: 14))
                     .foregroundColor(.primary)
+                    .textSelection(.enabled)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
@@ -576,30 +571,31 @@ struct StreamingBubble: View {
     }
 }
 
-// MARK: - Typing indicator
+// MARK: - Typing indicator (iMessage-style three dots)
 
 struct TypingIndicator: View {
-    @State private var phase = 0
+    @State private var animating = false
 
     var body: some View {
-        HStack(alignment: .top) {
-            HStack(spacing: 4) {
-                ForEach(0..<3) { i in
-                    Circle()
-                        .fill(Color.secondary.opacity(0.6))
-                        .frame(width: 6, height: 6)
-                        .scaleEffect(phase == i ? 1.4 : 1.0)
-                        .animation(.easeInOut(duration: 0.4).repeatForever().delay(Double(i) * 0.15), value: phase)
-                }
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(Color.secondary.opacity(0.5))
+                    .frame(width: 7, height: 7)
+                    .scaleEffect(animating ? 1.0 : 0.5)
+                    .opacity(animating ? 1.0 : 0.3)
+                    .animation(
+                        .easeInOut(duration: 0.5)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.18),
+                        value: animating
+                    )
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Color.assistantBubble))
-            Spacer()
         }
-        .onAppear {
-            phase = 1
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.assistantBubble))
+        .onAppear { animating = true }
     }
 }
 

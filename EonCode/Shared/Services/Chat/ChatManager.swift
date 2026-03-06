@@ -47,6 +47,12 @@ final class ChatManager: ObservableObject {
         conversation.messages.append(userMsg)
         conversation.updatedAt = Date()
 
+        // Immediately surface the user message in the UI
+        activeConversation = conversation
+        if let idx = conversations.firstIndex(where: { $0.id == conversation.id }) {
+            conversations[idx] = conversation
+        }
+
         // Build API messages
         let apiMessages = buildAPIMessages(from: conversation)
 
@@ -56,7 +62,7 @@ final class ChatManager: ObservableObject {
 
         isStreaming = true
         streamingText = ""
-        defer { isStreaming = false }
+        defer { isStreaming = false; streamingText = "" }
 
         var fullText = ""
         var finalUsage: TokenUsage?

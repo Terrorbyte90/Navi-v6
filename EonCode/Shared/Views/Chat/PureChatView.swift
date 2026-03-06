@@ -330,14 +330,14 @@ struct PureChatView: View {
                                 if let ui = UIImage(data: data) {
                                     Image(uiImage: ui)
                                         .resizable().scaledToFill()
-                                        .frame(width: 60, height: 60)
+                                        .frame(width: 56, height: 56)
                                         .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
                                 #else
                                 if let ns = NSImage(data: data) {
                                     Image(nsImage: ns)
                                         .resizable().scaledToFill()
-                                        .frame(width: 60, height: 60)
+                                        .frame(width: 56, height: 56)
                                         .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
                                 #endif
@@ -351,58 +351,48 @@ struct PureChatView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 14)
                     .padding(.top, 8)
                 }
             }
 
-            HStack(alignment: .bottom, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 8) {
                 // Image attach
                 Button { isShowingImagePicker = true } label: {
                     Image(systemName: "paperclip")
-                        .font(.system(size: 17))
+                        .font(.system(size: 16))
                         .foregroundColor(.secondary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 32, height: 32)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
-                // Text input — uses ZStack for placeholder (more reliable than TextField on iOS)
-                ZStack(alignment: .leading) {
-                    if inputText.isEmpty {
-                        Text("Skriv ett meddelande…")
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary.opacity(0.5))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 8)
-                            .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $inputText)
-                        .font(.system(size: 15))
-                        .frame(minHeight: 36, maxHeight: 120)
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color.white.opacity(0.07))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18)
-                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-                        )
-                )
+                // Text input — TextField with axis: .vertical grows naturally, starts at 1 line
+                TextField("Meddelande", text: $inputText, axis: .vertical)
+                    .font(.system(size: 15))
+                    .lineLimit(1...5)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.white.opacity(0.07))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                            )
+                    )
 
                 // Send / stop
                 Button(action: sendMessage) {
                     if manager.isStreaming {
                         Image(systemName: "stop.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
                             .foregroundColor(.accentEon)
+                            .frame(width: 32, height: 32)
                     } else {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28))
+                            .font(.system(size: 30))
                             .foregroundColor(inputText.isBlank && selectedImages.isEmpty ? .secondary.opacity(0.3) : .accentEon)
                     }
                 }
@@ -410,7 +400,7 @@ struct PureChatView: View {
                 .disabled(inputText.isBlank && selectedImages.isEmpty && !manager.isStreaming)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
 
             // Cost row
             if costTracker.lastRequestSEK > 0 || costTracker.sessionSEK > 0 {
@@ -433,8 +423,8 @@ struct PureChatView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 4)
             }
         }
     }
@@ -442,12 +432,12 @@ struct PureChatView: View {
     // MARK: - Send
 
     private func sendMessage() {
-        guard !inputText.isBlank else { return }
+        guard !inputText.isBlank || !selectedImages.isEmpty else { return }
         // Create a new conversation if none is active
         if manager.activeConversation == nil {
             _ = manager.newConversation()
         }
-        guard var conv = manager.activeConversation else { return }
+        guard let convID = manager.activeConversation?.id else { return }
 
         let text = inputText
         let images = selectedImages
@@ -455,8 +445,13 @@ struct PureChatView: View {
         selectedImages = []
 
         Task {
+            // Work on the conversation by ID to avoid stale-copy issues
+            guard var conv = manager.conversations.first(where: { $0.id == convID })
+                    ?? manager.activeConversation
+            else { return }
+
             try? await manager.send(text: text, images: images, in: &conv) { _ in }
-            // Sync back so the view reflects the updated conversation
+            // Sync back
             await MainActor.run {
                 manager.activeConversation = conv
                 if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
