@@ -673,38 +673,20 @@ struct InputBar: View {
                 .buttonStyle(.plain)
 
                 // Text input
-                ZStack(alignment: .leading) {
-                    if text.isEmpty {
-                        Text(isAgentMode ? "Ge agenten en uppgift…" : "Skriv ett meddelande…")
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary.opacity(0.5))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                    }
-
-                    #if os(iOS)
-                    TextEditor(text: $text)
-                        .font(.system(size: 14))
-                        .frame(minHeight: 36, maxHeight: 120)
-                        .background(Color.clear)
-                        .scrollContentBackground(.hidden)
-                    #else
-                    TextEditor(text: $text)
-                        .font(.system(size: 14))
-                        .frame(minHeight: 36, maxHeight: 120)
-                        .scrollContentBackground(.hidden)
-                    #endif
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white.opacity(0.07))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-                        )
-                )
+                TextField(isAgentMode ? "Ge agenten en uppgift…" : "Skriv ett meddelande…", text: $text, axis: .vertical)
+                    .font(.system(size: 14))
+                    .lineLimit(1...5)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.white.opacity(0.07))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                            )
+                    )
 
                 // Iteration picker (agent mode only)
                 if isAgentMode {
