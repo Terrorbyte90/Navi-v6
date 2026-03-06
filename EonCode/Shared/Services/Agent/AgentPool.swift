@@ -37,6 +37,7 @@ final class ProjectAgent: ObservableObject, Identifiable {
     @Published var isRunning = false
     @Published var currentStatus = ""
     @Published var conversation: Conversation
+    @Published var conversationHistory: [Conversation] = []
     @Published var streamingText = ""
     @Published var lastCostSEK: Double = 0
     @Published var sessionCostSEK: Double = 0
@@ -52,6 +53,47 @@ final class ProjectAgent: ObservableObject, Identifiable {
         self.project = project
         self.conversation = Conversation(projectID: project.id, model: project.activeModel)
         engine.setProject(project)
+
+        // Load saved conversations from iCloud
+        Task {
+            await ConversationStore.shared.loadConversations(for: project.id)
+            let saved = ConversationStore.shared.conversationsForProject(project.id)
+            self.conversationHistory = saved
+            // Resume latest conversation if it exists
+            if let latest = saved.first {
+                self.conversation = latest
+            }
+        }
+    }
+
+    // MARK: - Conversation management
+
+    func newConversation() {
+        // Save current conversation if it has messages
+        if !conversation.messages.isEmpty {
+            Task { await persistConversation() }
+        }
+        conversation = Conversation(projectID: project.id, model: project.activeModel)
+        streamingText = ""
+    }
+
+    func switchToConversation(_ conv: Conversation) {
+        // Save current conversation first
+        if !conversation.messages.isEmpty {
+            Task { await persistConversation() }
+        }
+        conversation = conv
+        streamingText = ""
+    }
+
+    private func persistConversation() async {
+        await ConversationStore.shared.save(conversation)
+        // Update local history
+        if let idx = conversationHistory.firstIndex(where: { $0.id == conversation.id }) {
+            conversationHistory[idx] = conversation
+        } else {
+            conversationHistory.insert(conversation, at: 0)
+        }
     }
 
     /// Send a message. `onComplete` is called when the agent finishes (used by PromptQueue for sequencing).
@@ -79,6 +121,19 @@ final class ProjectAgent: ObservableObject, Identifiable {
                 let handler = completionHandler
                 completionHandler = nil
                 handler?()
+                // Persist conversation after each message exchange
+                Task { await self.persistConversation() }
+                // Extract memories after substantial conversations
+                if self.conversation.messages.count >= 6 {
+                    let messages = self.conversation.messages
+                    let convId = self.conversation.id
+                    Task {
+                        await MemoryManager.shared.extractMemoriesFromAgent(
+                            messages: messages,
+                            conversationId: convId
+                        )
+                    }
+                }
                 // Auto-push to GitHub if project is linked to a repo
                 Task { await self.autoGitHubSync() }
             }
@@ -129,6 +184,10 @@ final class ProjectAgent: ObservableObject, Identifiable {
         let handler = completionHandler
         completionHandler = nil
         handler?()
+        // Persist on stop too
+        if !conversation.messages.isEmpty {
+            Task { await persistConversation() }
+        }
     }
 
     // MARK: - Auto GitHub sync after agent run

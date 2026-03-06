@@ -15,6 +15,7 @@ struct ChatHistorySidebar: View {
     @StateObject private var artifactStore = ArtifactStore.shared
     @StateObject private var statusBroadcaster = DeviceStatusBroadcaster.shared
     @StateObject private var ghManager = GitHubManager.shared
+    @StateObject private var agentPool = AgentPool.shared
 
     @State private var searchText = ""
     @State private var showSettings = false
@@ -82,6 +83,12 @@ struct ChatHistorySidebar: View {
                 case .plan:
                     _ = planManager.newPlan()
                     showSidebar = false
+                case .project:
+                    if let activeProject = projectStore.activeProject {
+                        let agent = agentPool.agent(for: activeProject)
+                        agent.newConversation()
+                    }
+                    showSidebar = false
                 default:
                     break
                 }
@@ -92,7 +99,7 @@ struct ChatHistorySidebar: View {
                     .frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
-            .opacity(selectedTab == .chat || selectedTab == .plan ? 1 : 0)
+            .opacity(selectedTab == .chat || selectedTab == .plan || selectedTab == .project ? 1 : 0)
         }
         .padding(.horizontal, 14)
         .padding(.top, topSafeArea + 8)
@@ -233,9 +240,72 @@ struct ChatHistorySidebar: View {
                 ForEach(filteredProjects) { project in
                     projectRow(project)
                 }
+
+                // Show conversation history for the active project
+                if let activeProject = projectStore.activeProject {
+                    let agent = agentPool.agents[activeProject.id]
+                    let convHistory = agent?.conversationHistory ?? []
+                    let filteredConvs = searchText.isEmpty
+                        ? convHistory
+                        : convHistory.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+
+                    if !filteredConvs.isEmpty {
+                        sectionHeader("Konversationer")
+                        ForEach(filteredConvs) { conv in
+                            conversationRow(conv, agent: agent)
+                        }
+                    }
+                }
             }
         } else if searchText.isEmpty {
             emptyHistoryHint(icon: "folder", text: "Inga projekt ännu")
+        }
+    }
+
+    @ViewBuilder
+    private func conversationRow(_ conv: Conversation, agent: ProjectAgent?) -> some View {
+        Button {
+            agent?.switchToConversation(conv)
+            selectedTab = .project
+            showSidebar = false
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(conv.title)
+                        .font(.system(size: 14))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Text("\(conv.messages.count) meddelanden · \(conv.modifiedAt.relativeString)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if agent?.conversation.id == conv.id {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                agent?.conversation.id == conv.id
+                    ? Color(UIColor.secondarySystemBackground) : Color.clear
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                agent?.newConversation()
+            } label: { Label("Ny konversation", systemImage: "plus.bubble") }
+            Divider()
+            Button(role: .destructive) {
+                Task { await ConversationStore.shared.delete(conv) }
+            } label: { Label("Radera", systemImage: "trash") }
         }
     }
 
