@@ -11,7 +11,7 @@ final class OfflineManager: ObservableObject {
     @Published var macReachable = false
 
     private let monitor = NWPathMonitor()
-    private let queue = DispatchQueue(label: "com.eoncode.networkmonitor")
+    private let queue = DispatchQueue(label: "com.navi.networkmonitor")
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in

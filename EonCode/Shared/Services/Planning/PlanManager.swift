@@ -96,7 +96,7 @@ final class PlanManager: ObservableObject {
     @Published var streamingText = ""
 
     private let api = ClaudeAPIClient.shared
-    private let storageKey = "eoncode.plans"
+    private let storageKey = "navi.plans"
 
     private init() {
         load()
@@ -288,7 +288,7 @@ final class PlanManager: ObservableObject {
 
     private var planningSystemPrompt: String {
         """
-        Du är EonCodes projektplanerare — en expert på att hjälpa utvecklare planera nya appar och projekt.
+        Du är Navis projektplanerare — en expert på att hjälpa utvecklare planera nya appar och projekt.
 
         Din roll:
         - Ställ klargörande frågor för att förstå projektets syfte, målgrupp och krav

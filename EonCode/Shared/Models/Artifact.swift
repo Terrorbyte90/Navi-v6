@@ -153,7 +153,7 @@ final class ArtifactStore: ObservableObject {
 
     @Published var artifacts: [Artifact] = []
 
-    private let storageKey = "eoncode.artifacts"
+    private let storageKey = "navi.artifacts"
     private let maxArtifacts = 500
 
     private init() {

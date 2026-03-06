@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - iCloud storage for pure chat conversations
-// Path: iCloud Drive/EonCode/Chats/{conversation-id}.json
+// Path: iCloud Drive/Navi/Chats/{conversation-id}.json
 
 @MainActor
 final class iCloudChatStore: ObservableObject {

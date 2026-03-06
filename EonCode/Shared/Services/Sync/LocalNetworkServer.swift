@@ -3,7 +3,7 @@ import Network
 
 // MARK: - Local HTTP server (tertiary sync method)
 // Mac runs server on port 52731, iOS connects via HTTP.
-// The server also advertises itself via Bonjour (_eoncode-http._tcp) so iOS
+// The server also advertises itself via Bonjour (_navi-http._tcp) so iOS
 // can auto-discover the Mac's IP without any manual configuration.
 
 @MainActor

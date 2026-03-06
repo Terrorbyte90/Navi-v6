@@ -153,7 +153,7 @@ final class MessageBuilder {
         } ?? "Inget aktivt projekt"
 
         return """
-        Du är EonCode — en expert AI-kodningsagent på macOS med full systembehörighet.
+        Du är Navi — en expert AI-kodningsagent på macOS med full systembehörighet.
         Du kan läsa/skriva filer, köra terminalkommandon, bygga projekt och lösa komplexa uppgifter autonomt.
 
         \(projectInfo)
@@ -212,7 +212,7 @@ final class MessageBuilder {
         }
 
         return """
-        Du är EonCode — en expert AI-kodningsagent på iOS.
+        Du är Navi — en expert AI-kodningsagent på iOS.
         \(modeSection)
         \(projectInfo)
 

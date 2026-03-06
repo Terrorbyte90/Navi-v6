@@ -107,7 +107,6 @@ struct CostDetailPopover: View {
         .padding(16)
         .frame(minWidth: 240)
         .background(Color.sidebarBackground)
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder
@@ -198,7 +197,7 @@ struct PureChatView: View {
     // macOS top bar — Mockup11 / ChatGPT-style
     var modelPickerBar: some View {
         HStack(spacing: 8) {
-            // "EonCode  ModelName ⌄"
+            // "Navi  ModelName ⌄"
             if let conv = conversation {
                 Menu {
                     ForEach(ClaudeModel.allCases) { model in
@@ -216,7 +215,7 @@ struct PureChatView: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Text("EonCode")
+                        Text("Navi")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(Color.primary)
                         Text(conv.model.displayName)
@@ -231,7 +230,7 @@ struct PureChatView: View {
                 .buttonStyle(.plain)
             } else {
                 HStack(spacing: 5) {
-                    Text("EonCode")
+                    Text("Navi")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(Color.primary)
                     Text("Chatt")
@@ -335,16 +334,19 @@ struct PureChatView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 // Plus / attach
                 Button { isShowingImagePicker = true } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Color.secondary)
-                        .frame(width: 30, height: 30)
-                        .background(Color.surfaceHover, in: Circle())
+                    ZStack {
+                        Circle()
+                            .fill(Color.surfaceHover)
+                            .frame(width: 30, height: 30)
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Color.secondary)
+                    }
                 }
                 .buttonStyle(.plain)
 
                 // Text field
-                TextField("Skicka ett meddelande till EonCode", text: $inputText, axis: .vertical)
+                TextField("Skicka ett meddelande till Navi", text: $inputText, axis: .vertical)
                     .font(.callout)
                     .foregroundColor(Color.primary)
                     .lineLimit(1...6)
@@ -395,7 +397,7 @@ struct PureChatView: View {
 
             // Disclaimer + session cost
             HStack {
-                Text("EonCode kan göra misstag. Kontrollera viktig information.")
+                Text("Navi kan göra misstag. Kontrollera viktig information.")
                     .font(.caption2)
                     .foregroundColor(Color.secondary.opacity(0.6))
                 Spacer()
@@ -568,7 +570,6 @@ struct PureChatBubble: View {
 #Preview("PureChatView") {
     PureChatView()
         .frame(width: 500, height: 600)
-        .preferredColorScheme(.dark)
 }
 
 // MARK: - Markdown text renderer

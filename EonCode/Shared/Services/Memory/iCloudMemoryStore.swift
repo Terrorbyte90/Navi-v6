@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - iCloud storage for memories
-// Path: iCloud Drive/EonCode/Memories/memories.json
+// Path: iCloud Drive/Navi/Memories/memories.json
 
 @MainActor
 final class iCloudMemoryStore {
@@ -97,6 +97,6 @@ extension iCloudSyncEngine {
         // Use the existing iCloud container root
         FileManager.default.url(
             forUbiquityContainerIdentifier: nil
-        )?.appendingPathComponent("Documents/EonCode", isDirectory: true)
+        )?.appendingPathComponent("Documents/Navi", isDirectory: true)
     }
 }

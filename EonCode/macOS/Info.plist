@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>EonCode</string>
+	<string>Navi</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,11 +24,11 @@
 	<false/>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_eoncode._tcp</string>
-		<string>_eoncode-http._tcp</string>
+		<string>_navi._tcp</string>
+		<string>_navi-http._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>EonCode uses local network for peer sync.</string>
+	<string>Navi uses local network for peer sync.</string>
 	<key>NSMainStoryboardFile</key>
 	<string></string>
 	<key>NSPrincipalClass</key>

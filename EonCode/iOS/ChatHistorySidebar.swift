@@ -65,7 +65,7 @@ struct ChatHistorySidebar: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.white)
                     }
-                    Text("EonCode")
+                    Text("Navi")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Color.primary)
                 }
@@ -672,7 +672,7 @@ struct ChatHistorySidebar: View {
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("EonCode")
+                    Text("Navi")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Color.primary)
                     HStack(spacing: 4) {

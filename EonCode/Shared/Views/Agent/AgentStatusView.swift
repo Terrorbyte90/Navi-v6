@@ -293,30 +293,27 @@ struct ProjectStatusCard: View {
 // MARK: - Previews
 
 #Preview("AgentStatusView – idle") {
-    let project = EonProject(name: "EonCode Preview", rootPath: "/tmp/preview", color: .blue)
+    let project = EonProject(name: "Navi Preview", rootPath: "/tmp/preview", color: .blue)
     let agent = ProjectAgent(project: project)
     return AgentStatusView(agent: agent)
         .frame(width: 400, height: 500)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("MultiProjectDashboard") {
     let store = ProjectStore.shared
     store.projects = [
-        EonProject(name: "EonCode v2", rootPath: "/tmp/eon", color: .blue),
+        EonProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue),
         EonProject(name: "Lunaflix iOS", rootPath: "/tmp/luna", color: .purple),
         EonProject(name: "Medo Test", rootPath: "/tmp/medo", color: .green),
     ]
     return MultiProjectDashboard()
-        .preferredColorScheme(.dark)
 }
 
 #Preview("ProjectStatusCard") {
-    let project = EonProject(name: "EonCode v2", rootPath: "/tmp/eon", color: .blue)
+    let project = EonProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue)
     return ProjectStatusCard(project: project, pool: AgentPool.shared)
         .padding()
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("WorkerStatusRow") {
@@ -331,7 +328,6 @@ struct ProjectStatusCard: View {
     WorkerStatusRow(status: status)
         .padding()
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }
 
 // MARK: - iOS Remote Status View

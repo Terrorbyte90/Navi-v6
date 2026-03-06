@@ -44,7 +44,7 @@ struct GitHubView: View {
                     .foregroundColor(.primary.opacity(0.7))
                 Text("GitHub")
                     .font(.system(size: 32, weight: .bold))
-                Text("Anslut ditt GitHub-konto för att komma åt alla dina repos, byta branch och koda direkt i EonCode.")
+                Text("Anslut ditt GitHub-konto för att komma åt alla dina repos, byta branch och koda direkt i Navi.")
                     .font(.system(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -1002,7 +1002,6 @@ struct CreateBranchSheet: View {
         .padding(24)
         .frame(width: 380)
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
     }
 }
 
@@ -1093,7 +1092,6 @@ struct CommitAndPushSheet: View {
         .padding(24)
         .frame(width: 420)
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
         .onAppear {
             Task { gitStatus = await gh.gitStatus(repo: repo) }
         }
@@ -1317,7 +1315,6 @@ struct CreatePRSheet: View {
         .padding(24)
         .frame(width: 460)
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
     }
 
     private var canCreate: Bool {
@@ -1386,7 +1383,7 @@ struct GitHubTokenSheet: View {
                 }
                 .padding(.top, 4)
                 Link("Skapa token på GitHub →",
-                     destination: URL(string: "https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=EonCode")!)
+                     destination: URL(string: "https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=Navi")!)
                     .font(.system(size: 12)).foregroundColor(.accentEon)
             }
             if !error.isEmpty {
@@ -1420,7 +1417,6 @@ struct GitHubTokenSheet: View {
         .padding(24)
         .frame(width: 420)
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
         .onAppear { tokenInput = gh.token ?? "" }
     }
 

@@ -70,7 +70,7 @@ struct SidebarView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.white)
                 }
-                Text("EonCode")
+                Text("Navi")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color.primary)
             }
@@ -490,7 +490,7 @@ struct SidebarView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("EonCode")
+                    Text("Navi")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Color.primary)
                     HStack(spacing: 4) {
@@ -682,5 +682,4 @@ struct ProjectRow: View {
         section: .constant(.pureChat)
     )
     .frame(width: 260, height: 700)
-    .preferredColorScheme(.dark)
 }

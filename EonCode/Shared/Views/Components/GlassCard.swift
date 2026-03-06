@@ -188,7 +188,7 @@ struct SyntaxHighlighter {
 #Preview("GlassCard") {
     GlassCard(cornerRadius: 16, padding: 16) {
         VStack(alignment: .leading, spacing: 8) {
-            Text("EonCode")
+            Text("Navi")
                 .font(.system(size: 18, weight: .bold))
             Text("AI-driven kodningsagent")
                 .font(.system(size: 14))
@@ -197,7 +197,6 @@ struct SyntaxHighlighter {
     }
     .padding()
     .background(Color.black)
-    .preferredColorScheme(.dark)
 }
 
 #Preview("GlassButton") {
@@ -208,7 +207,6 @@ struct SyntaxHighlighter {
     }
     .padding()
     .background(Color.black)
-    .preferredColorScheme(.dark)
 }
 
 #Preview("GlassTextField") {
@@ -218,7 +216,6 @@ struct SyntaxHighlighter {
     }
     .padding()
     .background(Color.black)
-    .preferredColorScheme(.dark)
 }
 
 // MARK: - Large Text View (chunked rendering)

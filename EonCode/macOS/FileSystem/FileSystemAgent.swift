@@ -75,7 +75,7 @@ final class FileSystemAgent {
     }
 
     private func createGenericProject(name: String, at dir: URL) throws {
-        let readme = "# \(name)\n\nEtt nytt projekt skapat med EonCode.\n"
+        let readme = "# \(name)\n\nEtt nytt projekt skapat med Navi.\n"
         try readme.write(to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     }
 

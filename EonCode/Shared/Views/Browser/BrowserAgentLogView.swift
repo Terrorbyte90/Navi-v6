@@ -195,5 +195,4 @@ struct BrowserLogEntryRow: View {
 #Preview("BrowserAgentLogView") {
     BrowserAgentLogView(agent: BrowserAgent.shared)
         .frame(width: 300, height: 380)
-        .preferredColorScheme(.dark)
 }

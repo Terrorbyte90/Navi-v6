@@ -667,7 +667,6 @@ struct NewArtifactSheet: View {
             #endif
         }
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
     }
 }
 
@@ -675,7 +674,6 @@ struct NewArtifactSheet: View {
 
 #Preview("ArtifactView") {
     ArtifactView()
-        .preferredColorScheme(.dark)
         #if os(macOS)
         .frame(width: 900, height: 600)
         #endif

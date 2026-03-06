@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct EonCodeApp: App {
+struct NaviApp: App {
     @StateObject private var projectStore = ProjectStore.shared
     @StateObject private var exchange = ExchangeRateService.shared
     @StateObject private var icloud = iCloudSyncEngine.shared
@@ -36,7 +36,7 @@ struct EonCodeApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 800)
         .commands {
-            EonCodeCommands()
+            NaviCommands()
         }
         #else
         WindowGroup {
@@ -50,7 +50,7 @@ struct EonCodeApp: App {
 // MARK: - macOS Menu Commands
 
 #if os(macOS)
-struct EonCodeCommands: Commands {
+struct NaviCommands: Commands {
     @CommandsBuilder
     var body: some Commands {
         CommandGroup(after: .newItem) {

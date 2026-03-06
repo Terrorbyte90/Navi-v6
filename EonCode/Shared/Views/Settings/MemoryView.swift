@@ -276,7 +276,6 @@ struct EditMemorySheet: View {
 #Preview("MemoryView – tom") {
     MemoryView()
         .frame(width: 400, height: 500)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("MemoryCategorySection") {
@@ -292,5 +291,4 @@ struct EditMemorySheet: View {
     )
     .padding()
     .background(Color.black)
-    .preferredColorScheme(.dark)
 }

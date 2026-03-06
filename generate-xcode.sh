@@ -1,5 +1,5 @@
 #!/bin/bash
-# EonCode — Xcode Project Generator
+# Navi — Xcode Project Generator
 # Run this script on your Mac to generate the Xcode project
 #
 # Requirements: xcodegen (brew install xcodegen)
@@ -8,7 +8,7 @@
 
 set -e
 
-echo "🚀 EonCode — Generating Xcode Project"
+echo "🚀 Navi — Generating Xcode Project"
 echo "======================================"
 
 # Check for xcodegen
@@ -18,9 +18,9 @@ if ! command -v xcodegen &> /dev/null; then
 fi
 
 # Generate project
-echo "📦 Generating EonCode.xcodeproj..."
+echo "📦 Generating Navi.xcodeproj..."
 xcodegen generate --spec project.yml
 
 echo ""
-echo "✅ Done! Opening EonCode.xcodeproj..."
-open EonCode.xcodeproj
+echo "✅ Done! Opening Navi.xcodeproj..."
+open Navi.xcodeproj

@@ -86,7 +86,6 @@ struct StatusBarView: View {
     StatusBarView()
         .padding()
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }
 
 // MARK: - Compact model picker (for toolbar)

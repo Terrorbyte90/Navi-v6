@@ -360,7 +360,7 @@ struct MessageBubble: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         // Model label
-                        Text(message.model?.displayName ?? "EonCode")
+                        Text(message.model?.displayName ?? "Navi")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.primary)
 
@@ -806,11 +806,10 @@ struct InputBar: View {
 // MARK: - Previews
 
 #Preview("ChatView") {
-    let project = EonProject(name: "EonCode Preview", rootPath: "/tmp/preview")
+    let project = EonProject(name: "Navi Preview", rootPath: "/tmp/preview")
     let agent = ProjectAgent(project: project)
     return ChatView(agent: agent)
         .frame(width: 500, height: 600)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("MessageBubble – user") {
@@ -818,7 +817,6 @@ struct InputBar: View {
     return MessageBubble(message: msg)
         .padding()
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("MessageBubble – assistant") {
@@ -827,7 +825,6 @@ struct InputBar: View {
     return MessageBubble(message: msg)
         .padding()
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("InputBar") {
@@ -843,7 +840,6 @@ struct InputBar: View {
         onShowQueue: {}
     ) {}
     .background(Color.chatBackground)
-    .preferredColorScheme(.dark)
 }
 
 // MARK: - Reusable Assistant Avatar

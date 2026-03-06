@@ -60,7 +60,6 @@ struct SettingsView: View {
         }
         .frame(width: 560, height: 640)
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
     }
 
     var iOSSettings: some View {
@@ -81,7 +80,6 @@ struct SettingsView: View {
         #endif
         .background(Color.chatBackground)
         .scrollContentBackground(.hidden)
-        .preferredColorScheme(.dark)
     }
 
     var iOSAgentModeSection: some View {
@@ -577,7 +575,6 @@ struct AddAPIKeySheet: View {
         .padding(24)
         .frame(width: 420)
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
     }
 
     var iOSLayout: some View {
@@ -614,7 +611,6 @@ struct AddAPIKeySheet: View {
         }
         .background(Color.chatBackground)
         .scrollContentBackground(.hidden)
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder
@@ -925,7 +921,6 @@ struct CostDashboardView: View {
 
 #Preview("SettingsView") {
     SettingsView()
-        .preferredColorScheme(.dark)
 }
 
 #Preview("ModelPickerView") {
@@ -933,7 +928,6 @@ struct CostDashboardView: View {
         .padding()
         .frame(width: 320)
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("CostDashboardView") {
@@ -941,7 +935,6 @@ struct CostDashboardView: View {
         .padding()
         .frame(width: 400)
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("SyncMethodRow") {
@@ -952,5 +945,4 @@ struct CostDashboardView: View {
     }
     .padding()
     .background(Color.black)
-    .preferredColorScheme(.dark)
 }

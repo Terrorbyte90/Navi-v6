@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>EonCode</string>
+	<string>Navi</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,15 +24,15 @@
 	<false/>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_eoncode._tcp</string>
-		<string>_eoncode-http._tcp</string>
+		<string>_navi._tcp</string>
+		<string>_navi-http._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>EonCode uses the camera to attach images to your messages.</string>
+	<string>Navi uses the camera to attach images to your messages.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>EonCode uses local network for peer sync between your Mac and iPhone.</string>
+	<string>Navi uses local network for peer sync between your Mac and iPhone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>EonCode accesses your photo library to attach images to your messages.</string>
+	<string>Navi accesses your photo library to attach images to your messages.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

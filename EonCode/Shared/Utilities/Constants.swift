@@ -9,20 +9,20 @@ enum Constants {
     }
 
     enum iCloud {
-        static let containerID = "iCloud.com.eoncode"
-        static let rootFolder = "EonCode"
+        static let containerID = "iCloud.com.navi"
+        static let rootFolder = "Navi"
         static let projectsFolder = "Projects"
         static let instructionsFolder = "Instructions"
         static let versionsFolder = "Versions"
         static let conversationsFolder = "Conversations"
         static let deviceStatusFolder = "DeviceStatus"
         static let checkpointsFolder = "Checkpoints"
-        static let defaultProjectsFolder = "EonCode/Projects"
+        static let defaultProjectsFolder = "Navi/Projects"
     }
 
     enum Sync {
-        static let bonjourServiceType = "_eoncode._tcp"
-        static let httpServiceType = "_eoncode-http._tcp"
+        static let bonjourServiceType = "_navi._tcp"
+        static let httpServiceType = "_navi-http._tcp"
         static let localHTTPPort: UInt16 = 52731
         static let statusFileName = "device-status.json"
         static let instructionPollInterval: TimeInterval = 2.0
@@ -46,12 +46,12 @@ enum Constants {
     }
 
     enum Keychain {
-        static let service = "com.eoncode.apikeys"
+        static let service = "com.navi.apikeys"
         static let anthropicKey = "anthropic"
         static let elevenLabsKey = "elevenlabs"
         static let muxKey = "mux"
         static let githubKey = "github"
-        static let accessGroup = "com.eoncode"
+        static let accessGroup = "com.navi"
     }
 
     enum Agent {

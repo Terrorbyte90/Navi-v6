@@ -149,7 +149,7 @@ enum MarkdownBlock {
 
 #Preview("MarkdownPreview") {
     MarkdownPreview(markdown: """
-# Välkommen till EonCode
+# Välkommen till Navi
 
 Ett stycke med **fet text** och lite `inline-kod`.
 
@@ -174,5 +174,4 @@ struct HelloView: View {
 Mer text efter avdelare.
 """)
     .frame(width: 420, height: 600)
-    .preferredColorScheme(.dark)
 }

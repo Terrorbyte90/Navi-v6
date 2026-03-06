@@ -1,6 +1,6 @@
-name: EonCode
+name: Navi
 options:
-  bundleIdPrefix: com.eoncode
+  bundleIdPrefix: com.navi
   deploymentTarget:
     iOS: "18.0"
     macOS: "15.0"
@@ -20,7 +20,7 @@ configs:
 packages: {}
 
 targets:
-  EonCode-iOS:
+  Navi-iOS:
     type: application
     platform: iOS
     deploymentTarget: "18.0"
@@ -34,9 +34,9 @@ targets:
         optional: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.eoncode.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.navi.ios
         INFOPLIST_FILE: EonCode/iOS/Info.plist
-        CODE_SIGN_ENTITLEMENTS: EonCode/iOS/EonCode-iOS.entitlements
+        CODE_SIGN_ENTITLEMENTS: EonCode/iOS/Navi-iOS.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
       configs:
@@ -45,29 +45,29 @@ targets:
         Release:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
     entitlements:
-      path: EonCode/iOS/EonCode-iOS.entitlements
+      path: EonCode/iOS/Navi-iOS.entitlements
     info:
       path: EonCode/iOS/Info.plist
       properties:
-        CFBundleDisplayName: EonCode
+        CFBundleDisplayName: Navi
         CFBundleVersion: "1"
         CFBundleShortVersionString: "1.0"
         UILaunchStoryboardName: ""
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
-        NSLocalNetworkUsageDescription: "EonCode uses local network for peer sync between your Mac and iPhone."
+        NSLocalNetworkUsageDescription: "Navi uses local network for peer sync between your Mac and iPhone."
         NSBonjourServices:
-          - _eoncode._tcp
-          - _eoncode-http._tcp
-        NSCameraUsageDescription: "EonCode uses the camera to attach images to your messages."
-        NSPhotoLibraryUsageDescription: "EonCode accesses your photo library to attach images to your messages."
+          - _navi._tcp
+          - _navi-http._tcp
+        NSCameraUsageDescription: "Navi uses the camera to attach images to your messages."
+        NSPhotoLibraryUsageDescription: "Navi accesses your photo library to attach images to your messages."
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - remote-notification
           - background-fetch
           - processing
 
-  EonCode-macOS:
+  Navi-macOS:
     type: application
     platform: macOS
     deploymentTarget: "15.0"
@@ -81,22 +81,22 @@ targets:
         optional: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.eoncode.macos
+        PRODUCT_BUNDLE_IDENTIFIER: com.navi.macos
         INFOPLIST_FILE: EonCode/macOS/Info.plist
-        CODE_SIGN_ENTITLEMENTS: EonCode/macOS/EonCode-macOS.entitlements
+        CODE_SIGN_ENTITLEMENTS: EonCode/macOS/Navi-macOS.entitlements
         ENABLE_HARDENED_RUNTIME: YES
     entitlements:
-      path: EonCode/macOS/EonCode-macOS.entitlements
+      path: EonCode/macOS/Navi-macOS.entitlements
     info:
       path: EonCode/macOS/Info.plist
       properties:
-        CFBundleDisplayName: EonCode
+        CFBundleDisplayName: Navi
         CFBundleVersion: "1"
         CFBundleShortVersionString: "1.0"
         NSPrincipalClass: NSApplication
         NSMainStoryboardFile: ""
-        NSLocalNetworkUsageDescription: "EonCode uses local network for peer sync."
+        NSLocalNetworkUsageDescription: "Navi uses local network for peer sync."
         NSBonjourServices:
-          - _eoncode._tcp
-          - _eoncode-http._tcp
+          - _navi._tcp
+          - _navi-http._tcp
         ITSAppUsesNonExemptEncryption: false

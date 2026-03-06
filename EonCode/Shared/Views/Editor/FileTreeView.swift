@@ -165,9 +165,8 @@ struct FileNodeRow: View {
 // MARK: - Previews
 
 #Preview("FileTreeView") {
-    let project = EonProject(name: "EonCode Preview", rootPath: "/tmp/preview", color: .blue)
+    let project = EonProject(name: "Navi Preview", rootPath: "/tmp/preview", color: .blue)
     return FileTreeView(project: project, selectedNode: .constant(nil))
         .frame(width: 260, height: 400)
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }

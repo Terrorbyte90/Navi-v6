@@ -165,7 +165,7 @@ struct ContentView: View {
 
             Spacer()
 
-            // Center: "EonCode  ModelName ⌄" — ChatGPT faithful
+            // Center: "Navi  ModelName ⌄" — ChatGPT faithful
             iOSCenterTitle
 
             Spacer()
@@ -186,7 +186,7 @@ struct ContentView: View {
     var iOSCenterTitle: some View {
         switch selectedTab {
         case .chat:
-            // "EonCode  Haiku 4.5 ⌄" — exact ChatGPT layout
+            // "Navi  Haiku 4.5 ⌄" — exact ChatGPT layout
             Menu {
                 ForEach(ClaudeModel.allCases) { model in
                     Button {
@@ -206,7 +206,7 @@ struct ContentView: View {
                 }
             } label: {
                 HStack(spacing: 5) {
-                    Text("EonCode")
+                    Text("Navi")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Color.primary)
                     Text(chatMgr.activeConversation?.model.displayName ?? "Claude")
@@ -222,7 +222,7 @@ struct ContentView: View {
 
         case .project:
             HStack(spacing: 5) {
-                Text("EonCode")
+                Text("Navi")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color.primary)
                 Text(activeProject?.name ?? "Projekt")
@@ -233,7 +233,7 @@ struct ContentView: View {
 
         case .browser:
             HStack(spacing: 5) {
-                Text("EonCode")
+                Text("Navi")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color.primary)
                 Text("Webb")
@@ -243,7 +243,7 @@ struct ContentView: View {
 
         case .artifacts:
             HStack(spacing: 5) {
-                Text("EonCode")
+                Text("Navi")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color.primary)
                 Text("Artefakter")
@@ -256,7 +256,7 @@ struct ContentView: View {
                 Button("Ny plan") { _ = planMgr.newPlan() }
             } label: {
                 HStack(spacing: 5) {
-                    Text("EonCode")
+                    Text("Navi")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Color.primary)
                     Text(planMgr.activePlan?.title ?? "Planera")
@@ -273,7 +273,7 @@ struct ContentView: View {
 
         case .github:
             HStack(spacing: 5) {
-                Text("EonCode")
+                Text("Navi")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color.primary)
                 Text("GitHub")
@@ -373,7 +373,7 @@ struct ContentView: View {
                     )
             }
             VStack(spacing: 8) {
-                Text("EonCode")
+                Text("Navi")
                     .font(.system(size: 32, weight: .bold, design: .rounded))
                 Text("Välj ett projekt i sidomenyn")
                     .font(.system(size: 15))
@@ -664,7 +664,7 @@ struct WelcomeView: View {
                             )
                         )
                 }
-                Text("EonCode")
+                Text("Navi")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
                 Text("AI-driven kodningsagent")
                     .font(.system(size: 16))
@@ -783,7 +783,6 @@ struct NewProjectView: View {
             #endif
         }
         .background(Color.chatBackground)
-        .preferredColorScheme(.dark)
     }
 
     private func createProject() async {
@@ -795,9 +794,9 @@ struct NewProjectView: View {
             baseURL = icloudRoot
         } else {
             #if os(macOS)
-            baseURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("EonCode/Projects")
+            baseURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Navi/Projects")
             #else
-            baseURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("EonCode/Projects")
+            baseURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("Navi/Projects")
             #endif
         }
 
@@ -822,19 +821,16 @@ struct NewProjectView: View {
 
 #Preview("WelcomeView – inga projekt") {
     WelcomeView(showNewProject: .constant(false))
-        .preferredColorScheme(.dark)
 }
 
 #Preview("WelcomeView – med projekt") {
     let store = ProjectStore.shared
-    let p1 = EonProject(name: "EonCode v2", rootPath: "/tmp/eon", color: .blue)
+    let p1 = EonProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue)
     let p2 = EonProject(name: "Lunaflix iOS", rootPath: "/tmp/luna", color: .purple)
     store.projects = [p1, p2]
     return WelcomeView(showNewProject: .constant(false))
-        .preferredColorScheme(.dark)
 }
 
 #Preview("NewProjectView") {
     NewProjectView()
-        .preferredColorScheme(.dark)
 }

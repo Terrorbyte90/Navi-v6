@@ -439,7 +439,7 @@ final class GitHubManager: ObservableObject {
         // Commit if there are staged changes
         let status = await runGit(["-C", localPath, "status", "--porcelain"])
         if !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let msg = message ?? "EonCode auto-commit \(Date().formatted())"
+            let msg = message ?? "Navi auto-commit \(Date().formatted())"
             let _ = await runGit(["-C", localPath, "commit", "-m", msg])
         }
 
@@ -484,8 +484,8 @@ final class GitHubManager: ObservableObject {
         let statusResult = await runGit(["-C", localPath, "status", "--porcelain"])
         guard !statusResult.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let msg = changedFiles.isEmpty
-            ? "EonCode: agent-ändringar \(Date().formatted(.dateTime.hour().minute()))"
-            : "EonCode: uppdaterar \(changedFiles.prefix(3).joined(separator: ", "))"
+            ? "Navi: agent-ändringar \(Date().formatted(.dateTime.hour().minute()))"
+            : "Navi: uppdaterar \(changedFiles.prefix(3).joined(separator: ", "))"
         let _ = await runGit(["-C", localPath, "commit", "-m", msg])
         let pushResult = await runGit(["-C", localPath, "push", "origin", repo.currentBranch])
         syncStatus[repo.fullName] = pushResult.success ? "Auto-pushad ✓" : "Push misslyckades: \(pushResult.output)"
@@ -513,7 +513,7 @@ final class GitHubManager: ObservableObject {
 
         let body: [String: Any] = [
             "name": repoName,
-            "description": project.description.isEmpty ? "Skapad av EonCode" : project.description,
+            "description": project.description.isEmpty ? "Skapad av Navi" : project.description,
             "private": true,
             "auto_init": true
         ]
@@ -597,10 +597,10 @@ final class GitHubManager: ObservableObject {
     private func localRepoPath(for repo: GitHubRepo) -> String {
         #if os(macOS)
         let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("EonCode/GitHub")
+            .appendingPathComponent("Navi/GitHub")
         #else
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("EonCode/GitHub")
+            .appendingPathComponent("Navi/GitHub")
         #endif
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent(repo.fullName.replacingOccurrences(of: "/", with: "_")).path

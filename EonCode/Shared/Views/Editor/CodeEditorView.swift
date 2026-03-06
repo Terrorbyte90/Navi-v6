@@ -285,7 +285,6 @@ struct MyView: View {
         fileType: .swift
     )
     .frame(width: 500, height: 400)
-    .preferredColorScheme(.dark)
 }
 
 #Preview("EditorToolbar") {
@@ -296,14 +295,12 @@ struct MyView: View {
         onSave: {}
     )
     .background(Color.black)
-    .preferredColorScheme(.dark)
 }
 
 #Preview("LineNumberView") {
     LineNumberView(text: "rad ett\nrad två\nrad tre\nrad fyra\nrad fem")
         .frame(width: 44, height: 120)
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }
 
 #Preview("SearchReplaceBar") {
@@ -314,5 +311,4 @@ struct MyView: View {
         onReplace: {}
     )
     .background(Color.black)
-    .preferredColorScheme(.dark)
 }

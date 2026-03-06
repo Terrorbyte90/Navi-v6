@@ -184,7 +184,7 @@ final class WorkerAgent: ObservableObject, Identifiable {
     private var workerSystemPrompt: String {
         #if os(macOS)
         return """
-        Du är en EonCode-worker på macOS med full systembehörighet.
+        Du är en Navi-worker på macOS med full systembehörighet.
         Du har ett avgränsat uppdrag och ska genomföra det effektivt och direkt.
 
         Tillgängliga verktyg: read_file, write_file, move_file, delete_file,
@@ -199,7 +199,7 @@ final class WorkerAgent: ObservableObject, Identifiable {
         """
         #else
         return """
-        Du är en EonCode-worker på iOS.
+        Du är en Navi-worker på iOS.
         Du har ett avgränsat uppdrag och ska genomföra det effektivt.
 
         Tillgängliga verktyg (kör direkt på iOS):

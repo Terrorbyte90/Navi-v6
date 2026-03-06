@@ -530,7 +530,6 @@ struct FlowLayout: Layout {
 
 #Preview("PlanView") {
     PlanView()
-        .preferredColorScheme(.dark)
         #if os(macOS)
         .frame(width: 700, height: 600)
         #endif
@@ -553,5 +552,4 @@ struct FlowLayout: Layout {
     return ExtractedPlanCard(plan: plan)
         .padding()
         .background(Color.black)
-        .preferredColorScheme(.dark)
 }
