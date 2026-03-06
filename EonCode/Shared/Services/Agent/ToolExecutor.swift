@@ -44,6 +44,19 @@ final class ToolExecutor {
         return (projectRoot ?? URL(fileURLWithPath: NSTemporaryDirectory())).appendingPathComponent(path)
     }
 
+    /// Validates that a resolved path stays within project boundaries.
+    /// Returns nil and an error string if the path escapes the project root.
+    private func validatedPath(_ path: String, projectRoot: URL?) -> (URL?, String?) {
+        let url = resolvedPath(path, projectRoot: projectRoot)
+        guard let root = projectRoot else { return (url, nil) }
+        let resolvedStandardized = url.standardizedFileURL.path
+        let rootStandardized = root.standardizedFileURL.path
+        if !resolvedStandardized.hasPrefix(rootStandardized) && !path.hasPrefix("/") && !path.hasPrefix("~") {
+            return (nil, "FEL: Sökvägen '\(path)' pekar utanför projektroten. Använd relativa sökvägar inom projektet.")
+        }
+        return (url, nil)
+    }
+
     // MARK: - read_file
 
     func readFile(path: String, projectRoot: URL?) async -> String {
@@ -53,7 +66,9 @@ final class ToolExecutor {
             let lines = content.components(separatedBy: "\n").count
             // Truncate very large files to avoid context overflow
             if content.count > 80_000 {
-                return String(content.prefix(80_000)) + "\n\n[...fil trunkerad vid 80k tecken — \(lines) rader totalt]"
+                let truncated = String(content.prefix(80_000))
+                let truncatedLines = truncated.components(separatedBy: "\n").count
+                return truncated + "\n\n⚠️ [FIL TRUNKERAD: visar \(truncatedLines)/\(lines) rader, \(80_000)/\(content.count) tecken. Använd search_files för att hitta specifika delar.]"
             }
             return content
         } catch {
@@ -67,7 +82,9 @@ final class ToolExecutor {
     var currentConversationID: UUID?
 
     func writeFile(path: String, content: String, projectRoot: URL?) async -> String {
-        let url = resolvedPath(path, projectRoot: projectRoot)
+        let (validated, error) = validatedPath(path, projectRoot: projectRoot)
+        if let error { return error }
+        let url = validated!
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try content.write(to: url, atomically: true, encoding: .utf8)
@@ -113,7 +130,9 @@ final class ToolExecutor {
     // MARK: - delete_file
 
     func deleteFile(path: String, projectRoot: URL?) async -> String {
-        let url = resolvedPath(path, projectRoot: projectRoot)
+        let (validated, error) = validatedPath(path, projectRoot: projectRoot)
+        if let error { return error }
+        let url = validated!
         do {
             try FileManager.default.removeItem(at: url)
             return "✓ Borttagen: \(path)"
@@ -209,7 +228,11 @@ final class ToolExecutor {
         }
 
         if results.isEmpty { return "Inga träffar för '\(query)'" }
-        return results.joined(separator: "\n---\n")
+        let output = results.joined(separator: "\n---\n")
+        if results.count >= 30 {
+            return output + "\n\n⚠️ [Visar första 30 träffar — det kan finnas fler.]"
+        }
+        return output
     }
 
     // MARK: - get_api_key

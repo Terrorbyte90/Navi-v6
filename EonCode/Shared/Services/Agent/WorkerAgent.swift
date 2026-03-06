@@ -103,12 +103,14 @@ final class WorkerAgent: ObservableObject, Identifiable {
                 let params = tc.input.compactMapValues { $0.value as? String }
                 let result = await executor.execute(name: tc.name, params: params, projectRoot: projectRoot)
 
-                // Track written files
-                if tc.name == "write_file", let path = params["path"] {
+                // Track written/modified files
+                if tc.name == "write_file" || tc.name == "create_directory", let path = params["path"] {
                     filesWritten.append(path)
+                } else if tc.name == "move_file", let to = params["to"] {
+                    filesWritten.append(to)
                 }
 
-                toolResults.append(.toolResult(id: tc.id, content: result, isError: false))
+                toolResults.append(.toolResult(id: tc.id, content: result, isError: result.hasPrefix("FEL:")))
                 output += "\n🔧 \(tc.name): \(result.prefix(100))"
             }
             messages.append(ChatMessage(role: .user, content: toolResults))

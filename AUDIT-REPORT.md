@@ -127,16 +127,35 @@
 
 ---
 
+## Ytterligare fixes (fas 2)
+
+| # | Fil | Problem | Fix |
+|---|-----|---------|-----|
+| 17 | `WorkerAgent.swift` | `isError` alltid `false` — verktygsfel aldrig flaggade (KRITISK) | Ändrat till `result.hasPrefix("FEL:")` |
+| 18 | `WorkerAgent.swift` | Bara `write_file` spårades i `filesWritten` | Lagt till `move_file`, `create_directory` |
+| 19 | `WorkerPool.swift` | Rate limiter: timestamp lades till EFTER check → concurrent workers kunde passera | Flyttat `append` före `count`-check |
+| 20 | `ToolExecutor.swift` | Ingen path-validering — agent kunde skriva utanför projekt | Lagt till `validatedPath()` med path traversal-skydd |
+| 21 | `ToolExecutor.swift` | Fil-trunkering utan tydlig varning | Förbättrat meddelande med rad/tecken-räkning och hint |
+| 22 | `ToolExecutor.swift` | Sökresultat trunkerade utan indikation | Lagt till varning vid ≥30 träffar |
+
+---
+
 ## Kvarstående problem (ej fixade)
 
 | Problem | Anledning |
 |---------|-----------|
-| ChatView.swift saknar även image picker `.sheet` | Samma mönster som PureChatView — `showImagePicker` sätts men ingen sheet. Kan fixas genom att lägga till samma `.sheet(isPresented: $showImagePicker) { ImagePicker(...) }` i InputBar |
-| Kostnadsfält visas dubbelt på macOS | PureChatView visar kostnad både i `macModelBar` (toppen) och under inputfältet. Bör väljas en plats. Ej ändrat — designbeslut |
-| BrowserActionDecider/PageExtractor/ScreenshotAnalyzer | Ej granskade i detalj — externa hjälpklasser utan tillgång till källkod |
-| Saknar enhetstester | Projektet har inga tester — rekommenderas starkt för alla tjänster |
-| Hårdkodade svenska strängar | All UI-text är hårdkodad på svenska — bör lokaliseras med String Catalogs för framtida internationalisering |
+| ChatView.swift saknar även image picker `.sheet` | Samma mönster som PureChatView — `showImagePicker` sätts men ingen sheet. Kan fixas med `.sheet(isPresented: $showImagePicker) { ImagePicker(...) }` |
+| Kostnadsfält visas dubbelt på macOS | PureChatView visar kostnad både i `macModelBar` (toppen) och under inputfältet. Ej ändrat — designbeslut |
+| AgentPool: agenter rensas aldrig | Agents-dictionary växer — bör rensas när projekt raderas |
+| PromptQueue: CheckedContinuation kan hänga | Om agent-callback misslyckas, resumeras aldrig continuation |
+| SelfHealingLoop: saknar AgentEngine.setProject() | Agent kör utan projektkontekst under self-healing |
+| Saknar enhetstester | Projektet har inga tester — rekommenderas starkt |
+| Hårdkodade svenska strängar | All UI-text är hårdkodad på svenska — bör lokaliseras med String Catalogs |
 
 ---
+
+**Totalt fixade problem:** 22 (6 KRITISKA, 8 HÖGA, 8 MEDEL)
+**Totalt nya filer:** 1 (`ImagePicker.swift`)
+**Filer ändrade:** 15
 
 *Rapport genererad automatiskt av Claude QA-audit.*

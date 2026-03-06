@@ -91,7 +91,10 @@ final class WorkerPool: ObservableObject {
         let oneMinuteAgo = now.addingTimeInterval(-60)
         recentCallTimestamps = recentCallTimestamps.filter { $0 > oneMinuteAgo }
 
-        if recentCallTimestamps.count >= callsPerMinute {
+        // Reserve slot first to prevent concurrent workers from all passing the check
+        recentCallTimestamps.append(now)
+
+        if recentCallTimestamps.count > callsPerMinute {
             // Wait until oldest call falls out of window
             if let oldest = recentCallTimestamps.first {
                 let waitTime = oldest.addingTimeInterval(60).timeIntervalSince(now) + 0.5
@@ -100,8 +103,6 @@ final class WorkerPool: ObservableObject {
                 }
             }
         }
-
-        recentCallTimestamps.append(Date())
     }
 
     func reset() {
