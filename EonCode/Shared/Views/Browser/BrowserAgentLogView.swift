@@ -166,11 +166,16 @@ struct BrowserLogEntryRow: View {
                 .frame(width: 14, height: 16)
                 .padding(.top, 1)
 
-            Text(cleanText)
-                .font(.system(size: 12))
-                .foregroundColor(entry.isError ? .red.opacity(0.9) : .primary.opacity(0.75))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(cleanText)
+                    .font(.system(size: 12))
+                    .foregroundColor(entry.isError ? .red.opacity(0.9) : .primary.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(entry.timestamp, format: .dateTime.hour().minute().second())
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.3))
+            }
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 4)

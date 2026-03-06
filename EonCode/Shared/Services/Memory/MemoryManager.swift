@@ -127,7 +127,9 @@ final class MemoryManager: ObservableObject {
     func updateMemory(id: UUID, newFact: String) async {
         try? await store.update(id: id, fact: newFact)
         if let idx = memories.firstIndex(where: { $0.id == id }) {
-            memories[idx].fact = newFact
+            var updated = memories[idx]
+            updated.fact = newFact
+            memories[idx] = updated  // Reassign to trigger @Published change detection
         }
     }
 

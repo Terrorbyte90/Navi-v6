@@ -104,7 +104,10 @@ struct PageExtractor {
                     name: el.name || '',
                     placeholder: el.placeholder || '',
                     label: (el.labels && el.labels[0] ? el.labels[0].innerText : '') ||
-                           el.getAttribute('aria-label') || '',
+                           el.getAttribute('aria-label') ||
+                           el.name ||
+                           el.placeholder ||
+                           (el.type ? el.type + ' fält ' + (i+1) : 'Fält ' + (i+1)),
                     selector: generateSelector(el)
                 })),
             buttons: Array.from(document.querySelectorAll('button, input[type=submit], input[type=button], [role=button]'))
@@ -189,7 +192,13 @@ struct PageExtractor {
     }
 
     private static func jsString(_ s: String) -> String {
-        "\"\(s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
+        let escaped = s
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        return "\"\(escaped)\""
     }
 
     // Internal raw decode types

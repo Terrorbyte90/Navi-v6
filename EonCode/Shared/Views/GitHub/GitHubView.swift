@@ -349,6 +349,8 @@ struct RepoWorkView: View {
     @State private var showCreateBranch = false
     @State private var selectedTab = 0
     @State private var workStarted = false        // after "Börja arbeta" tapped
+    @State private var showCommitSheet = false
+    @State private var commitMessage = ""
 
     var currentRepo: GitHubRepo {
         gh.repos.first(where: { $0.id == repo.id }) ?? repo
@@ -379,6 +381,13 @@ struct RepoWorkView: View {
         .onChange(of: currentRepo.currentBranch) { _ in reloadCommits() }
         .sheet(isPresented: $showCreateBranch) {
             CreateBranchSheet(repo: currentRepo, baseBranch: currentRepo.currentBranch)
+        }
+        .sheet(isPresented: $showCommitSheet) {
+            CommitAndPushSheet(repo: currentRepo) {
+                Task {
+                    commits = await gh.fetchCommits(for: currentRepo, forceRefresh: true)
+                }
+            }
         }
     }
 
@@ -543,7 +552,13 @@ struct RepoWorkView: View {
                     Button {
                         gh.setBranch(branch.name, for: repo.id)
                         if let path = localPath {
-                            Task { await gh.switchBranch(to: branch.name, at: path) }
+                            Task {
+                                await gh.switchBranch(to: branch.name, at: path)
+                                // Reload commits for new branch
+                                isLoadingCommits = true
+                                commits = await gh.fetchCommits(for: currentRepo, forceRefresh: true)
+                                isLoadingCommits = false
+                            }
                         }
                     } label: {
                         HStack {
@@ -572,20 +587,40 @@ struct RepoWorkView: View {
             }
             .buttonStyle(.plain)
 
+            // Refresh commits
+            Button {
+                Task {
+                    isLoadingCommits = true
+                    commits = await gh.fetchCommits(for: currentRepo, forceRefresh: true)
+                    isLoadingCommits = false
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11)).foregroundColor(.secondary)
+                    .frame(width: 24, height: 28).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).help("Uppdatera")
+
             // Pull / Push
-            Button { Task { await gh.pull(repo: currentRepo) } } label: {
+            Button {
+                Task {
+                    await gh.pull(repo: currentRepo)
+                    // Refresh commits after pull
+                    commits = await gh.fetchCommits(for: currentRepo, forceRefresh: true)
+                }
+            } label: {
                 Image(systemName: "arrow.down.circle")
                     .font(.system(size: 13)).foregroundColor(.secondary)
                     .frame(width: 28, height: 28).contentShape(Rectangle())
             }
             .buttonStyle(.plain).help("Pull")
 
-            Button { Task { await gh.push(repo: currentRepo) } } label: {
+            Button { showCommitSheet = true } label: {
                 Image(systemName: "arrow.up.circle")
                     .font(.system(size: 13)).foregroundColor(.secondary)
                     .frame(width: 28, height: 28).contentShape(Rectangle())
             }
-            .buttonStyle(.plain).help("Push")
+            .buttonStyle(.plain).help("Commit & Push")
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
     }
@@ -676,10 +711,10 @@ struct RepoWorkView: View {
     private func loadData() {
         Task {
             isLoadingBranches = true
-            branches = await gh.fetchBranches(for: repo)
+            branches = await gh.fetchBranches(for: repo, forceRefresh: true)
             isLoadingBranches = false
             isLoadingCommits = true
-            commits = await gh.fetchCommits(for: currentRepo)
+            commits = await gh.fetchCommits(for: currentRepo, forceRefresh: true)
             isLoadingCommits = false
         }
     }
@@ -687,7 +722,7 @@ struct RepoWorkView: View {
     private func reloadCommits() {
         Task {
             isLoadingCommits = true
-            commits = await gh.fetchCommits(for: currentRepo)
+            commits = await gh.fetchCommits(for: currentRepo, forceRefresh: true)
             isLoadingCommits = false
         }
     }
@@ -901,6 +936,115 @@ struct CreateBranchSheet: View {
         .frame(width: 380)
         .background(Color.chatBackground)
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Commit & Push Sheet
+
+struct CommitAndPushSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var gh = GitHubManager.shared
+    let repo: GitHubRepo
+    var onComplete: (() -> Void)?
+
+    @State private var commitMessage = ""
+    @State private var gitStatus = ""
+    @State private var isPushing = false
+    @State private var result = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.circle.fill").foregroundColor(.accentEon)
+                Text("Commit & Push").font(.system(size: 18, weight: .bold))
+            }
+
+            // Git status
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Ändringar").font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary)
+                if gitStatus.isEmpty {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.6)
+                        Text("Kontrollerar…").font(.system(size: 12)).foregroundColor(.secondary)
+                    }
+                } else {
+                    ScrollView {
+                        Text(gitStatus == "Rent" ? "Inga ändringar att pusha" : gitStatus)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(gitStatus == "Rent" ? .secondary : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 120)
+                    .padding(8)
+                    .background(Color.codeBackground)
+                    .cornerRadius(8)
+                }
+            }
+
+            // Commit message
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Commit-meddelande").font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary)
+                TextField("Beskriv dina ändringar…", text: $commitMessage, axis: .vertical)
+                    .lineLimit(1...4)
+                    .font(.system(size: 13))
+                    .textFieldStyle(.plain)
+                    .padding(10)
+                    .background(Color.inputBackground)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.inputBorder, lineWidth: 0.5)
+                    )
+            }
+
+            if !result.isEmpty {
+                Text(result)
+                    .font(.system(size: 12))
+                    .foregroundColor(result.contains("✓") ? .green : .red)
+            }
+
+            HStack {
+                Button("Avbryt") { dismiss() }
+                    .buttonStyle(.plain).foregroundColor(.secondary)
+                Spacer()
+                Button {
+                    Task { await pushChanges() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isPushing {
+                            ProgressView().scaleEffect(0.7)
+                        }
+                        Text(isPushing ? "Pushar…" : "Push")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(gitStatus == "Rent" || isPushing ? .secondary : .accentEon)
+                .disabled(gitStatus == "Rent" || isPushing)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+        .background(Color.chatBackground)
+        .preferredColorScheme(.dark)
+        .onAppear {
+            Task { gitStatus = await gh.gitStatus(repo: repo) }
+        }
+    }
+
+    private func pushChanges() async {
+        isPushing = true
+        let msg = commitMessage.trimmed.isEmpty ? nil : commitMessage.trimmed
+        await gh.push(repo: repo, message: msg)
+        isPushing = false
+        if let status = gh.syncStatus[repo.fullName] {
+            result = status
+            if status.contains("✓") {
+                onComplete?()
+                try? await Task.sleep(for: .seconds(0.8))
+                dismiss()
+            }
+        }
     }
 }
 

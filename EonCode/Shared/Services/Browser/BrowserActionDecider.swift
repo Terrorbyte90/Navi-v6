@@ -97,28 +97,35 @@ struct BrowserActionDecider {
     // MARK: - Parse JSON response
 
     static func parseAction(from text: String) -> BrowserAction {
-        // Extract JSON object from response
-        guard let start = text.range(of: "{"),
-              let end = text.range(of: "}", options: .backwards) else {
-            return .waitForLoad
-        }
-        let jsonStr = String(text[start.lowerBound...end.upperBound])
-        guard let data = jsonStr.data(using: .utf8),
+        // Find matching braces to extract JSON properly
+        guard let jsonStr = extractJSON(from: text),
+              let data = jsonStr.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let action = obj["action"] as? String else {
+            print("⚠️ BrowserActionDecider: kunde inte tolka JSON från svar: \(text.prefix(200))")
             return .waitForLoad
         }
 
         switch action {
         case "navigate":
-            return .navigate(url: (obj["url"] as? String) ?? "")
+            guard let url = obj["url"] as? String, !url.isEmpty else {
+                print("⚠️ BrowserActionDecider: navigate saknar giltig URL")
+                return .waitForLoad
+            }
+            return .navigate(url: url)
         case "click":
-            return .click(selector: (obj["selector"] as? String) ?? "")
+            guard let selector = obj["selector"] as? String, !selector.isEmpty else {
+                print("⚠️ BrowserActionDecider: click saknar giltig selector")
+                return .waitForLoad
+            }
+            return .click(selector: selector)
         case "type":
-            return .type(
-                selector: (obj["selector"] as? String) ?? "",
-                text: (obj["text"] as? String) ?? ""
-            )
+            guard let selector = obj["selector"] as? String, !selector.isEmpty,
+                  let text = obj["text"] as? String else {
+                print("⚠️ BrowserActionDecider: type saknar selector eller text")
+                return .waitForLoad
+            }
+            return .type(selector: selector, text: text)
         case "scroll":
             return .scroll(direction: (obj["direction"] as? String) ?? "down")
         case "screenshot":
@@ -132,7 +139,30 @@ struct BrowserActionDecider {
         case "goal_failed":
             return .goalFailed(reason: (obj["reason"] as? String) ?? "Okänd anledning")
         default:
+            print("⚠️ BrowserActionDecider: okänd action '\(action)'")
             return .waitForLoad
         }
+    }
+
+    /// Extract the outermost JSON object by matching braces properly
+    private static func extractJSON(from text: String) -> String? {
+        guard let startIdx = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var inString = false
+        var escape = false
+        var endIdx: String.Index?
+
+        for i in text[startIdx...].indices {
+            let ch = text[i]
+            if escape { escape = false; continue }
+            if ch == "\\" && inString { escape = true; continue }
+            if ch == "\"" { inString = !inString; continue }
+            if inString { continue }
+            if ch == "{" { depth += 1 }
+            if ch == "}" { depth -= 1; if depth == 0 { endIdx = i; break } }
+        }
+
+        guard let end = endIdx else { return nil }
+        return String(text[startIdx...end])
     }
 }

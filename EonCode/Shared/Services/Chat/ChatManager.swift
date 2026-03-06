@@ -11,12 +11,16 @@ final class ChatManager: ObservableObject {
     @Published var activeConversation: ChatConversation?
     @Published var isStreaming = false
     @Published var streamingText = ""
+    @Published var isLoading = true
 
     private let store = iCloudChatStore.shared
     private let api = ClaudeAPIClient.shared
 
     private init() {
-        Task { await load() }
+        Task {
+            await load()
+            isLoading = false
+        }
     }
 
     // MARK: - Load
@@ -157,8 +161,29 @@ final class ChatManager: ObservableObject {
         guard let first = conversation.messages.first(where: { $0.role == .user }) else {
             return "Ny chatt"
         }
-        let preview = String(first.content.prefix(60))
-        // Simple title: use first user message preview
+
+        // Try AI-generated title via Haiku (fast + cheap)
+        if KeychainManager.shared.anthropicAPIKey?.isEmpty == false {
+            let prompt = "Ge denna konversation en kort titel (max 5 ord, inget citattecken). Konversation: \(first.content.prefix(300))"
+            do {
+                let (title, _) = try await api.sendMessage(
+                    messages: [ChatMessage(role: .user, content: [.text(prompt)])],
+                    model: .haiku,
+                    systemPrompt: "Svara med BARA titeln. Max 5 ord. Inget citattecken.",
+                    maxTokens: 30
+                )
+                let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                if !trimmed.isEmpty && trimmed.count < 60 {
+                    return trimmed
+                }
+            } catch {
+                // Fall back to truncation
+            }
+        }
+
+        // Fallback: truncate first message
+        let preview = String(first.content.prefix(50))
         return preview.isEmpty ? "Ny chatt" : preview
     }
 

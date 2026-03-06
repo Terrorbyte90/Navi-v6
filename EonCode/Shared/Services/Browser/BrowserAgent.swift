@@ -48,9 +48,11 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     private let api = ClaudeAPIClient.shared
     private var userInputContinuation: CheckedContinuation<String, Never>?
     private var navigationContinuation: CheckedContinuation<Void, Error>?
+    private var navigationID: UUID?  // Track which navigation the continuation belongs to
     private var progressObservation: NSKeyValueObservation?
     private var titleObservation: NSKeyValueObservation?
     private var urlObservation: NSKeyValueObservation?
+    private var currentExecutionTask: Task<Void, Never>?
 
     private override init() {
         super.init()
@@ -84,27 +86,44 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     func execute(goal: String) async {
         guard status != .working else { return }
 
+        // Cancel any previous execution
+        currentExecutionTask?.cancel()
+
         status = .working
         log = [BrowserLogEntry("🎯 Mål: \(goal)")]
         var attempt = 0
         let maxAttempts = 50
-        var failureStreak = 0
+        var extractionFailStreak = 0
+        var actionFailStreak = 0
 
         while status == .working && attempt < maxAttempts {
             attempt += 1
 
-            // Extract page content
+            // Check cancellation
+            guard !Task.isCancelled else {
+                appendLog("⏹ Avbruten")
+                status = .idle
+                return
+            }
+
+            // Extract page content with timeout
             let pageContent: PageContent
             do {
-                pageContent = try await PageExtractor.extract(from: webView)
+                pageContent = try await withTimeout(seconds: 10) {
+                    try await PageExtractor.extract(from: self.webView)
+                }
+                extractionFailStreak = 0
             } catch {
                 appendLog("⚠️ Extraktion misslyckades: \(error.localizedDescription)", isError: true)
-                failureStreak += 1
-                if failureStreak > 3 { status = .failed; break }
+                extractionFailStreak += 1
+                if extractionFailStreak > 3 {
+                    appendLog("❌ Kan inte läsa sidan efter \(extractionFailStreak) försök", isError: true)
+                    status = .failed
+                    break
+                }
                 try? await Task.sleep(for: .seconds(1))
                 continue
             }
-            failureStreak = 0
 
             // Decide next action
             let action: BrowserAction
@@ -117,10 +136,16 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
                 )
             } catch {
                 appendLog("⚠️ Kunde inte bestämma nästa steg: \(error.localizedDescription)", isError: true)
-                failureStreak += 1
-                if failureStreak > 3 { status = .failed; break }
+                actionFailStreak += 1
+                if actionFailStreak > 3 {
+                    appendLog("❌ API-fel upprepade gånger", isError: true)
+                    status = .failed
+                    break
+                }
+                try? await Task.sleep(for: .seconds(2))
                 continue
             }
+            actionFailStreak = 0
 
             appendLog(action.logDescription)
 
@@ -172,17 +197,20 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
                 case .goalFailed(let reason):
                     appendLog("❌ Misslyckades: \(reason)", isError: true)
-                    failureStreak += 1
-                    if failureStreak < 2 {
-                        appendLog("🔄 Försöker alternativ strategi…")
+                    actionFailStreak += 1
+                    if actionFailStreak < 3 {
+                        appendLog("🔄 Försöker alternativ strategi… (försök \(actionFailStreak))")
                     } else {
                         status = .failed
                     }
                 }
             } catch {
                 appendLog("⚠️ Action-fel: \(error.localizedDescription)", isError: true)
-                failureStreak += 1
-                if failureStreak > 5 { status = .failed }
+                actionFailStreak += 1
+                if actionFailStreak > 5 {
+                    appendLog("❌ För många fel i rad", isError: true)
+                    status = .failed
+                }
             }
 
             if status == .working {
@@ -193,6 +221,22 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         if status == .working {
             appendLog("⏹ Max antal steg nått (\(maxAttempts))")
             status = .complete
+        }
+    }
+
+    /// Run an async operation with a timeout
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw BrowserError.extractionFailed
+            }
+            guard let result = try await group.next() else {
+                throw BrowserError.extractionFailed
+            }
+            group.cancelAll()
+            return result
         }
     }
 
@@ -208,9 +252,14 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         navigationContinuation?.resume(throwing: BrowserError.navigationFailed("Cancelled"))
         navigationContinuation = nil
 
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            navigationContinuation = cont
-            webView.load(URLRequest(url: url))
+        let navID = UUID()
+        navigationID = navID
+
+        try await withTimeout(seconds: 30) {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                self.navigationContinuation = cont
+                self.webView.load(URLRequest(url: url))
+            }
         }
     }
 
@@ -232,11 +281,14 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
     func cancel() {
         webView.stopLoading()
+        currentExecutionTask?.cancel()
+        currentExecutionTask = nil
         status = .idle
         userInputContinuation?.resume(returning: "")
         userInputContinuation = nil
         navigationContinuation?.resume(throwing: BrowserError.navigationFailed("Cancelled"))
         navigationContinuation = nil
+        navigationID = nil
         userQuestion = ""
     }
 
@@ -244,6 +296,10 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
     private func appendLog(_ text: String, isError: Bool = false) {
         log.append(BrowserLogEntry(text, isError: isError))
+        // Keep log bounded to prevent memory issues
+        if log.count > 500 {
+            log = Array(log.suffix(400))
+        }
     }
 
     private func linkIndex(from selector: String) -> Int? {

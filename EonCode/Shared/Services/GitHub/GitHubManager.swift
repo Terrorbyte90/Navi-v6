@@ -230,8 +230,8 @@ final class GitHubManager: ObservableObject {
 
     // MARK: - Branches
 
-    func fetchBranches(for repo: GitHubRepo) async -> [GitHubBranch] {
-        if let cached = branchCache[repo.fullName] { return cached }
+    func fetchBranches(for repo: GitHubRepo, forceRefresh: Bool = false) async -> [GitHubBranch] {
+        if !forceRefresh, let cached = branchCache[repo.fullName] { return cached }
         guard let token else { return [] }
         do {
             var all: [GitHubBranch] = []
@@ -261,10 +261,10 @@ final class GitHubManager: ObservableObject {
 
     // MARK: - Recent commits
 
-    func fetchCommits(for repo: GitHubRepo, branch: String? = nil) async -> [GitHubCommit] {
+    func fetchCommits(for repo: GitHubRepo, branch: String? = nil, forceRefresh: Bool = false) async -> [GitHubCommit] {
         let b = branch ?? repo.currentBranch
         let cacheKey = "\(repo.fullName)/\(b)"
-        if let cached = commitCache[cacheKey] { return cached }
+        if !forceRefresh, let cached = commitCache[cacheKey] { return cached }
         guard let token else { return [] }
         do {
             let req = try makeRequest(path: "/repos/\(repo.fullName)/commits?sha=\(b)&per_page=20", token: token)
@@ -319,8 +319,13 @@ final class GitHubManager: ObservableObject {
     func pull(repo: GitHubRepo) async {
         guard let localPath = clonedRepos[repo.fullName] else { return }
         syncStatus[repo.fullName] = "Hämtar…"
+        await ensureAuthRemote(repo: repo, at: localPath)
         let result = await runGit(["-C", localPath, "pull", "--rebase", "origin", repo.currentBranch])
         syncStatus[repo.fullName] = result.success ? "Uppdaterad ✓" : "Pull misslyckades: \(result.output)"
+        // Refresh commit cache after pull
+        if result.success {
+            commitCache["\(repo.fullName)/\(repo.currentBranch)"] = nil
+        }
     }
 
     // MARK: - Push
@@ -328,6 +333,9 @@ final class GitHubManager: ObservableObject {
     func push(repo: GitHubRepo, message: String? = nil) async {
         guard let localPath = clonedRepos[repo.fullName] else { return }
         syncStatus[repo.fullName] = "Pushar…"
+
+        // Ensure remote URL has token embedded for auth
+        await ensureAuthRemote(repo: repo, at: localPath)
 
         // Stage all changes
         let _ = await runGit(["-C", localPath, "add", "-A"])
@@ -342,6 +350,21 @@ final class GitHubManager: ObservableObject {
         // Push
         let push = await runGit(["-C", localPath, "push", "origin", repo.currentBranch])
         syncStatus[repo.fullName] = push.success ? "Pushad ✓" : "Push misslyckades: \(push.output)"
+
+        // Refresh commit cache after push
+        if push.success {
+            commitCache["\(repo.fullName)/\(repo.currentBranch)"] = nil
+        }
+    }
+
+    /// Ensure the remote origin URL contains auth credentials
+    private func ensureAuthRemote(repo: GitHubRepo, at localPath: String) async {
+        guard let tok = token else { return }
+        let authURL = repo.cloneURL.replacingOccurrences(
+            of: "https://github.com/",
+            with: "https://x-access-token:\(tok)@github.com/"
+        )
+        let _ = await runGit(["-C", localPath, "remote", "set-url", "origin", authURL])
     }
 
     // MARK: - Auto sync (pull on open, push on save)
@@ -353,6 +376,7 @@ final class GitHubManager: ObservableObject {
 
     func autoCommitAndPush(repo: GitHubRepo, changedFiles: [String]) async {
         guard let localPath = clonedRepos[repo.fullName] else { return }
+        await ensureAuthRemote(repo: repo, at: localPath)
         // Stage all or specific files
         if changedFiles.isEmpty {
             let _ = await runGit(["-C", localPath, "add", "-A"])
@@ -367,8 +391,8 @@ final class GitHubManager: ObservableObject {
             ? "EonCode: agent-ändringar \(Date().formatted(.dateTime.hour().minute()))"
             : "EonCode: uppdaterar \(changedFiles.prefix(3).joined(separator: ", "))"
         let _ = await runGit(["-C", localPath, "commit", "-m", msg])
-        let _ = await runGit(["-C", localPath, "push", "origin", repo.currentBranch])
-        syncStatus[repo.fullName] = "Auto-pushad ✓"
+        let pushResult = await runGit(["-C", localPath, "push", "origin", repo.currentBranch])
+        syncStatus[repo.fullName] = pushResult.success ? "Auto-pushad ✓" : "Push misslyckades: \(pushResult.output)"
         // Invalidate commit cache so UI refreshes
         commitCache["\(repo.fullName)/\(repo.currentBranch)"] = nil
     }
@@ -523,35 +547,51 @@ final class GitHubManager: ObservableObject {
     func runGit(_ args: [String]) async -> GitResult {
         #if os(macOS)
         return await withCheckedContinuation { cont in
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-            proc.arguments = args
+            DispatchQueue.global(qos: .userInitiated).async { [self] in
+                let proc = Process()
+                proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
 
-            // Inject token for HTTPS auth
-            var env = ProcessInfo.processInfo.environment
-            if let tok = token {
-                env["GIT_ASKPASS"] = "echo"
-                env["GIT_USERNAME"] = "x-access-token"
-                env["GIT_PASSWORD"] = tok
-                // Also set credential via URL helper
+                // Rewrite clone URLs to embed token for HTTPS auth
+                var adjustedArgs = args
+                if let tok = self.token {
+                    adjustedArgs = args.map { arg in
+                        if arg.hasPrefix("https://github.com/") {
+                            return arg.replacingOccurrences(
+                                of: "https://github.com/",
+                                with: "https://x-access-token:\(tok)@github.com/"
+                            )
+                        }
+                        return arg
+                    }
+                }
+                proc.arguments = adjustedArgs
+
+                // Environment for git
+                var env = ProcessInfo.processInfo.environment
                 env["GIT_TERMINAL_PROMPT"] = "0"
-            }
-            proc.environment = env
+                if let tok = self.token {
+                    // Credential helper that provides token
+                    env["GIT_ASKPASS"] = "/usr/bin/true"
+                    env["GIT_USERNAME"] = "x-access-token"
+                    env["GIT_PASSWORD"] = tok
+                }
+                proc.environment = env
 
-            let pipe = Pipe()
-            let errPipe = Pipe()
-            proc.standardOutput = pipe
-            proc.standardError = errPipe
+                let pipe = Pipe()
+                let errPipe = Pipe()
+                proc.standardOutput = pipe
+                proc.standardError = errPipe
 
-            do {
-                try proc.run()
-                proc.waitUntilExit()
-                let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                let combined = [out, err].filter { !$0.isEmpty }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                cont.resume(returning: GitResult(success: proc.terminationStatus == 0, output: combined))
-            } catch {
-                cont.resume(returning: GitResult(success: false, output: error.localizedDescription))
+                do {
+                    try proc.run()
+                    proc.waitUntilExit()
+                    let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    let combined = [out, err].filter { !$0.isEmpty }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                    cont.resume(returning: GitResult(success: proc.terminationStatus == 0, output: combined))
+                } catch {
+                    cont.resume(returning: GitResult(success: false, output: error.localizedDescription))
+                }
             }
         }
         #else

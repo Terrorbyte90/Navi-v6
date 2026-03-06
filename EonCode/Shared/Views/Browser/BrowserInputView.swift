@@ -47,7 +47,7 @@ struct BrowserInputView: View {
                     .focused($isFocused)
                     .onSubmit { handleSend() }
                     .foregroundColor(isWaiting ? .yellow : .primary)
-                    .disabled(isWorking)
+                    .disabled(isWorking && !isWaiting)
                     .padding(.vertical, 8)
 
                 Button { handleSend() } label: {
@@ -61,7 +61,7 @@ struct BrowserInputView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(input.isBlank || isWorking)
+                .disabled(input.isBlank || (isWorking && !isWaiting))
                 .padding(.trailing, 4)
             }
             .padding(.leading, 8)
@@ -128,6 +128,10 @@ struct BrowserInputView: View {
         if isWaiting {
             agent.provideUserInput(text)
         } else {
+            // Reset status if previous task completed/failed — allow re-use
+            if agent.status == .complete || agent.status == .failed {
+                agent.status = .idle
+            }
             Task { await agent.execute(goal: text) }
         }
     }
