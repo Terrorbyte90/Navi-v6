@@ -8,6 +8,7 @@ struct PlanView: View {
     @State private var inputText = ""
     @State private var selectedImages: [Data] = []
     @State private var showStructuredPlan = false
+    @FocusState private var inputFocused: Bool
 
     var plan: ProjectPlan? { manager.activePlan }
 
@@ -23,7 +24,6 @@ struct PlanView: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             LazyVStack(spacing: 12) {
-                                // Structured plan card (if extracted)
                                 if let extracted = plan.extractedPlan {
                                     ExtractedPlanCard(plan: extracted)
                                         .padding(.horizontal, 16)
@@ -43,7 +43,7 @@ struct PlanView: View {
                             }
                             .padding()
                             .contentShape(Rectangle())
-                            .onTapGesture { dismissKeyboard() }
+                            .onTapGesture { inputFocused = false }
                         }
                         .scrollDismissesKeyboard(.interactively)
                         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -226,6 +226,8 @@ struct PlanView: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { inputFocused = false }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 Divider().opacity(0.15)
@@ -247,6 +249,7 @@ struct PlanView: View {
     var planInputBar: some View {
         HStack(alignment: .bottom, spacing: 0) {
             TextField("Beskriv din idé eller ställ en fråga...", text: $inputText, axis: .vertical)
+                .focused($inputFocused)
                 .lineLimit(1...8)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))

@@ -131,7 +131,6 @@ struct CostDetailPopover: View {
 
 struct PureChatView: View {
     @StateObject private var manager = ChatManager.shared
-    @StateObject private var memoryManager = MemoryManager.shared
     @StateObject private var costTracker = CostTracker.shared
     @State private var inputText = ""
     @State private var selectedImages: [Data] = []
@@ -139,6 +138,7 @@ struct PureChatView: View {
     @State private var isShowingFilePicker = false
     @State private var showVoiceMode = false
     @State private var scrollProxy: ScrollViewProxy?
+    @FocusState private var inputFocused: Bool
 
     var conversation: ChatConversation? { manager.activeConversation }
 
@@ -161,7 +161,7 @@ struct PureChatView: View {
                         }
                         .padding(.vertical, 16)
                         .contentShape(Rectangle())
-                        .onTapGesture { dismissKeyboard() }
+                        .onTapGesture { inputFocused = false }
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -175,6 +175,8 @@ struct PureChatView: View {
             } else {
                 ZStack(alignment: .bottom) {
                     chatEmptyState
+                        .contentShape(Rectangle())
+                        .onTapGesture { inputFocused = false }
                     chatInputBar
                         .background(Color.chatBackground)
                 }
@@ -369,9 +371,12 @@ struct PureChatView: View {
                             .foregroundColor(Color.secondary)
                     }
                 }
+                #if os(macOS)
                 .menuStyle(.borderlessButton)
+                #endif
 
                 TextField("Skicka ett meddelande till Navi", text: $inputText, axis: .vertical)
+                    .focused($inputFocused)
                     .font(.callout)
                     .foregroundColor(Color.primary)
                     .lineLimit(1...6)

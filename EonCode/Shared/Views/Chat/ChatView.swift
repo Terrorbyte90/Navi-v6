@@ -702,6 +702,7 @@ struct InputBar: View {
 
     @State private var showImagePicker = false
     @State private var showIterPicker = false
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -764,6 +765,7 @@ struct InputBar: View {
                 }
 
                 TextField(isAgentMode ? "Ge agenten en uppgift..." : "Skriv ett meddelande...", text: $text, axis: .vertical)
+                    .focused($inputFocused)
                     .font(.system(size: 15))
                     .lineLimit(1...8)
                     .textFieldStyle(.plain)
