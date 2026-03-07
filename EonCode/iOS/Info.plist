@@ -31,8 +31,12 @@
 	<string>Navi uses the camera to attach images to your messages.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Navi uses local network for peer sync between your Mac and iPhone.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Navi uses the microphone for voice mode — speak to chat hands-free.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Navi accesses your photo library to attach images to your messages.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Navi uses speech recognition to transcribe your voice into text for chat.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

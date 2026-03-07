@@ -44,6 +44,17 @@ struct MarkdownPreview: View {
         case .divider:
             Divider().opacity(0.3)
 
+        case .numbered(let text, let number):
+            HStack(alignment: .top, spacing: 8) {
+                Text("\(number).")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.accentEon)
+                    .frame(width: 22, alignment: .trailing)
+                Text(parseInline(text))
+                    .font(.system(size: 14))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
         case .quote(let text):
             HStack(spacing: 0) {
                 Rectangle()
@@ -55,6 +66,37 @@ struct MarkdownPreview: View {
                     .padding(.leading, 12)
             }
             .padding(.vertical, 4)
+
+        case .table(let headers, let rows):
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    ForEach(headers.indices, id: \.self) { col in
+                        Text(headers[col])
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                    }
+                }
+                .background(Color.codeBackground)
+                Divider().opacity(0.3)
+                ForEach(rows.indices, id: \.self) { row in
+                    HStack(spacing: 0) {
+                        ForEach(rows[row].indices, id: \.self) { col in
+                            Text(rows[row][col])
+                                .font(.system(size: 12))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                        }
+                    }
+                    if row < rows.count - 1 {
+                        Divider().opacity(0.1)
+                    }
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.03)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.dividerColor.opacity(0.2)))
         }
     }
 
@@ -98,7 +140,7 @@ struct MarkdownPreview: View {
 
     private func parseBlocks(_ text: String) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
-        var lines = text.components(separatedBy: "\n")
+        let lines = text.components(separatedBy: "\n")
         var i = 0
 
         while i < lines.count {
@@ -123,6 +165,24 @@ struct MarkdownPreview: View {
                 blocks.append(.code(code.trimmed, lang.isEmpty ? nil : lang))
             } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
                 blocks.append(.bullet(String(line.dropFirst(2))))
+            } else if let match = line.range(of: #"^(\d+)\.\s+"#, options: .regularExpression) {
+                let numStr = line[line.startIndex..<line.index(before: match.upperBound)]
+                    .filter(\.isNumber)
+                let num = Int(numStr) ?? 1
+                let text = String(line[match.upperBound...])
+                blocks.append(.numbered(text, number: num))
+            } else if line.contains("|") && line.trimmingCharacters(in: .whitespaces).hasPrefix("|") {
+                var tableLines: [String] = [line]
+                var j = i + 1
+                while j < lines.count && lines[j].trimmingCharacters(in: .whitespaces).hasPrefix("|") {
+                    tableLines.append(lines[j])
+                    j += 1
+                }
+                i = j - 1
+                let parsed = parseTable(tableLines)
+                if let parsed = parsed {
+                    blocks.append(.table(parsed.headers, parsed.rows))
+                }
             } else if line.hasPrefix("> ") {
                 blocks.append(.quote(String(line.dropFirst(2))))
             } else if !line.trimmed.isEmpty {
@@ -134,6 +194,20 @@ struct MarkdownPreview: View {
 
         return blocks
     }
+
+    private func parseTable(_ lines: [String]) -> (headers: [String], rows: [[String]])? {
+        guard lines.count >= 2 else { return nil }
+        func splitRow(_ line: String) -> [String] {
+            line.split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+        let headers = splitRow(lines[0])
+        guard !headers.isEmpty else { return nil }
+        let startRow = lines.count > 1 && lines[1].contains("-") ? 2 : 1
+        let rows = lines[startRow...].map { splitRow($0) }
+        return (headers, Array(rows))
+    }
 }
 
 enum MarkdownBlock {
@@ -141,8 +215,10 @@ enum MarkdownBlock {
     case paragraph(String)
     case code(String, String?)
     case bullet(String)
+    case numbered(String, number: Int)
     case divider
     case quote(String)
+    case table([String], [[String]])
 }
 
 // MARK: - Previews

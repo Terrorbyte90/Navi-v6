@@ -10,26 +10,71 @@ final class InstructionQueue: ObservableObject {
 
     private let sync = iCloudSyncEngine.shared
     private var pollTask: Task<Void, Never>?
+    private var metadataQuery: NSMetadataQuery?
 
     private init() {
         #if os(macOS)
         startProcessingLoop()
+        startMetadataQuery()
         #endif
+    }
+
+    deinit {
+        metadataQuery?.stop()
+    }
+
+    private func startMetadataQuery() {
+        guard let root = sync.eonCodeRoot,
+              let dir = sync.instructionsRoot else { return }
+
+        let signalPath = root.appendingPathComponent("instruction-signal.json").path
+
+        let query = NSMetadataQuery()
+        query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
+        query.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: [
+            NSPredicate(format: "%K BEGINSWITH %@", NSMetadataItemPathKey, dir.path),
+            NSPredicate(format: "%K == %@", NSMetadataItemPathKey, signalPath)
+        ])
+        NotificationCenter.default.addObserver(
+            forName: .NSMetadataQueryDidUpdate, object: query, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.checkForNewInstructions()
+            }
+        }
+        query.start()
+        metadataQuery = query
     }
 
     // MARK: - Enqueue (iOS side)
 
     func enqueue(_ instruction: Instruction) async {
-        // Save to iCloud first (primary)
         if let url = sync.urlForInstruction(instruction) {
-            try? await sync.write(instruction, to: url)
+            do {
+                try await sync.write(instruction, to: url)
+            } catch {
+                NaviLog.error("InstructionQueue: kunde inte skriva instruktion till iCloud", error: error)
+            }
         }
 
-        // Also try local HTTP for lower latency when Mac is on same network
+        await writeInstructionSignal()
+
         try? await LocalNetworkClient.shared.postInstruction(instruction)
 
         pendingCount += 1
         NotificationCenter.default.post(name: .instructionEnqueued, object: instruction)
+    }
+
+    private func writeInstructionSignal() async {
+        guard let root = sync.eonCodeRoot else { return }
+        let signalURL = root.appendingPathComponent("instruction-signal.json")
+        let signal: [String: String] = [
+            "from": UIDevice.deviceID,
+            "timestamp": Date().iso8601
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: signal) {
+            try? await sync.writeData(data, to: signalURL)
+        }
     }
 
     // MARK: - Process (macOS side)

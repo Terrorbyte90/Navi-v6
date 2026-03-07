@@ -19,7 +19,12 @@ final class MemoryManager: ObservableObject {
     // MARK: - Load
 
     func reload() async {
-        memories = (try? await store.loadAll()) ?? []
+        do {
+            memories = try await store.loadAll()
+        } catch {
+            NaviLog.error("MemoryManager: kunde inte ladda minnen", error: error)
+            memories = []
+        }
     }
 
     // MARK: - Memory context for system prompt
@@ -89,7 +94,11 @@ final class MemoryManager: ObservableObject {
                         category: entry.category,
                         source: .extracted(conversationId: conversationId)
                     )
-                    try? await store.save(memory)
+                    do {
+                        try await store.save(memory)
+                    } catch {
+                        NaviLog.error("MemoryManager: kunde inte spara extraherat minne", error: error)
+                    }
                     memories.append(memory)
                 }
             }
@@ -115,17 +124,29 @@ final class MemoryManager: ObservableObject {
 
     func addMemory(fact: String, category: MemoryCategory) async {
         let memory = Memory(fact: fact, category: category, source: .manual)
-        try? await store.save(memory)
+        do {
+            try await store.save(memory)
+        } catch {
+            NaviLog.error("MemoryManager: kunde inte spara nytt minne", error: error)
+        }
         memories.append(memory)
     }
 
     func deleteMemory(id: UUID) async {
-        try? await store.delete(id: id)
+        do {
+            try await store.delete(id: id)
+        } catch {
+            NaviLog.error("MemoryManager: kunde inte radera minne", error: error)
+        }
         memories.removeAll { $0.id == id }
     }
 
     func updateMemory(id: UUID, newFact: String) async {
-        try? await store.update(id: id, fact: newFact)
+        do {
+            try await store.update(id: id, fact: newFact)
+        } catch {
+            NaviLog.error("MemoryManager: kunde inte uppdatera minne", error: error)
+        }
         if let idx = memories.firstIndex(where: { $0.id == id }) {
             var updated = memories[idx]
             updated.fact = newFact

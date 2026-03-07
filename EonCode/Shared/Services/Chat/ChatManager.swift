@@ -26,7 +26,12 @@ final class ChatManager: ObservableObject {
     // MARK: - Load
 
     func load() async {
-        conversations = (try? await store.loadAll()) ?? []
+        do {
+            conversations = try await store.loadAll()
+        } catch {
+            NaviLog.error("ChatManager: kunde inte ladda konversationer", error: error)
+            conversations = []
+        }
     }
 
     // MARK: - New conversation

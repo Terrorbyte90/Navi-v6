@@ -207,6 +207,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isActive ? Color.white.opacity(0.08) : Color.clear)

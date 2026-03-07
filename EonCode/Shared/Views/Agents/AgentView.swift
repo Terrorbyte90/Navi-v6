@@ -47,9 +47,6 @@ struct AgentView: View {
                 }
                 #endif
         }
-        .sheet(isPresented: $showCreateSheet) {
-            CreateAgentSheet(projects: projectStore.projects)
-        }
     }
 
     // MARK: - Agent list
@@ -217,7 +214,7 @@ struct AgentRowView: View {
 
 struct AgentDetailView: View {
     let agentID: UUID
-    @StateObject private var runner = AutonomousAgentRunner.shared
+    @ObservedObject private var runner = AutonomousAgentRunner.shared
     @State private var selectedTab: DetailTab = .log
     @State private var showEditSheet = false
 
@@ -387,10 +384,10 @@ struct AgentDetailView: View {
                 .padding(.vertical, 8)
             }
             .onChange(of: agent.runLog.count) { _ in
-                withAnimation { proxy.scrollTo(agent.runLog.last?.id, anchor: .bottom) }
+                proxy.scrollTo(agent.runLog.last?.id, anchor: .bottom)
             }
             .onChange(of: runner.streamingText) { _ in
-                withAnimation { proxy.scrollTo("streaming", anchor: .bottom) }
+                proxy.scrollTo("streaming", anchor: .bottom)
             }
         }
     }

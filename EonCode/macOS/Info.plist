@@ -31,7 +31,11 @@
 	<string>Navi uses local network for peer sync.</string>
 	<key>NSMainStoryboardFile</key>
 	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Navi uses the microphone for voice mode.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Navi uses speech recognition for voice chat.</string>
 </dict>
 </plist>

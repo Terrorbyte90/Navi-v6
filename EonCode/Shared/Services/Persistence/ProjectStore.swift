@@ -69,9 +69,17 @@ final class ProjectStore: ObservableObject {
 
         // Save to iCloud
         if let dir = sync.urlForProject(project) {
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            } catch {
+                NaviLog.error("ProjectStore: kunde inte skapa katalog", error: error)
+            }
             let metaURL = dir.appendingPathComponent("project.json")
-            try? await sync.write(updated, to: metaURL)
+            do {
+                try await sync.write(updated, to: metaURL)
+            } catch {
+                NaviLog.error("ProjectStore: kunde inte spara projekt '\(updated.name)'", error: error)
+            }
         }
 
         saveLocally()
@@ -107,7 +115,11 @@ final class ProjectStore: ObservableObject {
 
         // Remove from iCloud
         if let dir = sync.urlForProject(project) {
-            try? FileManager.default.removeItem(at: dir)
+            do {
+                try FileManager.default.removeItem(at: dir)
+            } catch {
+                NaviLog.error("ProjectStore: kunde inte radera projekt '\(project.name)'", error: error)
+            }
         }
 
         if activeProject?.id == project.id {

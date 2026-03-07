@@ -24,10 +24,12 @@
 		0EE5E0EDF5F0EDBC373C9520 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7173C20F146C9FF898DE1E /* SettingsStore.swift */; };
 		0F601222B672AEDFFFAF4491 /* AutonomousAgentRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A709BCBE6621AC584621D06 /* AutonomousAgentRunner.swift */; };
 		107B0EC26C371B6C5FE24AF5 /* BranchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0C42F53C53517B25CB7979 /* BranchManager.swift */; };
+		12172C21C552F91BC79429C6 /* VoiceModeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */; };
 		135435DC340600BE2392322C /* AutonomousAgentRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A709BCBE6621AC584621D06 /* AutonomousAgentRunner.swift */; };
 		1478E02DFA9E00930AE55070 /* ChatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC918D8699DA242B1C26002 /* ChatManager.swift */; };
 		14E9A856D8E7538A42E40764 /* ToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855D00DD3329EAD130B86696 /* ToolExecutor.swift */; };
 		154D22119EAABAEDFDD9C383 /* FileTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E17C3655574D856D8A2FA2B /* FileTreeView.swift */; };
+		158FDEB191AA845C344E0BC8 /* VoiceModeOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8C9883B1DB4573FF5C9F73 /* VoiceModeOverlay.swift */; };
 		1625CED1ECBE2B7E15E61A79 /* Artifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49BB58E98745255FA2D8D44 /* Artifact.swift */; };
 		16C9B5BBC5EB8525261E9F52 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D1BE98E56B93965B664E62 /* ProjectStore.swift */; };
 		188ECCF97D0F5465E70B8D08 /* ClaudeStreamParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575E4CA0542BC12A5D729AB2 /* ClaudeStreamParser.swift */; };
@@ -67,6 +69,7 @@
 		47DDBBDD973EFB568B867C67 /* AgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */; };
 		47F400E93C343AEDF9E835A3 /* InstructionQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 778D32197C8BE96A9E02A02E /* InstructionQueue.swift */; };
 		480C72F250447F0BFB21D1BB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A54C6CEAE134162EADD35FA /* SettingsView.swift */; };
+		48AEE337BEEEC1649399FF30 /* VoiceModeOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8C9883B1DB4573FF5C9F73 /* VoiceModeOverlay.swift */; };
 		4958BCB3590E779F31D0BAC9 /* WorkerAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5507FA5239C43E26C9AD52 /* WorkerAgent.swift */; };
 		4A4BB6D280DBCC3EC2FE37F5 /* ChatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC918D8699DA242B1C26002 /* ChatManager.swift */; };
 		4A4E097BCF90B70311B79160 /* ProjectIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E774684432AF41D71C0FDE5F /* ProjectIndexer.swift */; };
@@ -118,6 +121,7 @@
 		983E3EEDE32FC204F3D13DDA /* BrowserAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377C48BE8E59272A9F8CCC22 /* BrowserAgent.swift */; };
 		98B8DF00784FF65EAF88A672 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81AB7E8B7FB42687CBD3D91 /* BrowserView.swift */; };
 		9BEBC654F5C68DF9D33D4721 /* CheckpointManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E0F32117BD899767E725C6 /* CheckpointManager.swift */; };
+		9E42BEE7328C4D3D9AE198B2 /* VoiceModeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */; };
 		9E4952BBF146103DA9C6E684 /* ExchangeRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433D65180DC56EA603F1EBFB /* ExchangeRate.swift */; };
 		9F336D89CD8681EF0073BBFB /* XcodeBuildManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F2A1F74AE4306E978FC894 /* XcodeBuildManager.swift */; };
 		A0F4B2740ADB39E46380C8E1 /* ChatHistorySidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A685B731198521F86D8761EB /* ChatHistorySidebar.swift */; };
@@ -235,6 +239,7 @@
 		8A0E81CC749A52C56AC86712 /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
 		8BE7D1EDE2C854EDF626CFEF /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		8E17C3655574D856D8A2FA2B /* FileTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTreeView.swift; sourceTree = "<group>"; };
+		8F8C9883B1DB4573FF5C9F73 /* VoiceModeOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeOverlay.swift; sourceTree = "<group>"; };
 		92D7FE88018F0A2EC04931FF /* LocalAgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAgentEngine.swift; sourceTree = "<group>"; };
 		950D59A59B750776CE0BB2D1 /* Version.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Version.swift; sourceTree = "<group>"; };
 		95D1BE98E56B93965B664E62 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
@@ -258,6 +263,7 @@
 		B8F2A1F74AE4306E978FC894 /* XcodeBuildManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeBuildManager.swift; sourceTree = "<group>"; };
 		BF1E145A4DCF8B170F35B55C /* FileNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNode.swift; sourceTree = "<group>"; };
 		C09A7E41FD15D6E951893B64 /* AgentTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTask.swift; sourceTree = "<group>"; };
+		C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeManager.swift; sourceTree = "<group>"; };
 		C49BB58E98745255FA2D8D44 /* Artifact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artifact.swift; sourceTree = "<group>"; };
 		CA5507FA5239C43E26C9AD52 /* WorkerAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkerAgent.swift; sourceTree = "<group>"; };
 		CA7B0E1D043971209D35C110 /* AgentAction+Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AgentAction+Platform.swift"; sourceTree = "<group>"; };
@@ -450,6 +456,14 @@
 			path = Memory;
 			sourceTree = "<group>";
 		};
+		6C17E15D39D3E2092FD9311A /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				8F8C9883B1DB4573FF5C9F73 /* VoiceModeOverlay.swift */,
+			);
+			path = Voice;
+			sourceTree = "<group>";
+		};
 		6E0E7932EE183F5CF55F8255 /* Agent */ = {
 			isa = PBXGroup;
 			children = (
@@ -481,6 +495,7 @@
 				EC3F03F656D5BBD1B828AC83 /* Main */,
 				2745FBA555061545B514937F /* Planning */,
 				8571B823B48907A4AB708A95 /* Settings */,
+				6C17E15D39D3E2092FD9311A /* Voice */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -664,6 +679,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0F21AB1B8D835B2DB15545 /* ElevenLabsClient.swift */,
+				C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */,
 			);
 			path = Voice;
 			sourceTree = "<group>";
@@ -869,6 +885,8 @@
 				14E9A856D8E7538A42E40764 /* ToolExecutor.swift in Sources */,
 				F9FC84F28E6E32579D622444 /* Version.swift in Sources */,
 				305478642D91B19AD1B6D208 /* VersionStore.swift in Sources */,
+				9E42BEE7328C4D3D9AE198B2 /* VoiceModeManager.swift in Sources */,
+				48AEE337BEEEC1649399FF30 /* VoiceModeOverlay.swift in Sources */,
 				DC9D66C757886D5B0F2D9DAB /* WebViewContainer.swift in Sources */,
 				4958BCB3590E779F31D0BAC9 /* WorkerAgent.swift in Sources */,
 				F73E2CA8756A0825FADBE7D2 /* WorkerPool.swift in Sources */,
@@ -962,6 +980,8 @@
 				60F963E927EE39B12DD39EEA /* ToolExecutor.swift in Sources */,
 				0268031574BC3759F0CCC5E4 /* Version.swift in Sources */,
 				CE0DA5088F4570AC95B033DC /* VersionStore.swift in Sources */,
+				12172C21C552F91BC79429C6 /* VoiceModeManager.swift in Sources */,
+				158FDEB191AA845C344E0BC8 /* VoiceModeOverlay.swift in Sources */,
 				03C63B4E79AFFDF18164CD94 /* WebViewContainer.swift in Sources */,
 				0C1D6E532B536498CBA52CB4 /* WorkerAgent.swift in Sources */,
 				DD38F4DB48551BBF6BA2CE22 /* WorkerPool.swift in Sources */,

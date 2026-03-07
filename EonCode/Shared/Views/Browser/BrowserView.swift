@@ -125,10 +125,12 @@ struct BrowserGlassBar: View {
         }
         .background(
             ZStack {
-                Rectangle().fill(.regularMaterial)
-                Rectangle().fill(Color.primary.opacity(0.015))
+                Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(Color.chatBackground.opacity(0.5))
             }
-            .overlay(alignment: .top) { Divider() }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 0.5)
+            }
         )
     }
 

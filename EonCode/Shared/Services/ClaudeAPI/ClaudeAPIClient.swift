@@ -165,7 +165,16 @@ class ClaudeAPIClient: ObservableObject {
 
     @Published var isStreaming = false
 
-    private let session = URLSession.shared
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 300
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
+
+    private let maxRetries = 3
+    private let retryableStatusCodes: Set<Int> = [429, 503, 529]
 
     private var apiKey: String? { KeychainManager.shared.anthropicAPIKey }
 
@@ -197,25 +206,49 @@ class ClaudeAPIClient: ObservableObject {
         isStreaming = true
         defer { isStreaming = false }
 
-        let (bytes, response) = try await session.bytes(for: request)
+        var lastError: Error?
+        for attempt in 0..<maxRetries {
+            do {
+                let (bytes, response) = try await session.bytes(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ClaudeError.invalidResponse
-        }
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw ClaudeError.invalidResponse
+                }
 
-        guard httpResponse.statusCode == 200 else {
-            var errorData = Data()
-            for try await byte in bytes { errorData.append(byte) }
-            let msg = String(data: errorData, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw ClaudeError.apiError(httpResponse.statusCode, msg)
-        }
+                if retryableStatusCodes.contains(httpResponse.statusCode) && attempt < maxRetries - 1 {
+                    let retryAfter = httpResponse.value(forHTTPHeaderField: "retry-after")
+                        .flatMap(Double.init) ?? Double(1 << attempt)
+                    NaviLog.warning("API \(httpResponse.statusCode) — retry om \(retryAfter)s (försök \(attempt + 1)/\(maxRetries))")
+                    try? await Task.sleep(for: .seconds(retryAfter))
+                    continue
+                }
 
-        let parser = ClaudeStreamParser()
-        for try await line in bytes.lines {
-            if let event = parser.parse(line: line) {
-                onEvent(event)
+                guard httpResponse.statusCode == 200 else {
+                    var errorData = Data()
+                    for try await byte in bytes { errorData.append(byte) }
+                    let msg = String(data: errorData, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+                    throw ClaudeError.apiError(httpResponse.statusCode, msg)
+                }
+
+                let parser = ClaudeStreamParser()
+                for try await line in bytes.lines {
+                    if let event = parser.parse(line: line) {
+                        onEvent(event)
+                    }
+                }
+                return
+            } catch let error as ClaudeError {
+                throw error
+            } catch {
+                lastError = error
+                if attempt < maxRetries - 1 {
+                    let delay = Double(1 << attempt)
+                    NaviLog.warning("Nätverksfel — retry om \(delay)s: \(error.localizedDescription)")
+                    try? await Task.sleep(for: .seconds(delay))
+                }
             }
         }
+        throw lastError ?? ClaudeError.invalidResponse
     }
 
     // MARK: - Non-streaming (for simple queries)
@@ -236,23 +269,47 @@ class ClaudeAPIClient: ObservableObject {
             systemPrompt: systemPrompt,
             tools: nil,
             maxTokens: maxTokens,
-            usePromptCaching: false,
+            usePromptCaching: true,
             apiKey: key,
             stream: false
         )
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await session.data(for: request)
+        var lastError: Error?
+        for attempt in 0..<maxRetries {
+            do {
+                let (data, response) = try await session.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw ClaudeError.apiError((response as? HTTPURLResponse)?.statusCode ?? 0, msg)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw ClaudeError.invalidResponse
+                }
+
+                if retryableStatusCodes.contains(httpResponse.statusCode) && attempt < maxRetries - 1 {
+                    let retryAfter = httpResponse.value(forHTTPHeaderField: "retry-after")
+                        .flatMap(Double.init) ?? Double(1 << attempt)
+                    try? await Task.sleep(for: .seconds(retryAfter))
+                    continue
+                }
+
+                guard httpResponse.statusCode == 200 else {
+                    let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    throw ClaudeError.apiError(httpResponse.statusCode, msg)
+                }
+
+                let decoded = try JSONDecoder().decode(ClaudeResponse.self, from: data)
+                let text = decoded.content?.first(where: { $0.type == "text" })?.text ?? ""
+                let usage = decoded.usage ?? TokenUsage(inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: nil, cacheReadInputTokens: nil)
+                return (text, usage)
+            } catch let error as ClaudeError {
+                throw error
+            } catch {
+                lastError = error
+                if attempt < maxRetries - 1 {
+                    try? await Task.sleep(for: .seconds(Double(1 << attempt)))
+                }
+            }
         }
-
-        let decoded = try JSONDecoder().decode(ClaudeResponse.self, from: data)
-        let text = decoded.content?.first(where: { $0.type == "text" })?.text ?? ""
-        let usage = decoded.usage ?? TokenUsage(inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: nil, cacheReadInputTokens: nil)
-        return (text, usage)
+        throw lastError ?? ClaudeError.invalidResponse
     }
 
     // MARK: - Build URLRequest

@@ -109,6 +109,7 @@ final class WorkerPool: ObservableObject {
         activeWorkers = []
         completedCount = 0
         totalCount = 0
+        recentCallTimestamps = []
     }
 }
 

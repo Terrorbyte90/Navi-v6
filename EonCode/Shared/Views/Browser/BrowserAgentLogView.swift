@@ -66,9 +66,7 @@ struct BrowserAgentLogView: View {
                     }
                     .onChange(of: agent.log.count) { _ in
                         if let last = agent.log.last {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(last.id, anchor: .bottom)
-                            }
+                            proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }

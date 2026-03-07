@@ -36,20 +36,34 @@ final class DeviceStatusBroadcaster: ObservableObject {
     @Published var localStatus = DeviceStatus()
     @Published var remoteStatus: DeviceStatus?
     @Published var remoteMacIsOnline = false
+    @Published var connectionMethod: ConnectionMethod = .none
+
+    enum ConnectionMethod: String {
+        case localHTTP = "LAN"
+        case bonjour = "Bonjour"
+        case iCloud = "iCloud"
+        case none = "Frånkopplad"
+    }
 
     private let sync = iCloudSyncEngine.shared
     private var broadcastTask: Task<Void, Never>?
     private var watchTask: Task<Void, Never>?
+    private var signalQuery: NSMetadataQuery?
+    private var lastBroadcast = Date.distantPast
 
     private var statusURL: URL? {
         sync.deviceStatusRoot?.appendingPathComponent("\(UIDevice.deviceID).json")
     }
 
+    private var signalFileURL: URL? {
+        sync.eonCodeRoot?.appendingPathComponent("device-signal.json")
+    }
+
     private init() {
         startBroadcasting()
         startWatching()
+        startSignalMonitoring()
 
-        // iOS: start auto-discovery of Mac HTTP server + Bonjour browsing
         #if os(iOS)
         Task {
             LocalNetworkClient.shared.startAutoDiscovery()
@@ -65,7 +79,8 @@ final class DeviceStatusBroadcaster: ObservableObject {
         broadcastTask = Task {
             while !Task.isCancelled {
                 await broadcast()
-                try? await Task.sleep(seconds: 5.0)
+                let interval = localStatus.agentRunning ? 8.0 : 20.0
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
@@ -78,14 +93,56 @@ final class DeviceStatusBroadcaster: ObservableObject {
         localStatus = status
 
         guard let url = statusURL else { return }
-        try? await sync.write(status, to: url)
+        do {
+            try await sync.write(status, to: url)
+        } catch {
+            NaviLog.error("DeviceStatus: kunde inte broadcast", error: error)
+        }
+
+        await writeSignal()
     }
 
     func update(task: String, step: Int, total: Int) {
         localStatus.currentTask = task
         localStatus.currentStep = step
         localStatus.totalSteps = total
-        Task { await broadcast() }
+        let now = Date()
+        if now.timeIntervalSince(lastBroadcast) > 3 {
+            lastBroadcast = now
+            Task { await broadcast() }
+        }
+    }
+
+    // MARK: - Signal file (fast cross-device notification)
+
+    private func writeSignal() async {
+        guard let url = signalFileURL else { return }
+        let signal: [String: String] = [
+            "deviceID": UIDevice.deviceID,
+            "timestamp": Date().iso8601
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: signal) {
+            try? await sync.writeData(data, to: url)
+        }
+    }
+
+    private func startSignalMonitoring() {
+        guard let root = sync.eonCodeRoot else { return }
+        let signalPath = root.appendingPathComponent("device-signal.json").path
+
+        let query = NSMetadataQuery()
+        query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
+        query.predicate = NSPredicate(format: "%K == %@",
+                                      NSMetadataItemPathKey, signalPath)
+        NotificationCenter.default.addObserver(
+            forName: .NSMetadataQueryDidUpdate, object: query, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.fetchRemoteStatus()
+            }
+        }
+        query.start()
+        signalQuery = query
     }
 
     // MARK: - Watch remote status
@@ -95,7 +152,9 @@ final class DeviceStatusBroadcaster: ObservableObject {
         watchTask = Task {
             while !Task.isCancelled {
                 await fetchRemoteStatus()
-                try? await Task.sleep(seconds: 3.0)
+                await detectConnectionMethod()
+                let interval = remoteMacIsOnline ? 8.0 : 15.0
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
@@ -108,32 +167,46 @@ final class DeviceStatusBroadcaster: ObservableObject {
         let jsonFiles = files.filter { $0.pathExtension == "json" }
         let myID = UIDevice.deviceID
 
-        // Look for a remote device file (not ours)
-        var foundRemote = false
+        var foundRemoteMac = false
         for file in jsonFiles {
             guard let status = try? await sync.read(DeviceStatus.self, from: file),
                   status.deviceID != myID
             else { continue }
 
             remoteStatus = status
-            let isRecent = Date().timeIntervalSince(status.lastUpdate) < 30
-            if status.isMac && isRecent {
+            let age = Date().timeIntervalSince(status.lastUpdate)
+            if status.isMac && age < 45 {
                 remoteMacIsOnline = true
-                foundRemote = true
+                foundRemoteMac = true
             }
         }
 
-        // Only mark offline if we explicitly found no recent Mac file
-        if !foundRemote {
-            // Don't immediately flip to offline — give grace period.
-            // Only flip if we haven't seen Mac in 60s.
-            if let remote = remoteStatus, remote.isMac,
-               let last = Optional(remote.lastUpdate) {
-                remoteMacIsOnline = Date().timeIntervalSince(last) < 60
+        if !foundRemoteMac {
+            if let remote = remoteStatus, remote.isMac {
+                remoteMacIsOnline = Date().timeIntervalSince(remote.lastUpdate) < 90
             } else {
                 remoteMacIsOnline = false
             }
         }
+    }
+
+    private func detectConnectionMethod() async {
+        #if os(iOS)
+        let client = LocalNetworkClient.shared
+        if let saved = URL(string: SettingsStore.shared.macServerURL),
+           !SettingsStore.shared.macServerURL.isEmpty,
+           await client.pingQuick(saved) {
+            connectionMethod = .localHTTP
+        } else if !PeerSyncEngine.shared.connections.isEmpty {
+            connectionMethod = .bonjour
+        } else if remoteMacIsOnline {
+            connectionMethod = .iCloud
+        } else {
+            connectionMethod = .none
+        }
+        #else
+        connectionMethod = LocalNetworkServer.shared.isRunning ? .localHTTP : .iCloud
+        #endif
     }
 
     func stopAll() {
@@ -141,6 +214,8 @@ final class DeviceStatusBroadcaster: ObservableObject {
         watchTask?.cancel()
         broadcastTask = nil
         watchTask = nil
+        signalQuery?.stop()
+        signalQuery = nil
         #if os(iOS)
         LocalNetworkClient.shared.stopAutoDiscovery()
         PeerSyncEngine.shared.stopBrowsing()

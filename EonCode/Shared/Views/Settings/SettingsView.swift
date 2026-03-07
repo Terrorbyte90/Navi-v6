@@ -71,6 +71,7 @@ struct SettingsView: View {
             Section("Synk") { syncSection }
             Section("Röst (ElevenLabs)") {
                 Toggle("Aktivera text-till-tal", isOn: $settings.ttsEnabled)
+                VoicePickerRow()
             }
             Section("Minnen") { memoriesSection }
         }
@@ -935,6 +936,41 @@ struct CostDashboardView: View {
         .padding()
         .frame(width: 400)
         .background(Color.black)
+}
+
+// MARK: - Voice Picker
+
+struct VoicePickerRow: View {
+    @StateObject private var tts = ElevenLabsClient.shared
+    @StateObject private var settings = SettingsStore.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Röst: \(settings.selectedVoiceName)")
+                    .font(.system(size: 13))
+                Spacer()
+                Button("Hämta röster") {
+                    Task { await tts.fetchVoices() }
+                }
+                .font(.system(size: 12))
+                .foregroundColor(.accentEon)
+            }
+
+            if !tts.availableVoices.isEmpty {
+                Picker("Röst", selection: $settings.selectedVoiceID) {
+                    ForEach(tts.availableVoices) { voice in
+                        Text(voice.name).tag(voice.voice_id)
+                    }
+                }
+                .onChange(of: settings.selectedVoiceID) { newID in
+                    if let voice = tts.availableVoices.first(where: { $0.voice_id == newID }) {
+                        settings.selectedVoiceName = voice.name
+                    }
+                }
+            }
+        }
+    }
 }
 
 #Preview("SyncMethodRow") {

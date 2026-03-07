@@ -142,30 +142,91 @@ struct PageExtractor {
         (function() {
             var sels = [
                 '[class*=cookie] button[class*=accept]', '[class*=cookie] button[class*=agree]',
+                '[class*=cookie] button[class*=allow]', '[class*=cookie] button[class*=ok]',
                 '[class*=consent] button[class*=accept]', '[class*=consent] button[class*=agree]',
-                '[id*=cookie] button', '[id*=consent] button',
-                '#onetrust-accept-btn-handler', '.cc-accept', '.cc-dismiss',
-                'button[data-testid*=accept]', '[class*=gdpr] button',
-                '[aria-label*=Accept]', '[aria-label*=Godkänn]', '[aria-label*=Acceptera]',
+                '[class*=consent] button[class*=allow]',
+                '[id*=cookie] button[class*=accept]', '[id*=cookie] button[class*=agree]',
+                '[id*=consent] button[class*=accept]', '[id*=consent] button[class*=agree]',
+                '#onetrust-accept-btn-handler', '#onetrust-pc-btn-handler',
+                '.cc-accept', '.cc-dismiss', '.cc-allow', '.cc-btn.cc-accept-all',
+                '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+                '#CybotCookiebotDialogBodyButtonAccept',
+                '#didomi-notice-agree-button', '.didomi-continue-without-agreeing',
+                '#hs-eu-confirmation-button', '#truste-consent-button',
+                'button[data-testid*=accept]', 'button[data-testid*=cookie]',
+                'button[data-cookiefirst-action=accept]',
+                '[class*=gdpr] button[class*=accept]', '[class*=gdpr] button',
+                '[aria-label*=Accept]', '[aria-label*=accept]', '[aria-label*=Godkänn]',
+                '[aria-label*=Acceptera]', '[aria-label*=Tillåt]', '[aria-label*=Allow]',
+                '[aria-label*="Accept all"]', '[aria-label*="Acceptera alla"]',
+                '[class*=banner] button[class*=accept]', '[class*=banner] button[class*=agree]',
+                '[class*=notice] button[class*=accept]', '[class*=notice] button[class*=agree]',
+                '[role=dialog] button[class*=accept]', '[role=dialog] button[class*=agree]',
                 '[role=dialog] button[class*=close]', '[role=dialog] button[aria-label*=close]',
+                '[role=dialog] button[aria-label*=Close]',
                 '[class*=modal] button[class*=close]', '[class*=popup] button[class*=close]',
-                '.modal .close', '.modal-close', 'button.close[data-dismiss]'
+                '.modal .close', '.modal-close', 'button.close[data-dismiss]',
+                'button[class*=cookie-accept]', 'button[id*=cookie-accept]',
+                'a[class*=cookie-accept]', 'a[id*=cookie-accept]'
             ];
             for (var i = 0; i < sels.length; i++) {
                 try {
                     var els = document.querySelectorAll(sels[i]);
                     for (var j = 0; j < els.length; j++) {
                         var s = window.getComputedStyle(els[j]);
-                        if (s.display !== 'none' && s.visibility !== 'hidden') { els[j].click(); return 'dismissed'; }
+                        if (s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0') {
+                            els[j].click(); return 'dismissed';
+                        }
                     }
                 } catch(e) {}
             }
-            var overlays = document.querySelectorAll('[class*=overlay][style*=fixed],[class*=cookie],[id*=cookie-banner]');
+            // Text-based fallback: find buttons containing accept-like text
+            var btns = document.querySelectorAll('button, a[role=button], [class*=btn]');
+            var acceptWords = ['acceptera', 'godkänn', 'tillåt', 'accept', 'agree', 'allow', 'ok', 'got it', 'i agree', 'accept all', 'acceptera alla', 'tillåt alla'];
+            for (var b = 0; b < btns.length; b++) {
+                try {
+                    var txt = btns[b].textContent.trim().toLowerCase();
+                    if (txt.length > 50) continue;
+                    var bs = window.getComputedStyle(btns[b]);
+                    if (bs.display === 'none' || bs.visibility === 'hidden') continue;
+                    for (var w = 0; w < acceptWords.length; w++) {
+                        if (txt === acceptWords[w] || txt.indexOf(acceptWords[w]) !== -1) {
+                            btns[b].click(); return 'dismissed';
+                        }
+                    }
+                } catch(e) {}
+            }
+            // Check iFrames for cookie consent
+            var iframes = document.querySelectorAll('iframe');
+            for (var fi = 0; fi < iframes.length; fi++) {
+                try {
+                    var iDoc = iframes[fi].contentDocument || iframes[fi].contentWindow.document;
+                    if (!iDoc) continue;
+                    for (var si = 0; si < sels.length; si++) {
+                        try {
+                            var iEls = iDoc.querySelectorAll(sels[si]);
+                            for (var ij = 0; ij < iEls.length; ij++) {
+                                var is2 = iDoc.defaultView.getComputedStyle(iEls[ij]);
+                                if (is2.display !== 'none' && is2.visibility !== 'hidden') {
+                                    iEls[ij].click(); return 'dismissed';
+                                }
+                            }
+                        } catch(e2) {}
+                    }
+                } catch(e3) {}
+            }
+            // Force-remove fixed overlays
+            var overlays = document.querySelectorAll(
+                '[class*=overlay][style*=fixed],[class*=cookie],[id*=cookie-banner],' +
+                '[class*=consent-banner],[id*=consent],[class*=cookie-banner],' +
+                '[class*=cookie-wall],[class*=cookie-notice],[class*=gdpr]'
+            );
             for (var k = 0; k < overlays.length; k++) {
                 var os = window.getComputedStyle(overlays[k]);
-                if (os.position === 'fixed' || os.position === 'absolute') {
+                if (os.position === 'fixed' || os.position === 'absolute' || os.position === 'sticky') {
                     overlays[k].style.display = 'none';
                     document.body.style.overflow = 'auto';
+                    document.documentElement.style.overflow = 'auto';
                     return 'removed';
                 }
             }

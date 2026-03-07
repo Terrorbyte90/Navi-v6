@@ -88,9 +88,12 @@ final class iCloudChatStore: ObservableObject {
                     let coordinator = NSFileCoordinator()
                     var coordError: NSError?
                     coordinator.coordinate(readingItemAt: fileURL, options: [], error: &coordError) { url in
-                        if let data = try? Data(contentsOf: url),
-                           let conv = try? JSONDecoder().decode(ChatConversation.self, from: data) {
+                        do {
+                            let data = try Data(contentsOf: url)
+                            let conv = try JSONDecoder().decode(ChatConversation.self, from: data)
                             conversations.append(conv)
+                        } catch {
+                            NaviLog.error("iCloudChatStore: kunde inte läsa \(fileURL.lastPathComponent)", error: error)
                         }
                     }
                 }
@@ -142,7 +145,7 @@ final class iCloudChatStore: ObservableObject {
 
 extension iCloudSyncEngine {
     var chatsDirectory: URL? {
-        guard let base = containerURL else { return nil }
+        guard let base = eonCodeRoot else { return nil }
         let dir = base.appendingPathComponent("Chats", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir

@@ -472,11 +472,39 @@ struct ChatHistorySidebar: View {
         }
     }
 
-    // MARK: - Browser history (placeholder — browser has no persistent history yet)
+    // MARK: - Browser history
 
     @ViewBuilder
     var browserHistory: some View {
-        emptyHistoryHint(icon: "globe", text: "Webbläsarhistorik visas här")
+        let navEntries = BrowserAgent.shared.log.filter { $0.type == .navigate }
+        if navEntries.isEmpty {
+            emptyHistoryHint(icon: "globe", text: "Webbläsarhistorik visas här")
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(navEntries.reversed()) { entry in
+                        HStack(spacing: 8) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(entry.displayText)
+                                    .font(.system(size: 13))
+                                    .lineLimit(1)
+                                Text(entry.timestamp, style: .time)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary.opacity(0.6))
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
     }
 
     // MARK: - Agents history
@@ -710,6 +738,7 @@ struct ChatHistorySidebar: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isActive ? Color.surfaceHover : Color.clear)
@@ -752,7 +781,9 @@ struct ChatHistorySidebar: View {
                         Circle()
                             .fill(statusBroadcaster.remoteMacIsOnline ? Color.green : Color.secondary.opacity(0.6))
                             .frame(width: 5, height: 5)
-                        Text(statusBroadcaster.remoteMacIsOnline ? "Mac ansluten" : "Offline")
+                        Text(statusBroadcaster.remoteMacIsOnline
+                             ? "Mac ansluten (\(statusBroadcaster.connectionMethod.rawValue))"
+                             : "Offline")
                             .font(.system(size: 10))
                             .foregroundColor(Color.secondary.opacity(0.6))
                     }

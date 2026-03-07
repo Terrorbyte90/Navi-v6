@@ -136,6 +136,8 @@ struct PureChatView: View {
     @State private var inputText = ""
     @State private var selectedImages: [Data] = []
     @State private var isShowingImagePicker = false
+    @State private var isShowingFilePicker = false
+    @State private var showVoiceMode = false
     @State private var scrollProxy: ScrollViewProxy?
 
     var conversation: ChatConversation? { manager.activeConversation }
@@ -159,6 +161,7 @@ struct PureChatView: View {
                         }
                         .padding(.vertical, 16)
                     }
+                    .scrollDismissesKeyboard(.interactively)
                     .dismissKeyboardOnTap()
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         chatInputBar
@@ -180,6 +183,16 @@ struct PureChatView: View {
         .sheet(isPresented: $isShowingImagePicker) {
             ImagePicker(selectedImages: $selectedImages)
         }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showVoiceMode) {
+            VoiceModeOverlay(isPresented: $showVoiceMode)
+        }
+        #else
+        .sheet(isPresented: $showVoiceMode) {
+            VoiceModeOverlay(isPresented: $showVoiceMode)
+                .frame(minWidth: 500, minHeight: 400)
+        }
+        #endif
         .onAppear {
             if manager.activeConversation == nil && !manager.conversations.isEmpty {
                 manager.activeConversation = manager.conversations.first
@@ -332,9 +345,20 @@ struct PureChatView: View {
             }
 
             // Pill — exact ChatGPT shape
-            HStack(alignment: .bottom, spacing: 8) {
-                // Plus / attach
-                Button { isShowingImagePicker = true } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Menu {
+                    Button { isShowingImagePicker = true } label: {
+                        Label("Bild", systemImage: "photo")
+                    }
+                    Button { isShowingFilePicker = true } label: {
+                        Label("Fil", systemImage: "doc")
+                    }
+                    #if os(iOS)
+                    Button { isShowingImagePicker = true } label: {
+                        Label("Kamera", systemImage: "camera")
+                    }
+                    #endif
+                } label: {
                     ZStack {
                         Circle()
                             .fill(Color.surfaceHover)
@@ -344,9 +368,8 @@ struct PureChatView: View {
                             .foregroundColor(Color.secondary)
                     }
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
 
-                // Text field
                 TextField("Skicka ett meddelande till Navi", text: $inputText, axis: .vertical)
                     .font(.callout)
                     .foregroundColor(Color.primary)
@@ -355,9 +378,8 @@ struct PureChatView: View {
                     .padding(.vertical, 10)
                     .padding(.leading, 4)
 
-                // Send / stop — white circle
-                Button(action: sendMessage) {
-                    if manager.isStreaming {
+                if manager.isStreaming {
+                    Button(action: sendMessage) {
                         ZStack {
                             Circle()
                                 .fill(Color.primary)
@@ -366,27 +388,36 @@ struct PureChatView: View {
                                 .fill(Color.chatBackground)
                                 .frame(width: 10, height: 10)
                         }
-                    } else {
+                    }
+                    .buttonStyle(.plain)
+                } else if inputText.isBlank && selectedImages.isEmpty {
+                    Button { showVoiceMode = true } label: {
                         ZStack {
                             Circle()
-                                .fill(inputText.isBlank && selectedImages.isEmpty
-                                      ? Color.secondary.opacity(0.25)
-                                      : Color.primary)
+                                .fill(Color.secondary.opacity(0.15))
+                                .frame(width: 30, height: 30)
+                            Image(systemName: "waveform")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color.secondary.opacity(0.7))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button(action: sendMessage) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.primary)
                                 .frame(width: 30, height: 30)
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(inputText.isBlank && selectedImages.isEmpty
-                                                 ? Color.secondary.opacity(0.6)
-                                                 : Color.chatBackground)
+                                .foregroundColor(Color.chatBackground)
                         }
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .disabled(inputText.isBlank && selectedImages.isEmpty && !manager.isStreaming)
-                .padding(.bottom, 5)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 22)
                     .fill(Color.userBubble)

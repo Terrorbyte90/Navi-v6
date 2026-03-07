@@ -3,6 +3,8 @@ import Foundation
 final class ClaudeStreamParser {
     private var buffer = ""
     private var inputTokensFromStart: Int = 0
+    private var cacheCreationTokens: Int? = nil
+    private var cacheReadTokens: Int? = nil
 
     func parse(line: String) -> StreamEvent? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -38,6 +40,8 @@ final class ClaudeStreamParser {
             // Capture input tokens from message_start usage
             if let usage = msg?["usage"] as? [String: Any] {
                 inputTokensFromStart = usage["input_tokens"] as? Int ?? 0
+                cacheCreationTokens = usage["cache_creation_input_tokens"] as? Int
+                cacheReadTokens = usage["cache_read_input_tokens"] as? Int
             }
             return .messageStart(id: id, model: model)
 
@@ -76,8 +80,8 @@ final class ClaudeStreamParser {
                 usage = TokenUsage(
                     inputTokens: inputTokensFromStart,
                     outputTokens: output,
-                    cacheCreationInputTokens: nil,
-                    cacheReadInputTokens: nil
+                    cacheCreationInputTokens: cacheCreationTokens,
+                    cacheReadInputTokens: cacheReadTokens
                 )
             }
             return .messageDelta(stopReason: stopReason, usage: usage)

@@ -105,7 +105,7 @@ struct BrowserActionDecider {
         let messages = [ChatMessage(role: .user, content: [.text(userMessage)])]
         let (response, usage) = try await apiClient.sendMessage(
             messages: messages, model: .haiku,
-            systemPrompt: domSystemPrompt, maxTokens: 300
+            systemPrompt: domSystemPrompt, maxTokens: 150
         )
         return BrowserDecisionResult(action: parseAction(from: response), usage: usage)
     }
@@ -138,7 +138,7 @@ struct BrowserActionDecider {
         )]
 
         let (response, usage) = try await apiClient.sendMessage(
-            messages: messages, model: .sonnet45,
+            messages: messages, model: .haiku,
             systemPrompt: visionSystemPrompt, maxTokens: 400
         )
         return BrowserDecisionResult(action: parseAction(from: response), usage: usage)
@@ -149,7 +149,7 @@ struct BrowserActionDecider {
     private static let domSystemPrompt = """
     Du är en autonom webbläsaragent. Analysera sidans DOM och välj nästa action.
 
-    Svara med exakt ETT JSON-objekt:
+    Svara med exakt ETT JSON-objekt, inget annat:
     {"action": "navigate", "url": "https://..."}
     {"action": "click", "selector": "CSS-selector eller [N] för länkindex"}
     {"action": "type", "selector": "CSS-selector", "text": "text"}
@@ -163,19 +163,28 @@ struct BrowserActionDecider {
     {"action": "goal_failed", "reason": "Varför"}
 
     STRATEGI:
-    - Tänk steg för steg. Välj effektivaste action.
-    - Cookie/GDPR-banners: klicka bort direkt.
-    - CAPTCHA/inloggning: ask_user.
-    - Vid jämförelser: besök FLERA sidor, sammanställ i goal_complete.
-    - Om du scrollat utan resultat: sök annorlunda eller go_back.
-    - Testa minst 3 alternativ innan goal_failed.
-    - goal_complete ska innehålla hela svaret — inte bara "klart".
+    1. Cookie/GDPR/consent-banners: ALLTID klicka "acceptera"/"godkänn"/"allow" OMEDELBART. Prioritera detta före allt annat.
+    2. SNABBVÄGAR: Om sidan har ett sökfält och målet handlar om att söka — skriv direkt i fältet utan extra steg.
+    3. Om sidan har en specifik navigeringslänk till rätt sektion — klicka den direkt.
+    4. CAPTCHA/inloggning: ask_user.
+    5. Vid jämförelser: besök FLERA sidor, sammanställ i goal_complete.
+    6. Om du scrollat 3+ gånger utan resultat: sök annorlunda, go_back, eller prova en annan URL.
+    7. Om du fastnat (upprepar samma action): BYT strategi — prova screenshot, annan URL, eller go_back.
+    8. Testa minst 3 alternativ innan goal_failed.
+    9. goal_complete MÅSTE innehålla hela svaret/resultatet — aldrig bara "klart".
+    10. Var SNABB: välj direkt rätt action, slösa inte steg.
+
+    VIKTIGT: Svara BARA med JSON. Ingen annan text.
     """
 
     private static let visionSystemPrompt = """
     Du är en webbläsaragent med synförmåga. Du ser en skärmbild.
-    Svara med ETT JSON-objekt (navigate/click/type/submit/scroll/wait/ask_user/go_back/goal_complete/goal_failed).
-    Cookie-banners: klicka acceptera. Trasiga sidor: go_back.
+    Svara med ETT JSON-objekt, inget annat.
+    Actions: navigate, click, type, submit, scroll, wait, ask_user, go_back, goal_complete, goal_failed.
+    Cookie/consent-banners: klicka acceptera OMEDELBART — leta efter knappar med "Accept"/"Godkänn"/"OK".
+    Click: använd CSS-selector baserad på vad du ser (t.ex. '#accept-btn', 'button.accept', '[aria-label=Accept]').
+    Trasiga sidor: go_back.
+    goal_complete: inkludera hela resultatet.
     """
 
     // MARK: - Parse JSON

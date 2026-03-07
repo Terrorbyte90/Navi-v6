@@ -65,6 +65,8 @@ targets:
           - _navi-http._tcp
         NSCameraUsageDescription: "Navi uses the camera to attach images to your messages."
         NSPhotoLibraryUsageDescription: "Navi accesses your photo library to attach images to your messages."
+        NSMicrophoneUsageDescription: "Navi uses the microphone for voice mode — speak to chat hands-free."
+        NSSpeechRecognitionUsageDescription: "Navi uses speech recognition to transcribe your voice into text for chat."
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - remote-notification
@@ -105,4 +107,6 @@ targets:
         NSBonjourServices:
           - _navi._tcp
           - _navi-http._tcp
+        NSMicrophoneUsageDescription: "Navi uses the microphone for voice mode."
+        NSSpeechRecognitionUsageDescription: "Navi uses speech recognition for voice chat."
         ITSAppUsesNonExemptEncryption: false

@@ -99,6 +99,7 @@ struct FileNodeRow: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
+                .contentShape(Rectangle())
                 .background(
                     RoundedRectangle(cornerRadius: 6)
                         .fill(isSelected ? Color.accentEon.opacity(0.3) : Color.clear)

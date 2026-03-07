@@ -170,6 +170,7 @@ struct MemoryRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .contentShape(RoundedRectangle(cornerRadius: 10))
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.white.opacity(0.05))

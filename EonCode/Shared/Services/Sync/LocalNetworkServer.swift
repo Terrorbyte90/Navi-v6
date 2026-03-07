@@ -308,22 +308,30 @@ final class LocalNetworkClient {
         return nil
     }
 
-    /// Start background auto-discovery loop (iOS only)
     func startAutoDiscovery() {
         discoveryTask?.cancel()
         discoveryTask = Task {
+            var failedPings = 0
             while !Task.isCancelled {
                 let currentURL = macURL
                 let needsDiscovery: Bool
                 if let url = currentURL {
-                    needsDiscovery = !(await ping(url))
+                    let reachable = await ping(url)
+                    if reachable {
+                        failedPings = 0
+                        needsDiscovery = false
+                    } else {
+                        failedPings += 1
+                        needsDiscovery = failedPings >= 2
+                    }
                 } else {
                     needsDiscovery = true
                 }
                 if needsDiscovery {
                     await discoverMac()
                 }
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                let interval: UInt64 = macURL != nil ? 10_000_000_000 : 20_000_000_000
+                try? await Task.sleep(nanoseconds: interval)
             }
         }
     }
@@ -345,10 +353,14 @@ final class LocalNetworkClient {
         return nil
     }
 
-    private func ping(_ url: URL) async -> Bool {
+    func pingQuick(_ url: URL) async -> Bool {
         var req = URLRequest(url: url.appendingPathComponent("ping"))
-        req.timeoutInterval = 3
+        req.timeoutInterval = 2
         return (try? await URLSession.shared.data(for: req)) != nil
+    }
+
+    private func ping(_ url: URL) async -> Bool {
+        await pingQuick(url)
     }
 
     private func readMacURLFromiCloud() async -> URL? {
@@ -360,9 +372,8 @@ final class LocalNetworkClient {
               let url = URL(string: urlString)
         else { return nil }
 
-        // Only trust if written recently (< 5 minutes)
         if let ts = json["timestamp"], let date = ISO8601DateFormatter().date(from: ts),
-           Date().timeIntervalSince(date) > 300 {
+           Date().timeIntervalSince(date) > 600 {
             return nil
         }
         return url

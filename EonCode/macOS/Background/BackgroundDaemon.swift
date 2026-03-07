@@ -48,17 +48,38 @@ final class BackgroundDaemon: ObservableObject {
 
     private func startPolling() {
         pollingTask = Task {
+            var tickCount = 0
             while !Task.isCancelled && isActive {
-                await tick()
-                try? await Task.sleep(seconds: 5.0)
+                await tick(tickCount: tickCount)
+                tickCount += 1
+                try? await Task.sleep(seconds: 10.0)
             }
         }
     }
 
-    private func tick() async {
+    private func tick(tickCount: Int) async {
         await DeviceStatusBroadcaster.shared.broadcast()
         processedCount += 1
         lastActivity = Date()
+
+        if tickCount % 3 == 0 {
+            await refreshServerURL()
+        }
+    }
+
+    private func refreshServerURL() async {
+        let server = LocalNetworkServer.shared
+        guard server.isRunning, server.serverURL != nil else { return }
+        let info: [String: String] = [
+            "url": server.serverURL!.absoluteString,
+            "deviceName": UIDevice.deviceName,
+            "timestamp": Date().iso8601
+        ]
+        guard let root = iCloudSyncEngine.shared.eonCodeRoot,
+              let data = try? JSONSerialization.data(withJSONObject: info)
+        else { return }
+        let macInfoURL = root.appendingPathComponent("mac-server.json")
+        try? await iCloudSyncEngine.shared.writeData(data, to: macInfoURL)
     }
 }
 #endif

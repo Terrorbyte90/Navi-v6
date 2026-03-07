@@ -40,6 +40,12 @@ final class SettingsStore: ObservableObject {
     @Published var autoExtractMemories: Bool {
         didSet { save("autoExtractMemories", value: autoExtractMemories) }
     }
+    @Published var selectedVoiceID: String {
+        didSet { save("selectedVoiceID", value: selectedVoiceID) }
+    }
+    @Published var selectedVoiceName: String {
+        didSet { save("selectedVoiceName", value: selectedVoiceName) }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -56,6 +62,8 @@ final class SettingsStore: ObservableObject {
         parallelAgentsEnabled = UserDefaults.standard.value(forKey: "parallelAgentsEnabled") as? Bool ?? true
         autoGitHubSync = UserDefaults.standard.value(forKey: "autoGitHubSync") as? Bool ?? false
         autoExtractMemories = UserDefaults.standard.value(forKey: "autoExtractMemories") as? Bool ?? true
+        selectedVoiceID = UserDefaults.standard.string(forKey: "selectedVoiceID") ?? "21m00Tcm4TlvDq8ikWAM"
+        selectedVoiceName = UserDefaults.standard.string(forKey: "selectedVoiceName") ?? "Rachel"
     }
 
     private func save(_ key: String, value: Any?) {

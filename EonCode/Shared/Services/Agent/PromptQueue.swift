@@ -75,16 +75,19 @@ final class PromptQueue: ObservableObject {
 
     private var processingTask: Task<Void, Never>?
 
+    private let sync = iCloudSyncEngine.shared
+
     private init(projectID: UUID) {
         self.projectID = projectID
+        Task { await loadFromiCloud() }
     }
 
     // MARK: - Public API
 
-    /// Add a prompt to the end of the queue and start processing if idle.
     func enqueue(text: String, isAgentMode: Bool = true, iterations: Int = 1) {
         let item = QueuedPrompt(text: text, isAgentMode: isAgentMode, iterations: iterations)
         items.append(item)
+        persistToiCloud()
         startProcessingIfNeeded()
     }
 
@@ -192,6 +195,42 @@ final class PromptQueue: ObservableObject {
             }
 
             currentItemID = nil
+            persistToiCloud()
+        }
+    }
+
+    // MARK: - iCloud persistence
+
+    private var queueFileURL: URL? {
+        sync.eonCodeRoot?
+            .appendingPathComponent("prompt_queues")
+            .appendingPathComponent("\(projectID.uuidString).json")
+    }
+
+    private func persistToiCloud() {
+        let waitingItems = items.filter { $0.status == .waiting || $0.status == .running }
+        guard !waitingItems.isEmpty else { return }
+        Task {
+            guard let url = queueFileURL else { return }
+            do {
+                try await sync.write(waitingItems, to: url)
+            } catch {
+                NaviLog.error("PromptQueue: kunde inte spara kö", error: error)
+            }
+        }
+    }
+
+    private func loadFromiCloud() async {
+        guard let url = queueFileURL else { return }
+        do {
+            let loaded = try await sync.read([QueuedPrompt].self, from: url)
+            let restored = loaded.filter { $0.status == .waiting }
+            if !restored.isEmpty {
+                items.append(contentsOf: restored)
+                startProcessingIfNeeded()
+            }
+        } catch {
+            // File doesn't exist yet — that's fine
         }
     }
 }

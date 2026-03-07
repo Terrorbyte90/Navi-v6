@@ -206,10 +206,17 @@ final class AutonomousAgentRunner: ObservableObject {
         // Build messages for this iteration (bounded by maxHistoryMessages)
         var messages: [ChatMessage] = buildMessages(for: agent)
 
-        // Append current iteration prompt
-        let iterPrompt = iterNum == 1
-            ? "Börja arbeta mot målet. Tänk steg för steg. Beskriv vad du gör och varför."
-            : "Fortsätt arbeta mot målet. Iteration \(iterNum). Vad är nästa steg?"
+        // Check for repetition before building prompt
+        let isRepeating = detectRepetition(in: agent)
+        let iterPrompt: String
+        if iterNum == 1 {
+            iterPrompt = "Börja arbeta mot målet. Tänk steg för steg. Beskriv vad du gör och varför."
+        } else if isRepeating {
+            iterPrompt = "VARNING: Du har upprepat dig i 3+ iterationer. BYT STRATEGI OMEDELBART. Försök en helt annan approach. Iteration \(iterNum)."
+            appendLog(agentID: agentID, type: .action, content: "Repetition upptäckt — tvingar strategibyte")
+        } else {
+            iterPrompt = "Fortsätt arbeta mot målet. Iteration \(iterNum). Vad är nästa steg?"
+        }
 
         messages.append(ChatMessage(role: .user, content: [.text(iterPrompt)]))
 
@@ -231,11 +238,9 @@ final class AutonomousAgentRunner: ObservableObject {
             )
             fullResponse = response
 
-            // Cost calculation
-            let costUSD = Double(usage.inputTokens) * agent.model.inputPricePerMTok / 1_000_000
-                        + Double(usage.outputTokens) * agent.model.outputPricePerMTok / 1_000_000
-            let costSEK = costUSD * 10.5
+            let (_, costSEK) = CostCalculator.shared.calculate(usage: usage, model: agent.model)
             let tokens = usage.inputTokens + usage.outputTokens
+            CostTracker.shared.record(usage: usage, model: agent.model)
 
             if let i = agents.firstIndex(where: { $0.id == agentID }) {
                 agents[i].totalTokensUsed += tokens
@@ -245,20 +250,26 @@ final class AutonomousAgentRunner: ObservableObject {
                 agents[i].currentTaskDescription = extractCurrentTask(from: fullResponse)
                 agents[i].lastActiveAt = Date()
 
-                // Store in conversation history (bounded by maxHistoryMessages)
                 agents[i].conversationHistory.append(StoredMessage(role: "user", content: iterPrompt))
                 agents[i].conversationHistory.append(StoredMessage(role: "assistant", content: fullResponse))
-                let maxHist = agents[i].maxHistoryMessages * 2  // pairs
-                if agents[i].conversationHistory.count > maxHist {
-                    agents[i].conversationHistory = Array(agents[i].conversationHistory.suffix(maxHist))
-                }
             }
 
             // Check if goal is achieved
             goalAchieved = isGoalAchieved(response: fullResponse, goal: agent.goal)
 
             // Execute any tool calls embedded in the response
-            await executeToolCalls(from: fullResponse, agentID: agentID)
+            let toolResults = await executeToolCalls(from: fullResponse, agentID: agentID)
+
+            // Append tool results back to conversation for next iteration context
+            if !toolResults.isEmpty {
+                let resultsText = toolResults.map { "[\($0.command)]: \($0.output)" }.joined(separator: "\n\n")
+                if let i = agents.firstIndex(where: { $0.id == agentID }) {
+                    agents[i].conversationHistory.append(StoredMessage(role: "user", content: "[VERKTYGSRESULTAT]\n\(resultsText)"))
+                }
+            }
+
+            // Handle worker delegation markers
+            await handleWorkerDelegation(from: fullResponse, agentID: agentID)
 
             // Log with cost info
             appendLog(agentID: agentID, type: .assistantMessage, content: fullResponse,
@@ -290,35 +301,99 @@ final class AutonomousAgentRunner: ObservableObject {
         return goalAchieved
     }
 
-    // MARK: - Message building
+    // MARK: - Message building (sliding window + summary)
 
     private func buildMessages(for agent: AgentDefinition) -> [ChatMessage] {
-        let bounded = Array(agent.conversationHistory.suffix(agent.maxHistoryMessages * 2))
-        return bounded.map { stored in
-            let role: MessageRole = stored.role == "user" ? .user : .assistant
-            return ChatMessage(role: role, content: [.text(stored.content)])
+        let history = agent.conversationHistory
+        let windowSize = agent.maxHistoryMessages * 2
+
+        if history.count <= windowSize {
+            return history.map { stored in
+                ChatMessage(role: stored.role == "user" ? .user : .assistant, content: [.text(stored.content)])
+            }
         }
+
+        let olderMessages = Array(history.prefix(history.count - windowSize))
+        let recentMessages = Array(history.suffix(windowSize))
+
+        let summaryText = summarizeOlderMessages(olderMessages)
+        var messages: [ChatMessage] = []
+        messages.append(ChatMessage(role: .user, content: [.text("[SAMMANFATTNING AV TIDIGARE ITERATIONER]\n\(summaryText)")]))
+        messages.append(ChatMessage(role: .assistant, content: [.text("Förstått. Jag har kontexten från tidigare arbete och fortsätter därifrån.")]))
+        messages += recentMessages.map { stored in
+            ChatMessage(role: stored.role == "user" ? .user : .assistant, content: [.text(stored.content)])
+        }
+        return messages
+    }
+
+    private func summarizeOlderMessages(_ messages: [StoredMessage]) -> String {
+        let assistantMsgs = messages.filter { $0.role == "assistant" }
+        guard !assistantMsgs.isEmpty else { return "Inga tidigare iterationer." }
+
+        var keyPoints: [String] = []
+        for msg in assistantMsgs {
+            let lines = msg.content.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && !$0.hasPrefix("```") }
+            if let first = lines.first {
+                keyPoints.append(String(first.prefix(200)))
+            }
+        }
+        let truncated = keyPoints.suffix(10)
+        return "Genomförda steg (\(assistantMsgs.count) iterationer):\n" +
+               truncated.enumerated().map { "  \($0.offset + 1). \($0.element)" }.joined(separator: "\n")
     }
 
     private func buildSystemPrompt(for agent: AgentDefinition) -> String {
         var prompt = """
-        Du är en autonom AI-agent med namnet "\(agent.name)".
-        
-        ÖVERGRIPANDE MÅL:
-        \(agent.goal)
-        
-        INSTRUKTIONER:
-        - Arbeta metodiskt och iterativt mot målet.
-        - Varje svar ska innehålla: vad du just gjort, vad du planerar att göra härnäst, och om målet är uppnått.
-        - Om du behöver köra kod eller kommandon, skriv dem i kodblock med språket specificerat.
-        - Om du skriver filer, ange hela filinnehållet i kodblock med filnamnet som kommentar.
-        - Var konkret och handlingsinriktad. Undvik onödiga förklaringar.
-        - Om målet är UPPNÅTT, avsluta ditt svar med exakt texten: [MÅL UPPNÅTT]
-        - Iteration \(agent.iterationCount + 1) av \(agent.maxIterations > 0 ? String(agent.maxIterations) : "∞")
+        Du är "\(agent.name)", en autonom AI-agent. Du arbetar självständigt iteration för iteration tills ditt mål är uppnått.
+
+        ═══════════════════════════════
+        MÅL: \(agent.goal)
+        ═══════════════════════════════
+
+        ARBETSMETOD:
+        1. ANALYSERA — Utvärdera nuläget. Vad har gjorts? Vad återstår?
+        2. PLANERA — Bestäm nästa konkreta steg. Prioritera effektivitet.
+        3. UTFÖR — Genomför steget. Skriv kod, kommandon eller filer.
+        4. VERIFIERA — Kontrollera resultatet. Fungerade det?
+        5. RAPPORTERA — Kort sammanfattning av vad som hände och vad som är nästa steg.
+
+        REGLER:
+        - Var KONKRET och HANDLINGSINRIKTAD. Ingen fluff.
+        - Kommandon: skriv i ```bash\\n...\\n``` kodblock — de körs automatiskt.
+        - Filer: ange fullständig sökväg som kommentar, hela innehållet i kodblock.
+        - Dela upp komplexa uppgifter i hanterbara steg.
+        - Om du stöter på ett fel: analysera, åtgärda, försök igen.
+        - Om du kör fast efter 3 försök: byt strategi.
+        - ALDRIG upprepa samma misslyckade approach.
+        - Håll koll på dina workers — delegera parallelliserbara uppgifter.
+
+        AVSLUT:
+        - När målet är HELT uppnått, avsluta med: [MÅL UPPNÅTT]
+        - Avsluta INTE förrän du verifierat att allt faktiskt fungerar.
+
+        STATUS: Iteration \(agent.iterationCount + 1)\(agent.maxIterations > 0 ? " av \(agent.maxIterations)" : "")
         """
 
         if let projectName = agent.projectName {
-            prompt += "\n\nAktivt projekt: \(projectName)"
+            prompt += "\nPROJEKT: \(projectName)"
+        }
+
+        if agent.assignedWorkers > 1 {
+            prompt += "\nWORKERS: \(agent.assignedWorkers) parallella workers tillgängliga (modell: \(agent.workerModel.displayName))"
+        }
+
+        if !agent.systemPromptAddition.isEmpty {
+            prompt += "\n\nEXTRA INSTRUKTIONER:\n\(agent.systemPromptAddition)"
+        }
+
+        if agent.memoryEnabled {
+            let memories = MemoryManager.shared.memories
+            if !memories.isEmpty {
+                let memoryText = memories.prefix(15).map { "- \($0.fact)" }.joined(separator: "\n")
+                prompt += "\n\nKONTEXT (minnen):\n\(memoryText)"
+            }
         }
 
         return prompt
@@ -331,21 +406,36 @@ final class AutonomousAgentRunner: ObservableObject {
     }
 
     private func extractCurrentTask(from response: String) -> String {
-        // Extract the first meaningful line as current task description
         let lines = response.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("#") && !$0.hasPrefix("```") }
         return String((lines.first ?? "Arbetar…").prefix(120))
     }
 
+    // MARK: - Repetition detection
+
+    private func detectRepetition(in agent: AgentDefinition) -> Bool {
+        let recent = agent.conversationHistory.suffix(6)
+        let assistantMsgs = recent.filter { $0.role == "assistant" }.map { $0.content.prefix(300) }
+        guard assistantMsgs.count >= 3 else { return false }
+        let unique = Set(assistantMsgs.map { String($0) })
+        return unique.count == 1
+    }
+
     // MARK: - Tool execution
 
-    private func executeToolCalls(from response: String, agentID: UUID) async {
-        // Extract and execute shell commands from code blocks
+    struct ToolResult {
+        let command: String
+        let output: String
+    }
+
+    private func executeToolCalls(from response: String, agentID: UUID) async -> [ToolResult] {
         let pattern = "```(?:bash|sh|shell|zsh)\\n([\\s\\S]*?)\\n```"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [] }
         let nsResponse = response as NSString
         let matches = regex.matches(in: response, range: NSRange(location: 0, length: nsResponse.length))
+
+        var results: [ToolResult] = []
 
         for match in matches {
             guard match.numberOfRanges > 1 else { continue }
@@ -358,13 +448,66 @@ final class AutonomousAgentRunner: ObservableObject {
             #if os(macOS)
             let output = await runShellCommand(cmd)
             appendLog(agentID: agentID, type: .result, content: output)
+            results.append(ToolResult(command: cmd, output: output))
             #else
-            // On iOS, queue to Mac
             await InstructionComposer.shared.queue(instruction: cmd, projectID: agentID)
+            let output = "Köad till Mac"
             appendLog(agentID: agentID, type: .action, content: "Köad till Mac: \(cmd)")
+            results.append(ToolResult(command: cmd, output: output))
+            #endif
+        }
+        return results
+    }
+
+    // MARK: - Worker delegation
+
+    private func handleWorkerDelegation(from response: String, agentID: UUID) async {
+        let pattern = "\\[DELEGERA:\\s*(.+?)\\]"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return }
+        let nsResponse = response as NSString
+        let matches = regex.matches(in: response, range: NSRange(location: 0, length: nsResponse.length))
+
+        guard !matches.isEmpty,
+              let idx = agents.firstIndex(where: { $0.id == agentID }) else { return }
+
+        let agent = agents[idx]
+        guard agent.assignedWorkers > 0 else { return }
+
+        for match in matches.prefix(agent.assignedWorkers) {
+            guard match.numberOfRanges > 1 else { continue }
+            let taskRange = match.range(at: 1)
+            let task = nsResponse.substring(with: taskRange).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !task.isEmpty else { continue }
+
+            appendLog(agentID: agentID, type: .action, content: "Delegerar till worker: \(task)")
+
+            #if os(macOS)
+            let output = await runWorkerTask(task, model: agent.workerModel)
+            appendLog(agentID: agentID, type: .result, content: "Worker-resultat: \(String(output.prefix(500)))")
+            if let i = agents.firstIndex(where: { $0.id == agentID }) {
+                agents[i].conversationHistory.append(StoredMessage(role: "user", content: "[WORKER-RESULTAT: \(task)]\n\(output)"))
+            }
+            #else
+            appendLog(agentID: agentID, type: .action, content: "Worker-uppgift köad: \(task)")
             #endif
         }
     }
+
+    #if os(macOS)
+    private func runWorkerTask(_ task: String, model: ClaudeModel) async -> String {
+        do {
+            let (response, _) = try await api.sendMessage(
+                messages: [ChatMessage(role: .user, content: [.text(task)])],
+                model: model,
+                systemPrompt: "Du är en worker-agent. Utför uppgiften direkt och koncist. Svara med resultatet.",
+                maxTokens: 4000
+            )
+            return response
+        } catch {
+            return "Worker-fel: \(error.localizedDescription)"
+        }
+    }
+    #endif
 
     #if os(macOS)
     private func runShellCommand(_ cmd: String) async -> String {

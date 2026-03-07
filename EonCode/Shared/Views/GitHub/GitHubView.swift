@@ -74,7 +74,6 @@ struct GitHubView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.chatBackground)
-        .sheet(isPresented: $showTokenEntry) { GitHubTokenSheet() }
     }
 
     var loadingView: some View {

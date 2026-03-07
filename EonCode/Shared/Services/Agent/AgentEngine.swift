@@ -147,21 +147,19 @@ final class AgentEngine: ObservableObject {
                     maxTokens: Constants.Agent.maxTokensLarge,
                     usePromptCaching: true,
                     onEvent: { [weak self] event in
-                        Task { @MainActor in
-                            self?.handleStreamEvent(
-                                event,
-                                fullText: &fullText,
-                                toolCalls: &toolCalls,
-                                currentToolID: &currentToolID,
-                                currentToolName: &currentToolName,
-                                currentToolJSON: &currentToolJSON,
-                                blockType: &blockType,
-                                stopReason: &stopReason,
-                                inputTokens: &inputTokens,
-                                outputTokens: &outputTokens
-                            )
-                            self?.streamingText = ResponseCleaner.clean(fullText)
-                        }
+                        self?.handleStreamEvent(
+                            event,
+                            fullText: &fullText,
+                            toolCalls: &toolCalls,
+                            currentToolID: &currentToolID,
+                            currentToolName: &currentToolName,
+                            currentToolJSON: &currentToolJSON,
+                            blockType: &blockType,
+                            stopReason: &stopReason,
+                            inputTokens: &inputTokens,
+                            outputTokens: &outputTokens
+                        )
+                        self?.streamingText = ResponseCleaner.clean(fullText)
                     }
                 )
                 consecutiveErrors = 0

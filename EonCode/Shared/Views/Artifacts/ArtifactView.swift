@@ -188,6 +188,7 @@ struct ArtifactView: View {
                     .fill(isSelected ? Color.accentEon.opacity(0.25) : Color.white.opacity(0.07))
             )
             .foregroundColor(isSelected ? .accentEon : .secondary)
+            .contentShape(Capsule())
             .overlay(
                 Capsule()
                     .stroke(isSelected ? Color.accentEon.opacity(0.5) : Color.clear, lineWidth: 1)

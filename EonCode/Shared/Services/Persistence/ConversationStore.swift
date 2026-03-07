@@ -46,7 +46,11 @@ final class ConversationStore: ObservableObject {
 
         // Save to iCloud
         if let url = sync.urlForConversation(conversation) {
-            try? await sync.write(conversation, to: url)
+            do {
+                try await sync.write(conversation, to: url)
+            } catch {
+                NaviLog.error("ConversationStore: kunde inte spara konversation", error: error)
+            }
         }
     }
 
@@ -67,7 +71,11 @@ final class ConversationStore: ObservableObject {
                 var blockRan = false
                 coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &coordError) { u in
                     blockRan = true
-                    try? FileManager.default.removeItem(at: u)
+                    do {
+                        try FileManager.default.removeItem(at: u)
+                    } catch {
+                        NaviLog.error("ConversationStore: kunde inte radera konversation", error: error)
+                    }
                     cont.resume()
                 }
                 if !blockRan { cont.resume() }

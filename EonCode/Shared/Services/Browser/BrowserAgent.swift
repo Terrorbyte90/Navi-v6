@@ -94,7 +94,6 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     // WebView
     let webView: WKWebView = {
         let config = WKWebViewConfiguration()
-        config.preferences.javaScriptEnabled = true
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
@@ -122,6 +121,8 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     private var currentExecutionTask: Task<Void, Never>?
     private var strategy: BrowsingStrategy = .domFirst
     private var consecutiveVisionFallbacks: Int = 0
+    private var cachedPageContent: PageContent?
+    private var cachedPageURL: String?
 
     enum BrowsingStrategy { case domFirst, visionFirst }
 
@@ -282,12 +283,19 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
                 return await executeVisionStrategy(subGoalText: subGoalText, fullGoal: fullGoal, maxAttempts: maxAttempts - attempt)
             }
 
-            // 1. Extract
+            // 1. Extract (with cache)
             let pageContent: PageContent
             do {
-                currentThought = "Läser sidan…"
-                pageContent = try await withTimeout(seconds: 10) {
-                    try await PageExtractor.extract(from: self.webView)
+                let currentPageURL = webView.url?.absoluteString ?? ""
+                if let cached = cachedPageContent, cachedPageURL == currentPageURL, !currentPageURL.isEmpty {
+                    pageContent = cached
+                } else {
+                    currentThought = "Läser sidan…"
+                    pageContent = try await withTimeout(seconds: 10) {
+                        try await PageExtractor.extract(from: self.webView)
+                    }
+                    cachedPageContent = pageContent
+                    cachedPageURL = currentPageURL
                 }
                 extractionFailStreak = 0
             } catch {
@@ -315,7 +323,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
                 currentThought = "Tänker…"
                 let result = try await BrowserActionDecider.decide(
                     goal: fullGoal, subGoal: subGoalText, pageContent: pageContent,
-                    history: log.suffix(15), strategy: .domFirst, apiClient: api
+                    history: log.suffix(8), strategy: .domFirst, apiClient: api
                 )
                 action = result.action
                 sessionCost.add(usage: result.usage, model: .haiku)
@@ -326,7 +334,6 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
                 try? await Task.sleep(for: .seconds(2))
                 continue
             }
-            actionFailStreak = 0
 
             // 4. Execute
             currentThought = action.shortDescription
@@ -335,10 +342,11 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
             do {
                 let shouldContinue = try await executeAction(action, pageContent: pageContent, goal: fullGoal, subGoal: subGoalText)
                 consecutiveVisionFallbacks = 0
+                actionFailStreak = 0
                 if !shouldContinue { return true }
             } catch {
-                appendLog("Fel: \(error.localizedDescription)", type: .failure, isError: true)
                 actionFailStreak += 1
+                appendLog("Fel: \(error.localizedDescription)", type: .failure, isError: true)
                 if actionFailStreak > 5 { return false }
             }
 
@@ -368,7 +376,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
                     goal: fullGoal, subGoal: subGoalText, screenshotData: screenshotData,
                     basicDOM: basicDOM, history: log.suffix(10), apiClient: api
                 )
-                sessionCost.add(usage: result.usage, model: .sonnet45)
+                sessionCost.add(usage: result.usage, model: .haiku)
 
                 currentThought = result.action.shortDescription
                 appendLog(result.action.logDescription, type: result.action.logType)
@@ -391,9 +399,11 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     ) async throws -> Bool {
         switch action {
         case .navigate(let url):
+            cachedPageContent = nil; cachedPageURL = nil
             try await navigate(to: url)
             try? await Task.sleep(for: .seconds(1))
         case .click(let selector):
+            cachedPageContent = nil; cachedPageURL = nil
             if let idx = linkIndex(from: selector), let links = pageContent?.links, idx < links.count {
                 try await navigate(to: links[idx].href)
             } else {
@@ -401,8 +411,10 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
                 try? await Task.sleep(for: .seconds(1))
             }
         case .type(let selector, let text):
+            cachedPageContent = nil; cachedPageURL = nil
             try await PageExtractor.typeInField(selector: selector, text: text, in: webView)
         case .submitForm(let selector):
+            cachedPageContent = nil; cachedPageURL = nil
             try await PageExtractor.submitForm(selector: selector, in: webView)
             try? await Task.sleep(for: .seconds(1.5))
         case .scroll(let direction):
@@ -529,13 +541,18 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
+            self.currentURL = webView.url
+            self.pageTitle = webView.title ?? ""
+            self.loadingProgress = 1.0
+
+            // Auto-dismiss cookie/consent overlays after every page load
+            try? await Task.sleep(for: .milliseconds(800))
+            _ = try? await PageExtractor.detectAndDismissOverlays(in: webView)
+
             guard self.navigationContinuation != nil else { return }
             self.navigationContinuation?.resume()
             self.navigationContinuation = nil
             self.navigationID = nil
-            self.currentURL = webView.url
-            self.pageTitle = webView.title ?? ""
-            self.loadingProgress = 1.0
         }
     }
 
@@ -564,9 +581,8 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     }
 
     nonisolated func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil {
-            Task { @MainActor in webView.load(navigationAction.request) }
-        }
+        let request = navigationAction.request
+        Task { @MainActor in webView.load(request) }
         return nil
     }
 

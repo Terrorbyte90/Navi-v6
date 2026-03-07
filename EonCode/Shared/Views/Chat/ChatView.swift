@@ -38,6 +38,7 @@ struct ChatView: View {
                     }
                     .padding(.vertical, 16)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .dismissKeyboardOnTap()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {

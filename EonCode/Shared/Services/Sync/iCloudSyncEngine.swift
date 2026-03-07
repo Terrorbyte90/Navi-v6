@@ -91,24 +91,25 @@ final class iCloudSyncEngine: ObservableObject {
 
     func writeData(_ data: Data, to url: URL) async throws {
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let coordinator = NSFileCoordinator()
-        var coordError: NSError?
-        var writeError: Error?
-
-        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &coordError) { writeURL in
-            do {
-                try data.write(to: writeURL, options: .atomic)
-            } catch {
-                writeError = error
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .utility).async {
+                let coordinator = NSFileCoordinator()
+                var coordError: NSError?
+                var blockRan = false
+                coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &coordError) { writeURL in
+                    blockRan = true
+                    do {
+                        try data.write(to: writeURL, options: .atomic)
+                        cont.resume()
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
+                }
+                if !blockRan {
+                    cont.resume(throwing: coordError ?? URLError(.cannotWriteToFile))
+                }
             }
         }
-
-        if let err = coordError ?? writeError {
-            throw err
-        }
-        // File is already in the iCloud container — NSFileCoordinator write
-        // with .forReplacing triggers iCloud upload automatically.
-        // No need to call setUbiquitous (which is only for moving local files TO iCloud).
     }
 
     // MARK: - Read with coordinator
@@ -121,26 +122,24 @@ final class iCloudSyncEngine: ObservableObject {
     }
 
     func readData(from url: URL) async throws -> Data {
-        // Ensure file is downloaded from iCloud
         try? fm.startDownloadingUbiquitousItem(at: url)
-
-        let coordinator = NSFileCoordinator()
-        var coordError: NSError?
-        var result: Result<Data, Error>?
-
-        coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordError) { readURL in
-            do {
-                result = .success(try Data(contentsOf: readURL))
-            } catch {
-                result = .failure(error)
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let coordinator = NSFileCoordinator()
+                var coordError: NSError?
+                var blockRan = false
+                coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordError) { readURL in
+                    blockRan = true
+                    do {
+                        cont.resume(returning: try Data(contentsOf: readURL))
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
+                }
+                if !blockRan {
+                    cont.resume(throwing: coordError ?? URLError(.cannotOpenFile))
+                }
             }
-        }
-
-        if let err = coordError { throw err }
-        switch result {
-        case .success(let data): return data
-        case .failure(let error): throw error
-        case .none: throw URLError(.cannotOpenFile)
         }
     }
 

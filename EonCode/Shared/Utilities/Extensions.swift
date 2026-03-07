@@ -1,5 +1,28 @@
 import Foundation
 import SwiftUI
+import os
+
+// MARK: - App Logger
+
+enum NaviLog {
+    private static let logger = Logger(subsystem: "com.navi.app", category: "general")
+
+    static func error(_ message: String, error: Error? = nil) {
+        if let error {
+            logger.error("\(message): \(error.localizedDescription)")
+        } else {
+            logger.error("\(message)")
+        }
+    }
+
+    static func warning(_ message: String) {
+        logger.warning("\(message)")
+    }
+
+    static func info(_ message: String) {
+        logger.info("\(message)")
+    }
+}
 
 // MARK: - String
 extension String {
@@ -84,13 +107,16 @@ extension Encodable {
 // MARK: - View Modifiers
 extension View {
     /// Dismisses the software keyboard when the user taps outside a text field.
+    /// Uses simultaneousGesture so it does not block taps on child views (e.g. TextField focus).
     /// No-op on macOS.
     func dismissKeyboardOnTap() -> some View {
         #if os(iOS)
-        return self.onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                            to: nil, from: nil, for: nil)
-        }
+        return self.simultaneousGesture(
+            TapGesture().onEnded { _ in
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                to: nil, from: nil, for: nil)
+            }
+        )
         #else
         return self
         #endif
