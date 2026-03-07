@@ -13,11 +13,11 @@ struct AgentDefinition: Identifiable, Codable, Equatable {
     var model: ClaudeModel                  // Primär modell (orkestrator)
     var workerModel: ClaudeModel            // Modell för workers (ofta billigare)
     var assignedWorkers: Int                // Antal parallella workers (1–10)
-    var maxTokensPerIteration: Int          // Max tokens per API-anrop (1000–100000)
+    var maxTokensPerIteration: Int          // Alltid obegränsat (högt värde)
 
     // ── Beteende ────────────────────────────────────────────────────────────
     var maxIterations: Int                  // 0 = obegränsat
-    var iterationDelaySeconds: Double       // Paus mellan iterationer (0–60 s)
+    var iterationDelaySeconds: Double       // Paus mellan iterationer
     var autoRestartOnFailure: Bool
     var pauseOnUserQuestion: Bool           // Pausa och vänta om agenten ställer fråga
     var verboseLogging: Bool                // Logga varje tanke/steg detaljerat
@@ -26,7 +26,7 @@ struct AgentDefinition: Identifiable, Codable, Equatable {
 
     // ── Kontext & minne ─────────────────────────────────────────────────────
     var systemPromptAddition: String        // Extra instruktioner utöver standard
-    var maxHistoryMessages: Int             // Hur många meddelanden att behålla i kontext (10–100)
+    var maxHistoryMessages: Int             // Hur många meddelanden att behålla i kontext
     var memoryEnabled: Bool                 // Använd Navi-minnen som kontext
 
     // ── Notifikationer ──────────────────────────────────────────────────────
@@ -60,16 +60,16 @@ struct AgentDefinition: Identifiable, Codable, Equatable {
         model: ClaudeModel = .sonnet45,
         workerModel: ClaudeModel = .haiku,
         assignedWorkers: Int = 2,
-        maxTokensPerIteration: Int = 8000,
+        maxTokensPerIteration: Int = 128000,
         maxIterations: Int = 0,
-        iterationDelaySeconds: Double = 1.0,
+        iterationDelaySeconds: Double = 0,
         autoRestartOnFailure: Bool = false,
         pauseOnUserQuestion: Bool = true,
         verboseLogging: Bool = false,
         autoCommitToGitHub: Bool = false,
         githubBranch: String = "main",
         systemPromptAddition: String = "",
-        maxHistoryMessages: Int = 30,
+        maxHistoryMessages: Int = 100,
         memoryEnabled: Bool = true,
         notifyOnCompletion: Bool = true,
         notifyOnFailure: Bool = true,

@@ -104,23 +104,18 @@ extension Encodable {
     }
 }
 
+// MARK: - Keyboard Helpers
+
+/// Dismiss the software keyboard. No-op on macOS.
+func dismissKeyboard() {
+    #if os(iOS)
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                    to: nil, from: nil, for: nil)
+    #endif
+}
+
 // MARK: - View Modifiers
 extension View {
-    /// Dismisses the software keyboard when the user taps outside a text field.
-    /// Uses simultaneousGesture so it does not block taps on child views (e.g. TextField focus).
-    /// No-op on macOS.
-    func dismissKeyboardOnTap() -> some View {
-        #if os(iOS)
-        return self.simultaneousGesture(
-            TapGesture().onEnded { _ in
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                                to: nil, from: nil, for: nil)
-            }
-        )
-        #else
-        return self
-        #endif
-    }
 
     func glassBackground(radius: CGFloat = 16, opacity: Double = 0.15) -> some View {
         self.background(

@@ -160,9 +160,10 @@ struct PureChatView: View {
                             }
                         }
                         .padding(.vertical, 16)
+                        .contentShape(Rectangle())
+                        .onTapGesture { dismissKeyboard() }
                     }
                     .scrollDismissesKeyboard(.interactively)
-                    .dismissKeyboardOnTap()
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         chatInputBar
                             .background(Color.chatBackground)

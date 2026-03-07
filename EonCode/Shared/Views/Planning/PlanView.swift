@@ -42,9 +42,10 @@ struct PlanView: View {
                                 }
                             }
                             .padding()
+                            .contentShape(Rectangle())
+                            .onTapGesture { dismissKeyboard() }
                         }
                         .scrollDismissesKeyboard(.interactively)
-                        .dismissKeyboardOnTap()
                         .safeAreaInset(edge: .bottom, spacing: 0) {
                             VStack(spacing: 0) {
                                 Divider().opacity(0.15)

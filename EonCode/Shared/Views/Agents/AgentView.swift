@@ -543,16 +543,12 @@ struct AgentSettingsEditor: View {
     @State private var model: ClaudeModel = .sonnet45
     @State private var workerModel: ClaudeModel = .haiku
     @State private var assignedWorkers = 2
-    @State private var maxTokensPerIteration = 8000
-    @State private var maxIterations = 0
-    @State private var iterationDelaySeconds = 1.0
     @State private var autoRestartOnFailure = false
     @State private var pauseOnUserQuestion = true
     @State private var verboseLogging = false
     @State private var autoCommitToGitHub = false
     @State private var githubBranch = "main"
     @State private var systemPromptAddition = ""
-    @State private var maxHistoryMessages = 30
     @State private var memoryEnabled = true
     @State private var notifyOnCompletion = true
     @State private var notifyOnFailure = true
@@ -623,35 +619,6 @@ struct AgentSettingsEditor: View {
                     } footer: {
                         Text("Workers utför parallella deluppgifter. Fler workers = snabbare men dyrare.")
                     }
-
-                    // ── Kapacitet ──────────────────────────────────────────
-                    Section {
-                        Stepper(
-                            "Max tokens/iteration: \(maxTokensPerIteration)",
-                            value: $maxTokensPerIteration,
-                            in: 1000...100000, step: 1000
-                        )
-                        .onChange(of: maxTokensPerIteration) { save() }
-
-                        Stepper(
-                            maxIterations == 0 ? "Max iterationer: Obegränsat" : "Max iterationer: \(maxIterations)",
-                            value: $maxIterations, in: 0...10000, step: 10
-                        )
-                        .onChange(of: maxIterations) { save() }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Paus mellan iterationer: \(String(format: "%.0f s", iterationDelaySeconds))")
-                                .font(.system(size: 14))
-                            Slider(value: $iterationDelaySeconds, in: 0...60, step: 1)
-                                .onChange(of: iterationDelaySeconds) { save() }
-                        }
-
-                        Stepper(
-                            "Kontext-historik: \(maxHistoryMessages) meddelanden",
-                            value: $maxHistoryMessages, in: 5...100, step: 5
-                        )
-                        .onChange(of: maxHistoryMessages) { save() }
-                    } header: { Text("Kapacitet") }
 
                     // ── Beteende ───────────────────────────────────────────
                     Section("Beteende") {
@@ -794,16 +761,12 @@ struct AgentSettingsEditor: View {
         model = agent.model
         workerModel = agent.workerModel
         assignedWorkers = agent.assignedWorkers
-        maxTokensPerIteration = agent.maxTokensPerIteration
-        maxIterations = agent.maxIterations
-        iterationDelaySeconds = agent.iterationDelaySeconds
         autoRestartOnFailure = agent.autoRestartOnFailure
         pauseOnUserQuestion = agent.pauseOnUserQuestion
         verboseLogging = agent.verboseLogging
         autoCommitToGitHub = agent.autoCommitToGitHub
         githubBranch = agent.githubBranch
         systemPromptAddition = agent.systemPromptAddition
-        maxHistoryMessages = agent.maxHistoryMessages
         memoryEnabled = agent.memoryEnabled
         notifyOnCompletion = agent.notifyOnCompletion
         notifyOnFailure = agent.notifyOnFailure
@@ -819,16 +782,12 @@ struct AgentSettingsEditor: View {
         updated.model = model
         updated.workerModel = workerModel
         updated.assignedWorkers = assignedWorkers
-        updated.maxTokensPerIteration = maxTokensPerIteration
-        updated.maxIterations = maxIterations
-        updated.iterationDelaySeconds = iterationDelaySeconds
         updated.autoRestartOnFailure = autoRestartOnFailure
         updated.pauseOnUserQuestion = pauseOnUserQuestion
         updated.verboseLogging = verboseLogging
         updated.autoCommitToGitHub = autoCommitToGitHub
         updated.githubBranch = githubBranch
         updated.systemPromptAddition = systemPromptAddition
-        updated.maxHistoryMessages = maxHistoryMessages
         updated.memoryEnabled = memoryEnabled
         updated.notifyOnCompletion = notifyOnCompletion
         updated.notifyOnFailure = notifyOnFailure
@@ -1026,9 +985,6 @@ struct CreateAgentSheet: View {
     @State private var model: ClaudeModel = .sonnet45
     @State private var workerModel: ClaudeModel = .haiku
     @State private var assignedWorkers = 2
-    @State private var maxIterations = 0
-    @State private var maxTokensPerIteration = 8000
-    @State private var iterationDelaySeconds = 1.0
     @State private var autoRestart = false
     @State private var pauseOnUserQuestion = true
     @State private var startImmediately = true
@@ -1103,14 +1059,6 @@ struct CreateAgentSheet: View {
                 } header: { Text("Modell & Workers") }
                   footer: { Text("Agenten orkestrar, workers utför. Välj billigare modell för workers för lägre kostnad.") }
 
-                Section("Kapacitet") {
-                    Stepper(
-                        maxIterations == 0 ? "Max iterationer: Obegränsat" : "Max: \(maxIterations)",
-                        value: $maxIterations, in: 0...10000, step: 10
-                    )
-                    Stepper("Max tokens/iter: \(maxTokensPerIteration)", value: $maxTokensPerIteration, in: 1000...100000, step: 1000)
-                }
-
                 Section("Beteende") {
                     Toggle("Starta om vid fel", isOn: $autoRestart)
                     Toggle("Pausa vid fråga", isOn: $pauseOnUserQuestion)
@@ -1135,8 +1083,6 @@ struct CreateAgentSheet: View {
                             model: model,
                             workerModel: workerModel,
                             assignedWorkers: assignedWorkers,
-                            maxTokensPerIteration: maxTokensPerIteration,
-                            maxIterations: maxIterations,
                             autoRestartOnFailure: autoRestart,
                             pauseOnUserQuestion: pauseOnUserQuestion,
                             verboseLogging: verboseLogging,
