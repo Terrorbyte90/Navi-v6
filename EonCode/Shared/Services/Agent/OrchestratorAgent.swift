@@ -32,7 +32,7 @@ final class OrchestratorAgent: ObservableObject {
 
     func execute(
         instruction: String,
-        project: EonProject,
+        project: NaviProject,
         model: ClaudeModel,
         onProgress: @escaping (String) -> Void
     ) async -> OrchestratorResult {

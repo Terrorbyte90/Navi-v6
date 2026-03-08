@@ -50,16 +50,15 @@ struct BrowserSessionCost {
     var costUSD: Double = 0
     var costSEK: Double = 0
 
-    mutating func add(usage: TokenUsage, model: ClaudeModel) {
+    @MainActor mutating func add(usage: TokenUsage, model: ClaudeModel) {
         totalInputTokens += usage.inputTokens
         totalOutputTokens += usage.outputTokens
         apiCalls += 1
-        // Inline cost calculation to avoid main-actor isolation issues
         let inputCostUSD = Double(usage.inputTokens) * model.inputPricePerMTok / 1_000_000.0
         let outputCostUSD = Double(usage.outputTokens) * model.outputPricePerMTok / 1_000_000.0
         let usd = inputCostUSD + outputCostUSD
         costUSD += usd
-        costSEK += usd * 10.5
+        costSEK += usd * ExchangeRateService.shared.usdToSEK
     }
 
     var formatted: String {
@@ -90,6 +89,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     @Published var currentThought: String = ""
     @Published var sessionCost = BrowserSessionCost()
     @Published var canTakeControl: Bool = false
+    @Published var isStopping: Bool = false
 
     // WebView
     let webView: WKWebView = {
@@ -125,6 +125,8 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     private var cachedPageURL: String?
 
     enum BrowsingStrategy { case domFirst, visionFirst }
+    private var consecutiveScrollCount: Int = 0
+    private var lastScrollDirection: String = ""
 
     private override init() {
         super.init()
@@ -149,7 +151,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
     // MARK: - Main execute
 
-    func execute(goal: String) async {
+    func execute(goal: String) {
         guard status == .idle || status == .complete || status == .failed else { return }
 
         currentExecutionTask?.cancel()
@@ -162,8 +164,16 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         currentThought = "Analyserar mål…"
         strategy = .domFirst
         consecutiveVisionFallbacks = 0
+        consecutiveScrollCount = 0
+        lastScrollDirection = ""
         canTakeControl = true
 
+        currentExecutionTask = Task {
+            await performExecution(goal: goal)
+        }
+    }
+
+    private func performExecution(goal: String) async {
         // Decompose
         let decomposed = await decomposeGoal(goal)
         if decomposed.count > 1 {
@@ -178,7 +188,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         let goalsToExecute = subGoals.isEmpty ? [BrowserSubGoal(description: goal)] : subGoals
 
         for (goalIdx, _) in goalsToExecute.enumerated() {
-            guard !Task.isCancelled else { break }
+            guard !Task.isCancelled && !isStopping else { break }
 
             if !subGoals.isEmpty {
                 subGoals[goalIdx].status = .active
@@ -267,14 +277,14 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
     private func executeSubGoal(_ subGoalText: String, fullGoal: String, stepOffset: Int) async -> Bool {
         var attempt = 0
-        let maxAttempts = 30
+        let maxAttempts = 15
         var extractionFailStreak = 0
         var actionFailStreak = 0
 
         while attempt < maxAttempts {
             attempt += 1
             status = .working(step: attempt, of: maxAttempts)
-            guard !Task.isCancelled else {
+            guard !Task.isCancelled && !isStopping else {
                 status = .idle
                 return false
             }
@@ -318,7 +328,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
             }
 
             // 3. Decide
-            let action: BrowserAction
+            var action: BrowserAction
             do {
                 currentThought = "Tänker…"
                 let result = try await BrowserActionDecider.decide(
@@ -335,7 +345,25 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
                 continue
             }
 
-            // 4. Execute
+            // 4. Scroll guard: prevent endless scroll loops
+            if case .scroll(let dir) = action {
+                if dir == lastScrollDirection {
+                    consecutiveScrollCount += 1
+                } else {
+                    consecutiveScrollCount = 1
+                    lastScrollDirection = dir
+                }
+                if consecutiveScrollCount > 3 {
+                    appendLog("Max scroll nått (4× \(dir)) — byter strategi", type: .warning)
+                    consecutiveScrollCount = 0
+                    action = .goBack
+                }
+            } else {
+                consecutiveScrollCount = 0
+                lastScrollDirection = ""
+            }
+
+            // 5. Execute
             currentThought = action.shortDescription
             appendLog(action.logDescription, type: action.logType)
 
@@ -362,9 +390,9 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     private func executeVisionStrategy(subGoalText: String, fullGoal: String, maxAttempts: Int) async -> Bool {
         appendLog("Vision-strategi aktiv", type: .vision)
 
-        for attempt in 0..<min(maxAttempts, 15) {
-            guard !Task.isCancelled else { return false }
-            status = .working(step: attempt + 1, of: min(maxAttempts, 15))
+        for attempt in 0..<min(maxAttempts, 8) {
+            guard !Task.isCancelled && !isStopping else { return false }
+            status = .working(step: attempt + 1, of: min(maxAttempts, 8))
 
             do {
                 currentThought = "Tar skärmbild…"
@@ -418,6 +446,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
             try await PageExtractor.submitForm(selector: selector, in: webView)
             try? await Task.sleep(for: .seconds(1.5))
         case .scroll(let direction):
+            cachedPageContent = nil; cachedPageURL = nil
             try await PageExtractor.scroll(direction, in: webView)
             try? await Task.sleep(for: .seconds(0.5))
         case .screenshot:
@@ -499,7 +528,8 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
     // MARK: - Cancel
 
-    func cancel() {
+    func stop() {
+        isStopping = true
         webView.stopLoading()
         currentExecutionTask?.cancel()
         currentExecutionTask = nil
@@ -507,6 +537,7 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         currentGoal = ""
         currentThought = ""
         canTakeControl = false
+        isStopping = false
         userInputContinuation?.resume(returning: "")
         userInputContinuation = nil
         navigationContinuation?.resume(throwing: BrowserError.navigationFailed("Cancelled"))
@@ -514,6 +545,9 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         navigationID = nil
         userQuestion = ""
     }
+
+    // Backward-compatible alias
+    func cancel() { stop() }
 
     // MARK: - Helpers
 

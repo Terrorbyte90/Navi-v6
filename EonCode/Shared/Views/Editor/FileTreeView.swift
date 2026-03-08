@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FileTreeView: View {
-    let project: EonProject
+    let project: NaviProject
     @Binding var selectedNode: FileNode?
     @ObservedObject private var indexer = ProjectIndexer.shared
 
@@ -102,7 +102,7 @@ struct FileNodeRow: View {
                 .contentShape(Rectangle())
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? Color.accentEon.opacity(0.3) : Color.clear)
+                        .fill(isSelected ? Color.accentNavi.opacity(0.3) : Color.clear)
                 )
             }
             .buttonStyle(.plain)
@@ -128,7 +128,7 @@ struct FileNodeRow: View {
     }
 
     var iconColor: Color {
-        if node.isDirectory { return .accentEon.opacity(0.8) }
+        if node.isDirectory { return .accentNavi.opacity(0.8) }
         switch node.fileType {
         case .swift: return Color(red: 0.9, green: 0.5, blue: 0.2)
         case .python: return Color(red: 0.3, green: 0.7, blue: 0.9)
@@ -166,7 +166,7 @@ struct FileNodeRow: View {
 // MARK: - Previews
 
 #Preview("FileTreeView") {
-    let project = EonProject(name: "Navi Preview", rootPath: "/tmp/preview", color: .blue)
+    let project = NaviProject(name: "Navi Preview", rootPath: "/tmp/preview", color: .blue)
     return FileTreeView(project: project, selectedNode: .constant(nil))
         .frame(width: 260, height: 400)
         .background(Color.black)

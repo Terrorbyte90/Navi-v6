@@ -109,7 +109,7 @@ struct EditorToolbar: View {
             } label: {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13))
-                    .foregroundColor(showSearch ? .accentEon : .secondary)
+                    .foregroundColor(showSearch ? .accentNavi : .secondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut("f", modifiers: .command)
@@ -117,7 +117,7 @@ struct EditorToolbar: View {
             if isDirty {
                 Button("Spara", action: onSave)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                     .buttonStyle(.plain)
                     .keyboardShortcut("s", modifiers: .command)
             }

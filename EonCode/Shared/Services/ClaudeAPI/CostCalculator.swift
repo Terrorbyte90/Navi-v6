@@ -139,7 +139,7 @@ final class MessageBuilder {
     /// Current active view context (set by UI before sending messages)
     static var currentViewContext: String = ""
 
-    static func agentSystemPrompt(for project: EonProject?) -> String {
+    static func agentSystemPrompt(for project: NaviProject?) -> String {
         #if os(iOS)
         var prompt = iOSAgentSystemPrompt(for: project)
         #else
@@ -158,7 +158,7 @@ final class MessageBuilder {
 
     // MARK: - macOS: full capabilities
 
-    private static func macOSAgentSystemPrompt(for project: EonProject?) -> String {
+    private static func macOSAgentSystemPrompt(for project: NaviProject?) -> String {
         let projectInfo: String
         if let p = project {
             var info = """
@@ -232,7 +232,7 @@ final class MessageBuilder {
 
     // MARK: - iOS: file ops + download; terminal queued to Mac
 
-    private static func iOSAgentSystemPrompt(for project: EonProject?) -> String {
+    private static func iOSAgentSystemPrompt(for project: NaviProject?) -> String {
         let mode = SettingsStore.shared.iosAgentMode
         let projectInfo: String
         if let p = project {

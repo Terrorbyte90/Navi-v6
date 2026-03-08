@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppSection: String, Hashable { case project, pureChat, browser, artifacts, planning, github, agents }
+enum AppSection: String, Hashable { case project, pureChat, browser, artifacts, planning, github, agents, media }
 
 struct ContentView: View {
     @StateObject private var projectStore = ProjectStore.shared
@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var macSection: AppSection = .project
 
-    var activeProject: EonProject? { projectStore.activeProject }
+    var activeProject: NaviProject? { projectStore.activeProject }
     var activeAgent: ProjectAgent? {
         guard let project = activeProject else { return nil }
         return agentPool.agent(for: project)
@@ -49,6 +49,14 @@ struct ContentView: View {
         }
         .onAppear {
             BackgroundDaemon.shared.start()
+            NaviOrchestrator.shared.setActiveView(macSection)
+            NaviOrchestrator.shared.setActiveProject(activeProject)
+        }
+        .onChange(of: macSection) { _, newSection in
+            NaviOrchestrator.shared.setActiveView(newSection)
+        }
+        .onChange(of: activeProject) { _, newProject in
+            NaviOrchestrator.shared.setActiveProject(newProject)
         }
     }
 
@@ -67,6 +75,8 @@ struct ContentView: View {
             GitHubView()
         case .agents:
             AgentView()
+        case .media:
+            MediaView()
         case .project:
             if let project = activeProject, let agent = activeAgent {
                 MacMainView(project: project, agent: agent)
@@ -121,8 +131,16 @@ struct ContentView: View {
         .onAppear {
             PeerSyncEngine.shared.startBrowsing()
             updateViewContext()
+            NaviOrchestrator.shared.setActiveView(appSectionForTab(selectedTab))
+            NaviOrchestrator.shared.setActiveProject(activeProject)
         }
         .onChange(of: selectedTab) { updateViewContext() }
+        .onChange(of: selectedTab) { _, newTab in
+            NaviOrchestrator.shared.setActiveView(appSectionForTab(newTab))
+        }
+        .onChange(of: activeProject) { _, newProject in
+            NaviOrchestrator.shared.setActiveProject(newProject)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .didOpenGitHubProject)) { _ in
             // Auto-switch to project tab when a GitHub repo is opened as project
             withAnimation(.easeInOut(duration: 0.25)) {
@@ -158,6 +176,9 @@ struct ContentView: View {
         case .agents:
             viewName = "Agenter"
             viewPurpose = "Autonoma agenter som arbetar mot långsiktiga mål."
+        case .media:
+            viewName = "Media"
+            viewPurpose = "Generera bilder och video via xAI."
         }
         MessageBuilder.currentViewContext = "\(viewName) — \(viewPurpose)"
     }
@@ -303,6 +324,16 @@ struct ContentView: View {
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
             }
+
+        case .media:
+            HStack(spacing: 5) {
+                Text("Navi")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color.primary)
+                Text("Media")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color.secondary)
+            }
         }
     }
 
@@ -368,6 +399,8 @@ struct ContentView: View {
             GitHubView()
         case .agents:
             AgentView()
+        case .media:
+            MediaView()
         }
     }
 
@@ -380,7 +413,7 @@ struct ContentView: View {
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: [Color.accentEon.opacity(0.12), Color.accentEon.opacity(0.02)],
+                            colors: [Color.accentNavi.opacity(0.12), Color.accentNavi.opacity(0.02)],
                             center: .center,
                             startRadius: 0,
                             endRadius: 48
@@ -391,7 +424,7 @@ struct ContentView: View {
                     .font(.system(size: 36, weight: .medium))
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [.accentEon, .accentEon.opacity(0.65)],
+                            colors: [.accentNavi, .accentNavi.opacity(0.65)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -407,15 +440,15 @@ struct ContentView: View {
             Button { openSidebar() } label: {
                 Label("Öppna sidomenyn", systemImage: "sidebar.left")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 13)
                     .background(
                         RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.accentEon.opacity(0.1))
+                            .fill(Color.accentNavi.opacity(0.1))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14)
-                                    .strokeBorder(Color.accentEon.opacity(0.2), lineWidth: 0.5)
+                                    .strokeBorder(Color.accentNavi.opacity(0.2), lineWidth: 0.5)
                             )
                     )
             }
@@ -423,6 +456,21 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.chatBackground)
+    }
+
+    // MARK: - Tab to section mapping
+
+    private func appSectionForTab(_ tab: AppTab) -> AppSection {
+        switch tab {
+        case .chat: return .pureChat
+        case .project: return .project
+        case .browser: return .browser
+        case .artifacts: return .artifacts
+        case .plan: return .planning
+        case .github: return .github
+        case .agents: return .agents
+        case .media: return .media
+        }
     }
 
     // MARK: - Sidebar helpers
@@ -444,7 +492,7 @@ struct ContentView: View {
 // MARK: - Tabs
 
 enum AppTab: Int, Hashable {
-    case chat, project, browser, artifacts, plan, github, agents
+    case chat, project, browser, artifacts, plan, github, agents, media
 }
 
 // MARK: - macOS Main View
@@ -453,7 +501,7 @@ enum MacEditorTab: Int, Hashable { case editor, agents }
 
 #if os(macOS)
 struct MacMainView: View {
-    let project: EonProject
+    let project: NaviProject
     @ObservedObject var agent: ProjectAgent
 
     @State private var macEditorTab: MacEditorTab = .editor
@@ -607,7 +655,7 @@ struct TabButton: View {
 
 #if os(iOS)
 struct FileTreeAndEditorView: View {
-    let project: EonProject
+    let project: NaviProject
     @State private var selectedNode: FileNode?
     @State private var fileContent = ""
 
@@ -672,7 +720,7 @@ struct WelcomeView: View {
                     Circle()
                         .fill(
                             RadialGradient(
-                                colors: [Color.accentEon.opacity(0.12), Color.accentEon.opacity(0.02)],
+                                colors: [Color.accentNavi.opacity(0.12), Color.accentNavi.opacity(0.02)],
                                 center: .center,
                                 startRadius: 0,
                                 endRadius: 48
@@ -683,7 +731,7 @@ struct WelcomeView: View {
                         .font(.system(size: 36, weight: .medium))
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [.accentEon, .accentEon.opacity(0.65)],
+                                colors: [.accentNavi, .accentNavi.opacity(0.65)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -850,8 +898,8 @@ struct NewProjectView: View {
 
 #Preview("WelcomeView – med projekt") {
     let store = ProjectStore.shared
-    let p1 = EonProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue)
-    let p2 = EonProject(name: "Lunaflix iOS", rootPath: "/tmp/luna", color: .purple)
+    let p1 = NaviProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue)
+    let p2 = NaviProject(name: "Lunaflix iOS", rootPath: "/tmp/luna", color: .purple)
     store.projects = [p1, p2]
     return WelcomeView(showNewProject: .constant(false))
 }

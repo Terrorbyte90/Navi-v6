@@ -14,7 +14,7 @@ final class ProjectIndexer: ObservableObject {
 
     // MARK: - Index project
 
-    func index(project: EonProject) async {
+    func index(project: NaviProject) async {
         guard let rootURL = project.resolvedURL else { return }
         isIndexing = true
         defer { isIndexing = false }
@@ -82,7 +82,7 @@ final class ProjectIndexer: ObservableObject {
 
     // MARK: - File watching
 
-    func startWatching(project: EonProject) {
+    func startWatching(project: NaviProject) {
         guard let url = project.resolvedURL else { return }
         let watcher = FileWatcher(url: url) { [weak self] in
             Task { await self?.index(project: project) }
@@ -90,7 +90,7 @@ final class ProjectIndexer: ObservableObject {
         fileWatchers[project.id] = watcher
     }
 
-    func stopWatching(project: EonProject) {
+    func stopWatching(project: NaviProject) {
         fileWatchers[project.id] = nil
     }
 

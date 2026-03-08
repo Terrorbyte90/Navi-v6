@@ -24,7 +24,7 @@ final class InstructionQueue: ObservableObject {
     }
 
     private func startMetadataQuery() {
-        guard let root = sync.eonCodeRoot,
+        guard let root = sync.naviRoot,
               let dir = sync.instructionsRoot else { return }
 
         let signalPath = root.appendingPathComponent("instruction-signal.json").path
@@ -66,7 +66,7 @@ final class InstructionQueue: ObservableObject {
     }
 
     private func writeInstructionSignal() async {
-        guard let root = sync.eonCodeRoot else { return }
+        guard let root = sync.naviRoot else { return }
         let signalURL = root.appendingPathComponent("instruction-signal.json")
         let signal: [String: String] = [
             "from": UIDevice.deviceID,

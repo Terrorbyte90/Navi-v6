@@ -6,7 +6,7 @@ final class AgentPlanner {
     static let shared = AgentPlanner()
     private init() {}
 
-    func plan(instruction: String, project: EonProject?) async throws -> [AgentStep] {
+    func plan(instruction: String, project: NaviProject?) async throws -> [AgentStep] {
         let projectInfo = project.map { "Projekt: \($0.name) at \($0.rootPath)" } ?? ""
 
         let planPrompt = """

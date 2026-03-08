@@ -202,7 +202,7 @@ final class PromptQueue: ObservableObject {
     // MARK: - iCloud persistence
 
     private var queueFileURL: URL? {
-        sync.eonCodeRoot?
+        sync.naviRoot?
             .appendingPathComponent("prompt_queues")
             .appendingPathComponent("\(projectID.uuidString).json")
     }

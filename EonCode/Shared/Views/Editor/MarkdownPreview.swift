@@ -35,7 +35,7 @@ struct MarkdownPreview: View {
         case .bullet(let text):
             HStack(alignment: .top, spacing: 8) {
                 Text("•")
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                 Text(parseInline(text))
                     .font(.system(size: 14))
                     .fixedSize(horizontal: false, vertical: true)
@@ -48,7 +48,7 @@ struct MarkdownPreview: View {
             HStack(alignment: .top, spacing: 8) {
                 Text("\(number).")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                     .frame(width: 22, alignment: .trailing)
                 Text(parseInline(text))
                     .font(.system(size: 14))
@@ -58,7 +58,7 @@ struct MarkdownPreview: View {
         case .quote(let text):
             HStack(spacing: 0) {
                 Rectangle()
-                    .fill(Color.accentEon.opacity(0.5))
+                    .fill(Color.accentNavi.opacity(0.5))
                     .frame(width: 3)
                 Text(text)
                     .font(.system(size: 13))

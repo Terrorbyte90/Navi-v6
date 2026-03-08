@@ -17,6 +17,10 @@ final class AutonomousAgentRunner: ObservableObject {
     private let api = ClaudeAPIClient.shared
     private let store = AgentDefinitionStore.shared
 
+    // Transient counters — reset when agent stops/restarts, never persisted
+    private var repetitionCounters: [UUID: Int] = [:]  // consecutive repetition detections per agent
+    private var errorRetryCounters: [UUID: Int] = [:]  // consecutive API errors per agent (for backoff)
+
     private init() {
         // Quick local load first (legacy UserDefaults) so UI isn't empty
         agents = store.load()
@@ -129,6 +133,8 @@ final class AutonomousAgentRunner: ObservableObject {
     func pause(_ id: UUID) {
         runningTasks[id]?.cancel()
         runningTasks[id] = nil
+        repetitionCounters[id] = nil
+        errorRetryCounters[id] = nil
         if let idx = agents.firstIndex(where: { $0.id == id }) {
             agents[idx].status = .paused
             store.save(agents)
@@ -138,6 +144,8 @@ final class AutonomousAgentRunner: ObservableObject {
     func stop(_ id: UUID) {
         runningTasks[id]?.cancel()
         runningTasks[id] = nil
+        repetitionCounters[id] = nil
+        errorRetryCounters[id] = nil
         if let idx = agents.firstIndex(where: { $0.id == id }) {
             agents[idx].status = .idle
             store.save(agents)
@@ -145,6 +153,8 @@ final class AutonomousAgentRunner: ObservableObject {
     }
 
     func restart(_ id: UUID) {
+        repetitionCounters[id] = nil
+        errorRetryCounters[id] = nil
         if let idx = agents.firstIndex(where: { $0.id == id }) {
             agents[idx].status = .idle
             agents[idx].currentTaskDescription = ""
@@ -209,12 +219,37 @@ final class AutonomousAgentRunner: ObservableObject {
         // Check for repetition before building prompt
         let isRepeating = detectRepetition(in: agent)
         let iterPrompt: String
+
         if iterNum == 1 {
             iterPrompt = "Börja arbeta mot målet. Tänk steg för steg. Beskriv vad du gör och varför."
         } else if isRepeating {
-            iterPrompt = "VARNING: Du har upprepat dig i 3+ iterationer. BYT STRATEGI OMEDELBART. Försök en helt annan approach. Iteration \(iterNum)."
-            appendLog(agentID: agentID, type: .action, content: "Repetition upptäckt — tvingar strategibyte")
+            let currentCount = (repetitionCounters[agentID] ?? 0) + 1
+            repetitionCounters[agentID] = currentCount
+
+            if currentCount >= 2 {
+                // Repetition detected again after a reframe attempt — stop the agent
+                appendLog(agentID: agentID, type: .error,
+                          content: "Repetition kvarstår efter reframing (\(currentCount) gånger). Avslutar.", isError: true)
+                if let i = agents.firstIndex(where: { $0.id == agentID }) {
+                    agents[i].status = .failed
+                    agents[i].currentTaskDescription = "Stoppade: upprepade sig trots reframing"
+                }
+                store.save(agents)
+                return true
+            }
+
+            // First repetition detection — inject a reframe message and reset the detection window
+            appendLog(agentID: agentID, type: .action, content: "Repetition upptäckt — injecterar reframing-meddelande")
+            if let i = agents.firstIndex(where: { $0.id == agentID }) {
+                agents[i].conversationHistory.append(
+                    StoredMessage(role: "user",
+                                  content: "Du verkar upprepa dig. Prova ett helt annorlunda tillvägagångssätt för att nå målet. Tänk kreativt.")
+                )
+            }
+            iterPrompt = "Fortsätt arbeta mot målet med ett NYTT tillvägagångssätt. Iteration \(iterNum). Vad är nästa steg?"
         } else {
+            // No repetition — reset the repetition counter
+            repetitionCounters[agentID] = 0
             iterPrompt = "Fortsätt arbeta mot målet. Iteration \(iterNum). Vad är nästa steg?"
         }
 
@@ -237,6 +272,9 @@ final class AutonomousAgentRunner: ObservableObject {
                 maxTokens: agent.maxTokensPerIteration
             )
             fullResponse = response
+
+            // Successful call — clear the error retry counter
+            errorRetryCounters[agentID] = 0
 
             let (_, costSEK) = CostCalculator.shared.calculate(usage: usage, model: agent.model)
             let tokens = usage.inputTokens + usage.outputTokens
@@ -285,13 +323,24 @@ final class AutonomousAgentRunner: ObservableObject {
             }
 
         } catch {
-            appendLog(agentID: agentID, type: .error, content: "Fel i iteration \(iterNum): \(error.localizedDescription)", isError: true)
+            let errorCount = (errorRetryCounters[agentID] ?? 0) + 1
+            errorRetryCounters[agentID] = errorCount
+
+            appendLog(agentID: agentID, type: .error,
+                      content: "Fel i iteration \(iterNum) (försök \(errorCount)): \(error.localizedDescription)", isError: true)
+
             if let i = agents.firstIndex(where: { $0.id == agentID }) {
                 let shouldRestart = agents[i].autoRestartOnFailure
                 if !shouldRestart {
                     agents[i].status = .failed
                     agents[i].currentTaskDescription = "Fel: \(error.localizedDescription)"
                     goalAchieved = true
+                } else {
+                    // Exponential backoff: 2s, 4s, 8s, capped at 8s
+                    let backoffSeconds = min(pow(2.0, Double(errorCount)), 8.0)
+                    appendLog(agentID: agentID, type: .action,
+                              content: "Väntar \(Int(backoffSeconds))s innan nästa försök (exponentiell backoff)")
+                    try? await Task.sleep(for: .seconds(backoffSeconds))
                 }
             }
         }

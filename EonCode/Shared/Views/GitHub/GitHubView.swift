@@ -59,7 +59,7 @@ struct GitHubView: View {
                     }
                     .frame(maxWidth: 280)
                     .padding(.vertical, 14)
-                    .background(Color.accentEon)
+                    .background(Color.accentNavi)
                     .foregroundColor(.white)
                     .cornerRadius(12)
                 }
@@ -94,7 +94,7 @@ struct GitHubView: View {
                 .multilineTextAlignment(.center).padding(.horizontal, 32)
             HStack(spacing: 12) {
                 Button("Försök igen") { Task { await gh.verifyToken() } }
-                    .buttonStyle(.plain).foregroundColor(.accentEon)
+                    .buttonStyle(.plain).foregroundColor(.accentNavi)
                 Button("Byt token") { showTokenEntry = true }
                     .buttonStyle(.plain).foregroundColor(.secondary)
             }
@@ -133,7 +133,7 @@ struct GitHubView: View {
             if case .authorized(let user) = gh.authState {
                 HStack(spacing: 8) {
                     Image(systemName: "person.circle.fill")
-                        .font(.system(size: 16)).foregroundColor(.accentEon)
+                        .font(.system(size: 16)).foregroundColor(.accentNavi)
                     Text(user.login).font(.system(size: 13, weight: .semibold))
                 }
             }
@@ -184,7 +184,7 @@ struct GitHubView: View {
             if case .authorized(let user) = gh.authState {
                 HStack(spacing: 8) {
                     Image(systemName: "person.circle.fill")
-                        .font(.system(size: 18)).foregroundColor(.accentEon)
+                        .font(.system(size: 18)).foregroundColor(.accentNavi)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("GitHub").font(.system(size: 16, weight: .bold))
                         Text(user.login).font(.system(size: 12)).foregroundColor(.secondary)
@@ -288,7 +288,7 @@ struct RepoRow: View {
             HStack(spacing: 10) {
                 Image(systemName: repo.isPrivate ? "lock.fill" : "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 12))
-                    .foregroundColor(isSelected ? .accentEon : .secondary.opacity(0.6))
+                    .foregroundColor(isSelected ? .accentNavi : .secondary.opacity(0.6))
                     .frame(width: 16)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -478,7 +478,7 @@ struct RepoWorkView: View {
                                 Text("Ny branch…")
                                     .font(.system(size: 13))
                             }
-                            .foregroundColor(.accentEon.opacity(0.8))
+                            .foregroundColor(.accentNavi.opacity(0.8))
                         }
                         .buttonStyle(.plain)
                         .padding(.top, 4)
@@ -492,7 +492,7 @@ struct RepoWorkView: View {
                 VStack(spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.triangle.branch")
-                            .font(.system(size: 13)).foregroundColor(.accentEon)
+                            .font(.system(size: 13)).foregroundColor(.accentNavi)
                         Text(currentRepo.currentBranch)
                             .font(.system(size: 15, weight: .semibold))
                     }
@@ -520,7 +520,7 @@ struct RepoWorkView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.accentEon)
+                    .background(Color.accentNavi)
                     .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
@@ -677,9 +677,9 @@ struct RepoWorkView: View {
                         Image(systemName: "plus.circle.fill").font(.system(size: 12))
                         Text("Ny PR").font(.system(size: 12, weight: .semibold))
                     }
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Color.accentEon.opacity(0.12))
+                    .background(Color.accentNavi.opacity(0.12))
                     .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
@@ -730,7 +730,7 @@ struct RepoWorkView: View {
                             .font(.system(size: 11)).foregroundColor(.secondary)
                             .padding(.horizontal, 16).padding(.top, 12)
                         Text(path)
-                            .font(.system(size: 11, design: .monospaced)).foregroundColor(.accentEon)
+                            .font(.system(size: 11, design: .monospaced)).foregroundColor(.accentNavi)
                             .padding(.horizontal, 16).padding(.bottom, 8)
                         Divider().opacity(0.1)
                         LocalFileList(path: path)
@@ -763,7 +763,7 @@ struct RepoWorkView: View {
                 infoRow("Senast uppdaterad", value: repo.updatedAt.relativeString)
                 Divider().opacity(0.12)
                 Link("Öppna på GitHub →", destination: URL(string: repo.htmlURL)!)
-                    .font(.system(size: 13)).foregroundColor(.accentEon)
+                    .font(.system(size: 13)).foregroundColor(.accentNavi)
             }
             .padding(16)
         }
@@ -802,7 +802,7 @@ struct RepoWorkView: View {
         } else {
             _ = await gh.cloneOrOpen(repo: currentRepo)
         }
-        // Open as EonProject
+        // Open as NaviProject
         _ = await gh.openAsProject(repo: currentRepo)
         isWorking = false
         workStarted = true
@@ -846,7 +846,7 @@ struct BranchPickerRow: View {
             HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 14))
-                    .foregroundColor(isSelected ? .accentEon : .secondary.opacity(0.3))
+                    .foregroundColor(isSelected ? .accentNavi : .secondary.opacity(0.3))
 
                 Text(branch.name)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
@@ -870,7 +870,7 @@ struct BranchPickerRow: View {
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(isSelected ? Color.accentEon.opacity(0.1) : Color.clear)
+            .background(isSelected ? Color.accentNavi.opacity(0.1) : Color.clear)
         }
         .buttonStyle(.plain)
     }
@@ -893,7 +893,7 @@ struct CommitRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(shortSHA)
-                .font(.system(size: 11, design: .monospaced)).foregroundColor(.accentEon)
+                .font(.system(size: 11, design: .monospaced)).foregroundColor(.accentNavi)
                 .frame(width: 52, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text(message).font(.system(size: 13)).foregroundColor(.primary).lineLimit(1)
@@ -961,7 +961,7 @@ struct CreateBranchSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Image(systemName: "arrow.triangle.branch").foregroundColor(.accentEon)
+                Image(systemName: "arrow.triangle.branch").foregroundColor(.accentNavi)
                 Text("Ny branch").font(.system(size: 18, weight: .bold))
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -974,7 +974,7 @@ struct CreateBranchSheet: View {
                     Image(systemName: "arrow.triangle.branch").font(.system(size: 11))
                     Text(baseBranch).font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(.accentEon)
+                .foregroundColor(.accentNavi)
             }
             if !error.isEmpty {
                 Text(error).font(.system(size: 12)).foregroundColor(.red)
@@ -994,7 +994,7 @@ struct CreateBranchSheet: View {
                     else { Text("Skapa").fontWeight(.semibold) }
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(branchName.isBlank ? .secondary : .accentEon)
+                .foregroundColor(branchName.isBlank ? .secondary : .accentNavi)
                 .disabled(branchName.isBlank || isCreating)
             }
         }
@@ -1020,7 +1020,7 @@ struct CommitAndPushSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.up.circle.fill").foregroundColor(.accentEon)
+                Image(systemName: "arrow.up.circle.fill").foregroundColor(.accentNavi)
                 Text("Commit & Push").font(.system(size: 18, weight: .bold))
             }
 
@@ -1084,7 +1084,7 @@ struct CommitAndPushSheet: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(gitStatus == "Rent" || isPushing ? .secondary : .accentEon)
+                .foregroundColor(gitStatus == "Rent" || isPushing ? .secondary : .accentNavi)
                 .disabled(gitStatus == "Rent" || isPushing)
             }
         }
@@ -1137,7 +1137,7 @@ struct PRRow: View {
                     HStack(spacing: 6) {
                         Text("#\(pr.number)")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.accentEon)
+                            .foregroundColor(.accentNavi)
                         Text(pr.user.login)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary.opacity(0.6))
@@ -1219,7 +1219,7 @@ struct CreatePRSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.pull").foregroundColor(.accentEon)
+                Image(systemName: "arrow.triangle.pull").foregroundColor(.accentNavi)
                 Text("Skapa Pull Request").font(.system(size: 18, weight: .bold))
             }
 
@@ -1307,7 +1307,7 @@ struct CreatePRSheet: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(canCreate ? .accentEon : .secondary)
+                .foregroundColor(canCreate ? .accentNavi : .secondary)
                 .disabled(!canCreate || isCreating)
             }
         }
@@ -1355,7 +1355,7 @@ struct GitHubTokenSheet: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 10) {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 20)).foregroundColor(.accentEon)
+                    .font(.system(size: 20)).foregroundColor(.accentNavi)
                 Text("Anslut GitHub").font(.system(size: 20, weight: .bold))
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -1383,7 +1383,7 @@ struct GitHubTokenSheet: View {
                 .padding(.top, 4)
                 Link("Skapa token på GitHub →",
                      destination: URL(string: "https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=Navi")!)
-                    .font(.system(size: 12)).foregroundColor(.accentEon)
+                    .font(.system(size: 12)).foregroundColor(.accentNavi)
             }
             if !error.isEmpty {
                 Text(error).font(.system(size: 12)).foregroundColor(.red)
@@ -1409,7 +1409,7 @@ struct GitHubTokenSheet: View {
                     else { Text("Anslut").fontWeight(.semibold) }
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(tokenInput.isBlank ? .secondary : .accentEon)
+                .foregroundColor(tokenInput.isBlank ? .secondary : .accentNavi)
                 .disabled(tokenInput.isBlank || isVerifying)
             }
         }

@@ -16,38 +16,60 @@ final class iCloudSyncEngine: ObservableObject {
 
     // MARK: - iCloud container root
 
-    var eonCodeRoot: URL? {
+    var naviRoot: URL? {
         fm.url(forUbiquityContainerIdentifier: Constants.iCloud.containerID)?
             .appendingPathComponent("Documents")
             .appendingPathComponent(Constants.iCloud.rootFolder)
     }
 
     var projectsRoot: URL? {
-        eonCodeRoot?.appendingPathComponent(Constants.iCloud.projectsFolder)
+        naviRoot?.appendingPathComponent(Constants.iCloud.projectsFolder)
     }
 
     var instructionsRoot: URL? {
-        eonCodeRoot?.appendingPathComponent(Constants.iCloud.instructionsFolder)
+        naviRoot?.appendingPathComponent(Constants.iCloud.instructionsFolder)
     }
 
     var versionsRoot: URL? {
-        eonCodeRoot?.appendingPathComponent(Constants.iCloud.versionsFolder)
+        naviRoot?.appendingPathComponent(Constants.iCloud.versionsFolder)
     }
 
     var conversationsRoot: URL? {
-        eonCodeRoot?.appendingPathComponent(Constants.iCloud.conversationsFolder)
+        naviRoot?.appendingPathComponent(Constants.iCloud.conversationsFolder)
     }
 
     var deviceStatusRoot: URL? {
-        eonCodeRoot?.appendingPathComponent(Constants.iCloud.deviceStatusFolder)
+        naviRoot?.appendingPathComponent(Constants.iCloud.deviceStatusFolder)
     }
 
     var plansRoot: URL? {
-        eonCodeRoot?.appendingPathComponent(Constants.iCloud.plansFolder)
+        naviRoot?.appendingPathComponent(Constants.iCloud.plansFolder)
     }
 
     var agentsRoot: URL? {
-        eonCodeRoot?.appendingPathComponent(Constants.iCloud.agentsFolder)
+        naviRoot?.appendingPathComponent(Constants.iCloud.agentsFolder)
+    }
+
+    var mediaRoot: URL? {
+        let base: URL
+        if let icloud = naviRoot {
+            base = icloud
+        } else if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            base = docs.appendingPathComponent("Navi")
+        } else {
+            return nil
+        }
+        let dir = base.appendingPathComponent(Constants.iCloud.mediaFolder)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    var mediaImagesRoot: URL? {
+        naviRoot?.appendingPathComponent(Constants.iCloud.mediaImagesFolder)
+    }
+
+    var mediaVideosRoot: URL? {
+        naviRoot?.appendingPathComponent(Constants.iCloud.mediaVideosFolder)
     }
 
     private init() {
@@ -63,7 +85,7 @@ final class iCloudSyncEngine: ObservableObject {
     }
 
     func setupDirectories() async {
-        guard let root = eonCodeRoot else { return }
+        guard let root = naviRoot else { return }
 
         let dirs = [
             root,
@@ -74,7 +96,12 @@ final class iCloudSyncEngine: ObservableObject {
             root.appendingPathComponent(Constants.iCloud.deviceStatusFolder),
             root.appendingPathComponent(Constants.iCloud.checkpointsFolder),
             root.appendingPathComponent(Constants.iCloud.plansFolder),
-            root.appendingPathComponent(Constants.iCloud.agentsFolder)
+            root.appendingPathComponent(Constants.iCloud.agentsFolder),
+            root.appendingPathComponent(Constants.iCloud.mediaFolder),
+            root.appendingPathComponent(Constants.iCloud.mediaImagesFolder),
+            root.appendingPathComponent(Constants.iCloud.mediaVideosFolder),
+            root.appendingPathComponent("Handoff"),
+            root.appendingPathComponent("Handoff/completed")
         ]
 
         for dir in dirs {
@@ -152,7 +179,7 @@ final class iCloudSyncEngine: ObservableObject {
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
         query.predicate = NSPredicate(format: "%K BEGINSWITH %@",
                                       NSMetadataItemPathKey,
-                                      eonCodeRoot?.path ?? "")
+                                      naviRoot?.path ?? "")
 
         NotificationCenter.default.addObserver(
             self,
@@ -172,7 +199,7 @@ final class iCloudSyncEngine: ObservableObject {
 
     // MARK: - Convenience helpers
 
-    func urlForProject(_ project: EonProject) -> URL? {
+    func urlForProject(_ project: NaviProject) -> URL? {
         projectsRoot?.appendingPathComponent(project.id.uuidString)
     }
 
@@ -196,7 +223,7 @@ final class iCloudSyncEngine: ObservableObject {
         }
     }
 
-    func saveProject(_ project: EonProject, to url: URL) async throws {
+    func saveProject(_ project: NaviProject, to url: URL) async throws {
         let projectDir = url.appendingPathComponent(project.id.uuidString)
         try fm.createDirectory(at: projectDir, withIntermediateDirectories: true)
         let metaURL = projectDir.appendingPathComponent("project.json")

@@ -5,8 +5,8 @@ import Combine
 final class ProjectStore: ObservableObject {
     static let shared = ProjectStore()
 
-    @Published var projects: [EonProject] = []
-    @Published var activeProject: EonProject?
+    @Published var projects: [NaviProject] = []
+    @Published var activeProject: NaviProject?
     @Published var isLoading = false
 
     private let sync = iCloudSyncEngine.shared
@@ -30,14 +30,14 @@ final class ProjectStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        var loaded: [EonProject] = []
+        var loaded: [NaviProject] = []
 
         // Load from iCloud first
         if let dir = sync.projectsRoot,
            let subdirs = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
             for subdir in subdirs {
                 let metaURL = subdir.appendingPathComponent("project.json")
-                if let project = try? await sync.read(EonProject.self, from: metaURL) {
+                if let project = try? await sync.read(NaviProject.self, from: metaURL) {
                     loaded.append(project)
                 }
             }
@@ -45,7 +45,7 @@ final class ProjectStore: ObservableObject {
 
         // Merge with local
         if let localData = UserDefaults.standard.data(forKey: localKey),
-           let localProjects = try? JSONDecoder().decode([EonProject].self, from: localData) {
+           let localProjects = try? JSONDecoder().decode([NaviProject].self, from: localData) {
             for local in localProjects where !loaded.contains(where: { $0.id == local.id }) {
                 loaded.append(local)
             }
@@ -56,7 +56,7 @@ final class ProjectStore: ObservableObject {
 
     // MARK: - Save
 
-    func save(_ project: EonProject) async {
+    func save(_ project: NaviProject) async {
         var updated = project
         updated.modifiedAt = Date()
 
@@ -87,13 +87,13 @@ final class ProjectStore: ObservableObject {
 
     // MARK: - Create
 
-    func create(name: String, at path: URL) async -> EonProject {
+    func create(name: String, at path: URL) async -> NaviProject {
         // Allocate a stable ID first so the iCloud path is deterministic
         let stableID = UUID()
         let iCloudPath: String? = sync.projectsRoot?
             .appendingPathComponent(stableID.uuidString).path
 
-        let project = EonProject(
+        let project = NaviProject(
             id: stableID,
             name: name,
             rootPath: path.path,
@@ -110,7 +110,7 @@ final class ProjectStore: ObservableObject {
 
     // MARK: - Delete
 
-    func delete(_ project: EonProject) async {
+    func delete(_ project: NaviProject) async {
         projects.removeAll { $0.id == project.id }
 
         // Remove from iCloud
@@ -131,7 +131,7 @@ final class ProjectStore: ObservableObject {
 
     // MARK: - Find
 
-    func project(by id: UUID?) -> EonProject? {
+    func project(by id: UUID?) -> NaviProject? {
         guard let id = id else { return nil }
         return projects.first { $0.id == id }
     }

@@ -22,12 +22,12 @@ final class VoiceModeManager: ObservableObject {
     private var silenceTimer: Timer?
     private var consecutiveRecognitionErrors = 0
     private let maxRecognitionRetries = 3
-    private let silenceThreshold: TimeInterval = 2.2
+    private let silenceThreshold: TimeInterval = 1.8
 
     private init() {
-        let preferredLocale = Locale.current
-        speechRecognizer = SFSpeechRecognizer(locale: preferredLocale)
-            ?? SFSpeechRecognizer(locale: Locale(identifier: "sv-SE"))
+        // Prefer Swedish speech recognition
+        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "sv-SE"))
+            ?? SFSpeechRecognizer(locale: Locale.current)
             ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     }
 
@@ -100,6 +100,7 @@ final class VoiceModeManager: ObservableObject {
     // MARK: - Speech recognition
 
     private func startListening() {
+        guard !isListening else { return }  // Prevent double-start
         guard let recognizer = speechRecognizer, recognizer.isAvailable else {
             errorMessage = "Taligenkänning ej tillgänglig"
             return
@@ -127,9 +128,19 @@ final class VoiceModeManager: ObservableObject {
             isListening = true
             errorMessage = nil
         } catch {
-            NaviLog.error("VoiceMode: kunde inte starta ljudinspelning", error: error)
-            errorMessage = "Kunde inte starta ljudinspelning"
-            return
+            // Clean up and retry once
+            NaviLog.warning("VoiceMode: första start misslyckades, försöker igen…")
+            audioEngine.inputNode.removeTap(onBus: 0)
+            audioEngine.prepare()
+            do {
+                try audioEngine.start()
+                isListening = true
+                errorMessage = nil
+            } catch {
+                NaviLog.error("VoiceMode: kunde inte starta ljudinspelning", error: error)
+                errorMessage = "Kunde inte starta ljudinspelning"
+                return
+            }
         }
 
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
@@ -175,12 +186,13 @@ final class VoiceModeManager: ObservableObject {
     }
 
     private func stopListening() {
+        isListening = false  // Set early to prevent re-entry from timer callback
         silenceTimer?.invalidate()
         silenceTimer = nil
         if audioEngine.isRunning {
             audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
         }
+        audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionRequest = nil
@@ -203,28 +215,16 @@ final class VoiceModeManager: ObservableObject {
 
     private func sendToClaudeAndSpeak() async {
         let text = userTranscript
-        let manager = ChatManager.shared
-
-        if manager.activeConversation == nil {
-            _ = manager.newConversation()
-        }
-        guard var conv = manager.conversations.first(where: { $0.id == manager.activeConversation?.id })
-                ?? manager.activeConversation else {
-            resumeListening()
-            return
-        }
+        let voiceInstruction = "Svara ALLTID på svenska. Kort och koncist, max 2-3 meningar. Ingen markdown, kod eller formatering."
 
         do {
-            var fullResponse = ""
-            try await manager.send(text: text, images: [], in: &conv) { chunk in
-                fullResponse += chunk
-            }
+            let fullResponse: String
 
-            await MainActor.run {
-                manager.activeConversation = conv
-                if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
-                    manager.conversations[idx] = conv
-                }
+            // Route to project agent if an active project exists, otherwise use pure chat
+            if let project = ProjectStore.shared.activeProject {
+                fullResponse = try await sendViaProjectAgent(text: text, project: project, voiceInstruction: voiceInstruction)
+            } else {
+                fullResponse = try await sendViaChatManager(text: text, voiceInstruction: voiceInstruction)
             }
 
             let clean = Self.stripMarkdown(fullResponse)
@@ -247,6 +247,61 @@ final class VoiceModeManager: ObservableObject {
             NaviLog.error("VoiceMode: fel vid kommunikation", error: error)
             errorMessage = "Fel vid kommunikation med Claude"
             if isActive { resumeListening() }
+        }
+    }
+
+    /// Send via pure chat (no project context)
+    private func sendViaChatManager(text: String, voiceInstruction: String) async throws -> String {
+        let manager = ChatManager.shared
+
+        if manager.activeConversation == nil {
+            _ = manager.newConversation()
+        }
+        guard var conv = manager.conversations.first(where: { $0.id == manager.activeConversation?.id })
+                ?? manager.activeConversation else {
+            return ""
+        }
+
+        // Use Haiku for voice — responses are short and conversational
+        let originalModel = conv.model
+        conv.model = .haiku
+
+        var fullResponse = ""
+        do {
+            try await manager.send(text: text, images: [], in: &conv, voiceInstruction: voiceInstruction) { chunk in
+                fullResponse += chunk
+            }
+        } catch {
+            conv.model = originalModel
+            if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
+                manager.conversations[idx] = conv
+            }
+            throw error
+        }
+
+        // Restore model so subsequent non-voice messages use the user's chosen model
+        conv.model = originalModel
+
+        manager.activeConversation = conv
+        if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
+            manager.conversations[idx] = conv
+        }
+
+        return fullResponse
+    }
+
+    /// Send via project agent (coding context)
+    private func sendViaProjectAgent(text: String, project: NaviProject, voiceInstruction: String) async throws -> String {
+        let agent = AgentPool.shared.agent(for: project)
+
+        // Send the message and wait for completion
+        return await withCheckedContinuation { continuation in
+            agent.sendMessage("[RÖSTLÄGE: \(voiceInstruction)] \(text)", images: []) {
+                // Get the last assistant message from the agent's conversation
+                let lastMsg = agent.conversation.messages.last(where: { $0.role == .assistant })
+                let response = lastMsg?.textContent ?? "Uppgiften utförd."
+                continuation.resume(returning: response)
+            }
         }
     }
 
@@ -313,9 +368,8 @@ final class SystemTTSFallback: NSObject, AVSpeechSynthesizerDelegate {
             self.continuation = cont
 
             let utterance = AVSpeechUtterance(string: text)
-            let langCode = Locale.current.language.languageCode?.identifier ?? "sv"
-            utterance.voice = AVSpeechSynthesisVoice(language: langCode)
-                ?? AVSpeechSynthesisVoice(language: "sv-SE")
+            utterance.voice = AVSpeechSynthesisVoice(language: "sv-SE")
+                ?? AVSpeechSynthesisVoice(language: "sv")
             utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
             utterance.pitchMultiplier = 1.0
 

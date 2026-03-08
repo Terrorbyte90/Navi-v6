@@ -163,7 +163,7 @@ extension Color {
         Color(UIColor.secondarySystemBackground)
         #endif
     }
-    static var accentEon: Color { Color(red: 0.3, green: 0.6, blue: 1.0) }
+    static var accentNavi: Color { Color(red: 0.3, green: 0.6, blue: 1.0) }
     static var assistantBubble: Color { Color.clear }
     static var userBubble: Color {
         #if os(macOS)

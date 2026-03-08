@@ -9,10 +9,12 @@ struct SettingsView: View {
     @State private var elevenLabsKey = ""
     @State private var muxKey = ""
     @State private var githubToken = ""
+    @State private var xaiKey = ""
     @State private var macServerURL = ""
     @State private var showAnthropicKey = false
     @State private var saveMessage = ""
     @State private var showAddKeySheet = false
+    @State private var showMemoryView = false
 
     var body: some View {
         #if os(macOS)
@@ -48,11 +50,12 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     memoriesSection
                     Divider().opacity(0.2)
-                    NavigationLink("Visa och redigera alla minnen →") {
-                        MemoryView()
+                    Button("Visa och redigera alla minnen →") {
+                        showMemoryView = true
                     }
                     .font(.system(size: 13))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
+                    .buttonStyle(.plain)
                 }
                 .padding()
             }
@@ -60,6 +63,10 @@ struct SettingsView: View {
         }
         .frame(width: 560, height: 640)
         .background(Color.chatBackground)
+        .sheet(isPresented: $showMemoryView) {
+            MemoryView()
+                .frame(width: 500, height: 560)
+        }
     }
 
     var iOSSettings: some View {
@@ -67,13 +74,27 @@ struct SettingsView: View {
             Section("API-nycklar") { apiKeysSection }
             Section("Claude-modell") { modelSection }
             Section("iOS Agent-läge") { iOSAgentModeSection }
+            Section("Mac Remote") {
+                Toggle("Mac Remote", isOn: $settings.macRemoteEnabled)
+                Text("All kodning och exekvering sker på din Mac. iOS visar resultaten i realtid. Om du stänger iOS-appen fortsätter Mac och skickar en notis när uppgiften är klar.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
             Section("Parallella workers") { parallelWorkersSection }
             Section("Synk") { syncSection }
+            Section("Mac Handoff") {
+                Toggle("Aktivera Task Handoff", isOn: $settings.macHandoffEnabled)
+                Text("Om aktiverat: om iOS-appen stängs medan en uppgift körs, tar Mac över och slutför den. En notis skickas när uppgiften är klar.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
             Section("Röst (ElevenLabs)") {
                 Toggle("Aktivera text-till-tal", isOn: $settings.ttsEnabled)
                 VoicePickerRow()
             }
             Section("Minnen") { memoriesSection }
+
+            Section("API-saldon") { apiBalancesSection }
         }
         .navigationTitle("Inställningar")
         #if os(iOS)
@@ -81,6 +102,10 @@ struct SettingsView: View {
         #endif
         .background(Color.chatBackground)
         .scrollContentBackground(.hidden)
+    }
+
+    var apiBalancesSection: some View {
+        APIBalancesView()
     }
 
     var iOSAgentModeSection: some View {
@@ -131,7 +156,7 @@ struct SettingsView: View {
                         in: 2...10,
                         step: 1
                     )
-                    .tint(.accentEon)
+                    .tint(.accentNavi)
                 }
 
                 Text("Komplexa uppgifter delas upp i parallella deluppgifter. Fler workers = snabbare men fler API-anrop.")
@@ -155,7 +180,7 @@ struct SettingsView: View {
             let count = MemoryManager.shared.memories.count
             HStack {
                 Image(systemName: "brain")
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                     .font(.system(size: 13))
                 Text("\(count) minne\(count == 1 ? "" : "n") sparade")
                     .font(.system(size: 13))
@@ -163,7 +188,7 @@ struct SettingsView: View {
                 #if os(iOS)
                 NavigationLink("Hantera →") { MemoryView() }
                     .font(.system(size: 13))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                 #endif
             }
         }
@@ -201,6 +226,16 @@ struct SettingsView: View {
                 hint: "Används för video-streaming och media-hantering."
             )
 
+            // ── xAI / Grok ───────────────────────────────────────────────────
+            APIKeyRow(
+                label: "xAI (Grok)",
+                icon: "bolt.fill",
+                placeholder: "xai-…",
+                text: $xaiKey,
+                hint: "Används för Grok-modeller i chatt samt bild/video-generering under Media.",
+                isRevealable: true
+            )
+
             // ── GitHub ───────────────────────────────────────────────────────
             APIKeyRow(
                 label: "GitHub Token",
@@ -232,6 +267,7 @@ struct SettingsView: View {
             elevenLabsKey = KeychainManager.shared.elevenLabsAPIKey ?? ""
             muxKey = KeychainManager.shared.muxAPIKey ?? ""
             githubToken = KeychainManager.shared.githubToken ?? ""
+            xaiKey = KeychainManager.shared.xaiAPIKey ?? ""
             macServerURL = settings.macServerURL
         }
         .sheet(isPresented: $showAddKeySheet) {
@@ -256,7 +292,7 @@ struct SettingsView: View {
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 18))
-                        .foregroundColor(.accentEon)
+                        .foregroundColor(.accentNavi)
                 }
                 .buttonStyle(.plain)
                 .help("Lägg till API-nyckel")
@@ -287,7 +323,7 @@ struct SettingsView: View {
 
     var modelSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Standard Claude-modell")
+            Text("Standard AI-modell")
                 .font(.system(size: 16, weight: .bold))
 
             ModelPickerView(currentModel: settings.defaultModel) { model in
@@ -376,6 +412,10 @@ struct SettingsView: View {
             saved = true
             Task { await GitHubManager.shared.verifyToken() }
         }
+        if !xaiKey.isBlank {
+            try? KeychainManager.shared.saveXAIKey(xaiKey)
+            saved = true
+        }
 
         saveMessage = saved ? "✓ Sparade" : "Ange en nyckel"
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -398,7 +438,7 @@ struct SyncMethodRow: View {
                 .frame(width: 16)
             Image(systemName: icon)
                 .font(.system(size: 12))
-                .foregroundColor(.accentEon)
+                .foregroundColor(.accentNavi)
             Text(title)
                 .font(.system(size: 13, weight: .medium))
             Text("·")
@@ -548,7 +588,7 @@ struct AddAPIKeySheet: View {
             HStack {
                 Image(systemName: "key.fill")
                     .font(.system(size: 18))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                 Text("Lägg till API-nyckel")
                     .font(.system(size: 18, weight: .bold))
             }
@@ -568,7 +608,7 @@ struct AddAPIKeySheet: View {
                 Spacer()
                 Button("Spara") { save() }
                     .buttonStyle(.plain)
-                    .foregroundColor(canSave ? .accentEon : .secondary)
+                    .foregroundColor(canSave ? .accentNavi : .secondary)
                     .disabled(!canSave)
                     .fontWeight(.semibold)
             }
@@ -674,8 +714,29 @@ struct ModelPickerView: View {
     let onSelect: (ClaudeModel) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(ClaudeModel.allCases) { model in
+        VStack(alignment: .leading, spacing: 12) {
+            // Anthropic section
+            modelSection(title: "Anthropic", icon: "brain", models: ClaudeModel.anthropicModels)
+
+            // xAI / Grok section
+            modelSection(title: "xAI / Grok", icon: "bolt.fill", models: ClaudeModel.xaiModels)
+        }
+    }
+
+    @ViewBuilder
+    private func modelSection(title: String, icon: String, models: [ClaudeModel]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.leading, 4)
+
+            ForEach(models) { model in
                 Button {
                     onSelect(model)
                 } label: {
@@ -689,9 +750,9 @@ struct ModelPickerView: View {
                                         .font(.system(size: 9, weight: .bold))
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 1)
-                                        .background(Color.accentEon.opacity(0.2))
+                                        .background(Color.accentNavi.opacity(0.2))
                                         .cornerRadius(4)
-                                        .foregroundColor(.accentEon)
+                                        .foregroundColor(.accentNavi)
                                 }
                             }
                             Text(model.description)
@@ -701,7 +762,7 @@ struct ModelPickerView: View {
                         Spacer()
                         if model == currentModel {
                             Image(systemName: "checkmark")
-                                .foregroundColor(.accentEon)
+                                .foregroundColor(.accentNavi)
                                 .font(.system(size: 12, weight: .semibold))
                         }
                     }
@@ -709,7 +770,7 @@ struct ModelPickerView: View {
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(model == currentModel ? Color.accentEon.opacity(0.1) : Color.white.opacity(0.04))
+                            .fill(model == currentModel ? Color.accentNavi.opacity(0.1) : Color.white.opacity(0.04))
                     )
                 }
                 .buttonStyle(.plain)
@@ -724,10 +785,48 @@ struct CostDashboardView: View {
     @StateObject private var exchange = ExchangeRateService.shared
     @StateObject private var tracker = CostTracker.shared
     @State private var showResetConfirm = false
+    @State private var xaiBalance: XAIBalance?
+    @State private var isLoadingXAI = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+
+                // MARK: API-saldon
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("API-saldon")
+                            .font(.system(size: 16, weight: .bold))
+                        Spacer()
+                        GlassButton("Uppdatera", icon: "arrow.clockwise") {
+                            Task { await refreshBalances() }
+                        }
+                    }
+
+                    HStack(spacing: 12) {
+                        // Anthropic — no balance API, show tracked spend
+                        balanceCard(
+                            provider: "Anthropic",
+                            icon: "brain",
+                            iconColor: .accentNavi,
+                            balance: nil,
+                            spent: tracker.totalSEK,
+                            note: "Inget saldo-API — visar spenderat"
+                        )
+
+                        // xAI / Grok — live balance
+                        balanceCard(
+                            provider: "xAI / Grok",
+                            icon: "bolt.fill",
+                            iconColor: Color(red: 1.0, green: 0.45, blue: 0.0),
+                            balance: xaiBalance,
+                            spent: nil,
+                            note: xaiBalance == nil ? "Tryck uppdatera" : nil
+                        )
+                    }
+                }
+
+                Divider().opacity(0.2)
 
                 // MARK: Totals
                 VStack(alignment: .leading, spacing: 12) {
@@ -738,7 +837,7 @@ struct CostDashboardView: View {
                         costCard(
                             title: "Totalt spenderat",
                             icon: "chart.bar.fill",
-                            iconColor: .accentEon,
+                            iconColor: .accentNavi,
                             primary: tracker.formattedTotal().components(separatedBy: " (").first ?? "—",
                             secondary: tracker.formattedTotal().components(separatedBy: " (").last.map { String($0.dropLast()) } ?? ""
                         )
@@ -766,7 +865,7 @@ struct CostDashboardView: View {
                                     .foregroundColor(.secondary.opacity(0.4))
                                 Text(model.displayName)
                                     .font(.system(size: 11))
-                                    .foregroundColor(.accentEon)
+                                    .foregroundColor(.accentNavi)
                             }
                         }
                     }
@@ -782,7 +881,7 @@ struct CostDashboardView: View {
                             .foregroundColor(.secondary)
 
                         HStack(spacing: 12) {
-                            tokenStatCard("Anrop", value: "\(tracker.totalRequests)", color: .accentEon)
+                            tokenStatCard("Anrop", value: "\(tracker.totalRequests)", color: .accentNavi)
                             tokenStatCard("Indata", value: formatTokens(tracker.totalInputTokens), color: .blue)
                             tokenStatCard("Utdata", value: formatTokens(tracker.totalOutputTokens), color: .purple)
                         }
@@ -825,22 +924,27 @@ struct CostDashboardView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
 
-                    ForEach(ClaudeModel.allCases) { model in
-                        HStack {
-                            Text(model.displayName)
-                                .font(.system(size: 12))
-                            Spacer()
-                            Text("In: $\(String(format: "%.2f", model.inputPricePerMTok))")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.green)
-                            Text("Ut: $\(String(format: "%.2f", model.outputPricePerMTok))")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.orange)
-                        }
-                        .padding(.vertical, 2)
+                    // Anthropic
+                    Text("Anthropic")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .padding(.top, 4)
+
+                    ForEach(ClaudeModel.anthropicModels) { model in
+                        pricingRow(model: model)
                     }
 
-                    Text("Cache-läsning kostar 10% av normalpris. Prompt-caching aktiveras automatiskt.")
+                    // xAI / Grok
+                    Text("xAI / Grok")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .padding(.top, 4)
+
+                    ForEach(ClaudeModel.xaiModels) { model in
+                        pricingRow(model: model)
+                    }
+
+                    Text("Cache-läsning kostar 10% av normalpris (Anthropic). Prompt-caching aktiveras automatiskt.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary.opacity(0.6))
                 }
@@ -866,9 +970,90 @@ struct CostDashboardView: View {
             }
             .padding()
         }
+        .onAppear {
+            if xaiBalance == nil && KeychainManager.shared.xaiAPIKey?.isEmpty == false {
+                Task { await refreshBalances() }
+            }
+        }
     }
 
     // MARK: - Helpers
+
+    @ViewBuilder
+    private func balanceCard(provider: String, icon: String, iconColor: Color, balance: XAIBalance?, spent: Double?, note: String?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundColor(iconColor)
+                Text(provider)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            if let balance, let remaining = balance.remainingCredits {
+                let sek = remaining * ExchangeRateService.shared.usdToSEK
+                Text(String(format: "%.0f kr", sek))
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                Text(String(format: "$%.2f", remaining))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+            } else if let spent {
+                Text(String(format: "%.2f kr", spent))
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.orange)
+                Text("spenderat")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.6))
+            } else if isLoadingXAI {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(height: 20)
+            } else {
+                Text("—")
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.4))
+            }
+
+            if let note {
+                Text(note)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary.opacity(0.4))
+                    .lineLimit(2)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(10)
+    }
+
+    private func refreshBalances() async {
+        guard KeychainManager.shared.xaiAPIKey?.isEmpty == false else { return }
+        isLoadingXAI = true
+        defer { isLoadingXAI = false }
+        do {
+            xaiBalance = try await XAIClient.shared.fetchBalance()
+        } catch {
+            NaviLog.error("Kunde inte hämta xAI-saldo", error: error)
+        }
+    }
+
+    @ViewBuilder
+    private func pricingRow(model: ClaudeModel) -> some View {
+        HStack {
+            Text(model.displayName)
+                .font(.system(size: 12))
+            Spacer()
+            Text("In: $\(String(format: "%.2f", model.inputPricePerMTok))")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.green)
+            Text("Ut: $\(String(format: "%.2f", model.outputPricePerMTok))")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.orange)
+        }
+        .padding(.vertical, 2)
+    }
 
     private func formatTokens(_ n: Int) -> String {
         if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
@@ -918,6 +1103,89 @@ struct CostDashboardView: View {
     }
 }
 
+// MARK: - API Balances (compact, for iOS Settings bottom)
+
+struct APIBalancesView: View {
+    @StateObject private var tracker = CostTracker.shared
+    @State private var xaiBalance: XAIBalance?
+    @State private var isLoading = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "brain")
+                    .font(.system(size: 12))
+                    .foregroundColor(.accentNavi)
+                Text("Anthropic")
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("Spenderat: \(formatSEK(tracker.totalSEK))")
+                        .font(.system(size: 12, design: .monospaced))
+                    Text("Session: \(formatSEK(tracker.sessionSEK))")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Divider().opacity(0.15)
+
+            HStack {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.orange)
+                Text("xAI / Grok")
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                if isLoading {
+                    ProgressView().scaleEffect(0.6)
+                } else if let bal = xaiBalance {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("Saldo: \(bal.formattedRemaining)")
+                            .font(.system(size: 12, design: .monospaced))
+                        Text(bal.formattedRemainingInSEK)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    Text("Tryck uppdatera")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+            }
+
+            Button {
+                Task { await refresh() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11))
+                    Text("Uppdatera saldon")
+                        .font(.system(size: 12))
+                }
+                .foregroundColor(.accentNavi)
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+        }
+        .onAppear { Task { await refresh() } }
+    }
+
+    private func refresh() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            xaiBalance = try await XAIClient.shared.fetchBalance()
+        } catch {
+            NaviLog.warning("Kunde inte hämta xAI-saldo")
+        }
+    }
+
+    private func formatSEK(_ v: Double) -> String {
+        v < 0.01 ? "< 0.01 kr" : String(format: "%.2f kr", v)
+    }
+}
+
 // MARK: - Previews
 
 #Preview("SettingsView") {
@@ -954,7 +1222,7 @@ struct VoicePickerRow: View {
                     Task { await tts.fetchVoices() }
                 }
                 .font(.system(size: 12))
-                .foregroundColor(.accentEon)
+                .foregroundColor(.accentNavi)
             }
 
             if !tts.availableVoices.isEmpty {

@@ -496,7 +496,7 @@ final class GitHubManager: ObservableObject {
     // MARK: - Auto-create repo for new project
 
     /// Creates a new GitHub repo for a project (if no repo is linked) and pushes initial content.
-    func ensureRepoExists(for project: EonProject) async -> GitHubRepo? {
+    func ensureRepoExists(for project: NaviProject) async -> GitHubRepo? {
         // Already linked
         if let fullName = project.githubRepoFullName,
            let existing = repos.first(where: { $0.fullName == fullName }) {
@@ -580,9 +580,9 @@ final class GitHubManager: ObservableObject {
         return result.output.isEmpty ? "Rent" : result.output
     }
 
-    // MARK: - Open repo as EonProject
+    // MARK: - Open repo as NaviProject
 
-    func openAsProject(repo: GitHubRepo) async -> EonProject? {
+    func openAsProject(repo: GitHubRepo) async -> NaviProject? {
         guard let localPath = await cloneOrOpen(repo: repo) else { return nil }
 
         // Check if this repo is already linked to an existing project
@@ -596,7 +596,7 @@ final class GitHubManager: ObservableObject {
             return updated
         }
 
-        var project = EonProject(name: repo.name, rootPath: localPath)
+        var project = NaviProject(name: repo.name, rootPath: localPath)
         project.githubRepoFullName = repo.fullName
         project.githubBranch = repo.currentBranch
         await ProjectStore.shared.save(project)

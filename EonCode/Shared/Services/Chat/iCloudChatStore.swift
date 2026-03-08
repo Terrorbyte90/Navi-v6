@@ -145,7 +145,15 @@ final class iCloudChatStore: ObservableObject {
 
 extension iCloudSyncEngine {
     var chatsDirectory: URL? {
-        guard let base = eonCodeRoot else { return nil }
+        let base: URL
+        if let icloud = naviRoot {
+            base = icloud
+        } else {
+            guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return nil
+            }
+            base = docs.appendingPathComponent("Navi")
+        }
         let dir = base.appendingPathComponent("Chats", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir

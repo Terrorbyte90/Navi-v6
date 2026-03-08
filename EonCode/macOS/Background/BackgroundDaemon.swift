@@ -75,7 +75,7 @@ final class BackgroundDaemon: ObservableObject {
             "deviceName": UIDevice.deviceName,
             "timestamp": Date().iso8601
         ]
-        guard let root = iCloudSyncEngine.shared.eonCodeRoot,
+        guard let root = iCloudSyncEngine.shared.naviRoot,
               let data = try? JSONSerialization.data(withJSONObject: info)
         else { return }
         let macInfoURL = root.appendingPathComponent("mac-server.json")

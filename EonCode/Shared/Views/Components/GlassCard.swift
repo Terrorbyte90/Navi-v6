@@ -65,20 +65,20 @@ struct GlassButton: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isPrimary ? Color.accentEon.opacity(0.3) :
+                    .fill(isPrimary ? Color.accentNavi.opacity(0.3) :
                           isDestructive ? Color.red.opacity(0.2) :
                           Color.white.opacity(0.1))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(
-                                isPrimary ? Color.accentEon.opacity(0.5) :
+                                isPrimary ? Color.accentNavi.opacity(0.5) :
                                 isDestructive ? Color.red.opacity(0.4) :
                                 Color.white.opacity(0.2),
                                 lineWidth: 0.5
                             )
                     )
             )
-            .foregroundColor(isDestructive ? .red : isPrimary ? .accentEon : .primary)
+            .foregroundColor(isDestructive ? .red : isPrimary ? .accentNavi : .primary)
         }
         .buttonStyle(.plain)
     }

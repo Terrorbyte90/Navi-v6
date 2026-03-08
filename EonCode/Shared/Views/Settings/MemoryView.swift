@@ -35,7 +35,7 @@ struct MemoryView: View {
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 18))
-                        .foregroundColor(.accentEon)
+                        .foregroundColor(.accentNavi)
                 }
                 .buttonStyle(.plain)
             }
@@ -94,7 +94,7 @@ struct MemoryView: View {
             Spacer()
             Image(systemName: "brain")
                 .font(.system(size: 48))
-                .foregroundColor(.accentEon.opacity(0.3))
+                .foregroundColor(.accentNavi.opacity(0.3))
             Text("Inga minnen ännu")
                 .font(.system(size: 20, weight: .bold))
             Text("Minnen extraheras automatiskt från dina konversationer och hjälper Claude att bli bättre på att hjälpa just dig.")
@@ -124,7 +124,7 @@ struct MemoryCategorySection: View {
             HStack(spacing: 6) {
                 Image(systemName: category.icon)
                     .font(.system(size: 11))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                 Text(category.displayName.uppercased())
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.secondary)

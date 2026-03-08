@@ -91,7 +91,7 @@ final class ElevenLabsClient: ObservableObject {
 
         let body: [String: Any] = [
             "text": text,
-            "model_id": "eleven_turbo_v2",
+            "model_id": "eleven_multilingual_v3",
             "voice_settings": ["stability": 0.5, "similarity_boost": 0.75]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

@@ -52,7 +52,7 @@ struct AgentStatusView: View {
                     GlassCard(cornerRadius: 12, padding: 12) {
                         HStack(spacing: 10) {
                             Image(systemName: "arrow.right.circle.fill")
-                                .foregroundColor(.accentEon)
+                                .foregroundColor(.accentNavi)
                             Text(agent.currentStatus)
                                 .font(.system(size: 13))
                             Spacer()
@@ -121,7 +121,7 @@ struct OrchestratorProgressView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "cpu.fill")
-                        .foregroundColor(.accentEon)
+                        .foregroundColor(.accentNavi)
                         .font(.system(size: 13))
                     Text("Orchestrator — Våg \(orchestrator.currentWave + 1)/\(orchestrator.totalWaves)")
                         .font(.system(size: 13, weight: .semibold))
@@ -132,7 +132,7 @@ struct OrchestratorProgressView: View {
                 }
 
                 ProgressView(value: orchestrator.overallProgress)
-                    .tint(.accentEon)
+                    .tint(.accentNavi)
 
                 if !orchestrator.waveDescription.isEmpty {
                     Text(orchestrator.waveDescription)
@@ -249,7 +249,7 @@ struct MultiProjectDashboard: View {
 }
 
 struct ProjectStatusCard: View {
-    let project: EonProject
+    let project: NaviProject
     @ObservedObject var pool: AgentPool
 
     var agent: ProjectAgent? { pool.agents[project.id] }
@@ -293,7 +293,7 @@ struct ProjectStatusCard: View {
 // MARK: - Previews
 
 #Preview("AgentStatusView – idle") {
-    let project = EonProject(name: "Navi Preview", rootPath: "/tmp/preview", color: .blue)
+    let project = NaviProject(name: "Navi Preview", rootPath: "/tmp/preview", color: .blue)
     let agent = ProjectAgent(project: project)
     return AgentStatusView(agent: agent)
         .frame(width: 400, height: 500)
@@ -302,15 +302,15 @@ struct ProjectStatusCard: View {
 #Preview("MultiProjectDashboard") {
     let store = ProjectStore.shared
     store.projects = [
-        EonProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue),
-        EonProject(name: "Lunaflix iOS", rootPath: "/tmp/luna", color: .purple),
-        EonProject(name: "Medo Test", rootPath: "/tmp/medo", color: .green),
+        NaviProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue),
+        NaviProject(name: "Lunaflix iOS", rootPath: "/tmp/luna", color: .purple),
+        NaviProject(name: "Medo Test", rootPath: "/tmp/medo", color: .green),
     ]
     return MultiProjectDashboard()
 }
 
 #Preview("ProjectStatusCard") {
-    let project = EonProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue)
+    let project = NaviProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue)
     return ProjectStatusCard(project: project, pool: AgentPool.shared)
         .padding()
         .background(Color.black)

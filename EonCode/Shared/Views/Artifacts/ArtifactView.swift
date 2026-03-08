@@ -135,9 +135,9 @@ struct ArtifactView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                     .frame(width: 28, height: 28)
-                    .background(Color.accentEon.opacity(0.12))
+                    .background(Color.accentNavi.opacity(0.12))
                     .cornerRadius(7)
             }
             .buttonStyle(.plain)
@@ -185,13 +185,13 @@ struct ArtifactView: View {
             .padding(.vertical, 5)
             .background(
                 Capsule()
-                    .fill(isSelected ? Color.accentEon.opacity(0.25) : Color.white.opacity(0.07))
+                    .fill(isSelected ? Color.accentNavi.opacity(0.25) : Color.white.opacity(0.07))
             )
-            .foregroundColor(isSelected ? .accentEon : .secondary)
+            .foregroundColor(isSelected ? .accentNavi : .secondary)
             .contentShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(isSelected ? Color.accentEon.opacity(0.5) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.accentNavi.opacity(0.5) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -319,7 +319,7 @@ struct ArtifactView: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.accentEon.opacity(0.25) : Color.clear)
+                .fill(isSelected ? Color.accentNavi.opacity(0.25) : Color.clear)
         )
         .padding(.horizontal, 6)
     }

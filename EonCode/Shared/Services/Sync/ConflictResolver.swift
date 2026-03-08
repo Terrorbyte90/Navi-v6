@@ -12,7 +12,7 @@ struct ConflictResolver {
     static func resolve(
         localFile: URL,
         remoteFile: URL,
-        project: EonProject
+        project: NaviProject
     ) async -> Resolution {
         guard let localDate = localFile.modificationDate as Date?,
               let remoteDate = remoteFile.modificationDate as Date?
@@ -39,7 +39,7 @@ struct ConflictResolver {
         _ resolution: Resolution,
         localFile: URL,
         remoteFile: URL,
-        project: EonProject
+        project: NaviProject
     ) async {
         switch resolution {
         case .useLocal:

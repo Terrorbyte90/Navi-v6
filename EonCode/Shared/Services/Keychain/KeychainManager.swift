@@ -119,6 +119,15 @@ final class KeychainManager {
         try KeychainSync.saveSync(key: Constants.Keychain.githubKey, value: token)
     }
 
+    var xaiAPIKey: String? {
+        KeychainSync.getSync(key: Constants.Keychain.xaiKey)
+            ?? (try? get(key: Constants.Keychain.xaiKey))
+    }
+
+    func saveXAIKey(_ key: String) throws {
+        try KeychainSync.saveSync(key: Constants.Keychain.xaiKey, value: key)
+    }
+
     func getKey(for service: String) -> String? {
         try? get(key: service)
     }

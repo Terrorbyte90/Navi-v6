@@ -77,7 +77,7 @@ final class LocalNetworkServer: ObservableObject {
 
     private func publishURLToiCloud() async {
         guard let url = serverURL,
-              let root = iCloudSyncEngine.shared.eonCodeRoot
+              let root = iCloudSyncEngine.shared.naviRoot
         else { return }
 
         let macInfoURL = root.appendingPathComponent("mac-server.json")
@@ -209,7 +209,7 @@ final class LocalNetworkServer: ObservableObject {
     }
 
     private func handleGetFile(path: String) async -> HTTPResponse {
-        guard let root = iCloudSyncEngine.shared.eonCodeRoot else { return .notFound() }
+        guard let root = iCloudSyncEngine.shared.naviRoot else { return .notFound() }
         let url = root.appendingPathComponent(path)
         guard let data = try? Data(contentsOf: url) else { return .notFound() }
         return HTTPResponse(statusCode: 200, body: data, contentType: "application/octet-stream")
@@ -217,7 +217,7 @@ final class LocalNetworkServer: ObservableObject {
 
     private func handlePutFile(path: String, body: Data?) async -> HTTPResponse {
         guard let body = body,
-              let root = iCloudSyncEngine.shared.eonCodeRoot
+              let root = iCloudSyncEngine.shared.naviRoot
         else { return .badRequest() }
 
         let url = root.appendingPathComponent(path)
@@ -364,7 +364,7 @@ final class LocalNetworkClient {
     }
 
     private func readMacURLFromiCloud() async -> URL? {
-        guard let root = iCloudSyncEngine.shared.eonCodeRoot else { return nil }
+        guard let root = iCloudSyncEngine.shared.naviRoot else { return nil }
         let macInfoURL = root.appendingPathComponent("mac-server.json")
         guard let data = try? await iCloudSyncEngine.shared.readData(from: macInfoURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],

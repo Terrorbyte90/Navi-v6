@@ -1,10 +1,14 @@
 import SwiftUI
+#if os(iOS)
+import UserNotifications
+#endif
 
 @main
 struct NaviApp: App {
     @StateObject private var projectStore = ProjectStore.shared
     @StateObject private var exchange = ExchangeRateService.shared
     @StateObject private var icloud = iCloudSyncEngine.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Start background services
@@ -14,11 +18,14 @@ struct NaviApp: App {
         #if os(macOS)
         Task { @MainActor in
             BackgroundDaemon.shared.start()
+            TaskHandoffManager.shared.startMonitoring()
         }
         #else
         Task { @MainActor in
             PeerSyncEngine.shared.startBrowsing()
             InstructionQueue.shared.startProcessingLoop()
+            // Request notification permissions for handoff
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         }
         #endif
     }
@@ -32,6 +39,13 @@ struct NaviApp: App {
                     minHeight: Constants.UI.minWindowHeight
                 )
                 .environmentObject(projectStore)
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        Task { @MainActor in
+                            await DeviceStatusBroadcaster.shared.broadcast()
+                        }
+                    }
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 800)
@@ -42,6 +56,18 @@ struct NaviApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(projectStore)
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        // Aggressive re-connect + check handoff completions
+                        Task { @MainActor in
+                            await DeviceStatusBroadcaster.shared.broadcast()
+                            await DeviceStatusBroadcaster.shared.fetchRemoteStatus()
+                            PeerSyncEngine.shared.startBrowsing()
+                            LocalNetworkClient.shared.startAutoDiscovery()
+                            await TaskHandoffManager.shared.checkForCompletions()
+                        }
+                    }
+                }
         }
         #endif
     }

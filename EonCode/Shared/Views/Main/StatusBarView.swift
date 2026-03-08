@@ -91,7 +91,7 @@ struct StatusBarView: View {
 // MARK: - Compact model picker (for toolbar)
 
 struct ModelPickerCompact: View {
-    let project: EonProject
+    let project: NaviProject
     @State private var showPicker = false
 
     var body: some View {
@@ -132,7 +132,7 @@ struct SpinningGearIcon: View {
     var body: some View {
         Image(systemName: systemName)
             .font(.system(size: size))
-            .foregroundColor(.accentEon)
+            .foregroundColor(.accentNavi)
             .rotationEffect(.degrees(angle))
             .onAppear {
                 withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {

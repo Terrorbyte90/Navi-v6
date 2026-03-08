@@ -56,12 +56,12 @@ final class AgentEngine: ObservableObject {
     private let claude = ClaudeAPIClient.shared
     private let checkpoint = CheckpointManager.shared
     private var cancellable: AnyCancellable?
-    private var currentProject: EonProject?
+    private var currentProject: NaviProject?
 
     // Tool executor — platform-specific
     private let toolExecutor = ToolExecutor()
 
-    func setProject(_ project: EonProject) {
+    func setProject(_ project: NaviProject) {
         currentProject = project
         toolExecutor.currentProjectID = project.id
     }
@@ -343,21 +343,19 @@ final class AgentEngine: ObservableObject {
                 model: conversation.model,
                 systemPrompt: conversation.systemPrompt ?? MessageBuilder.agentSystemPrompt(for: currentProject),
                 onEvent: { event in
-                    Task { @MainActor in
-                        switch event {
-                        case .contentBlockDelta(_, let delta):
-                            if case .text(let t) = delta {
-                                fullText += t
-                                onToken(t)
-                            }
-                        case .messageDelta(_, let usage):
-                            if let u = usage {
-                                finalUsage = u
-                            }
-                        case .messageStart(_, _):
-                            break
-                        default: break
+                    switch event {
+                    case .contentBlockDelta(_, let delta):
+                        if case .text(let t) = delta {
+                            fullText += t
+                            onToken(t)
                         }
+                    case .messageDelta(_, let usage):
+                        if let u = usage {
+                            finalUsage = u
+                        }
+                    case .messageStart(_, _):
+                        break
+                    default: break
                     }
                 }
             )

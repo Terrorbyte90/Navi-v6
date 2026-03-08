@@ -9,7 +9,7 @@ final class AgentPool: ObservableObject {
 
     private init() {}
 
-    func agent(for project: EonProject) -> ProjectAgent {
+    func agent(for project: NaviProject) -> ProjectAgent {
         if let existing = agents[project.id] {
             return existing
         }
@@ -32,7 +32,7 @@ final class AgentPool: ObservableObject {
 @MainActor
 final class ProjectAgent: ObservableObject, Identifiable {
     let id: UUID
-    let project: EonProject
+    let project: NaviProject
 
     @Published var isRunning = false
     @Published var currentStatus = ""
@@ -57,7 +57,7 @@ final class ProjectAgent: ObservableObject, Identifiable {
     // Completion callback — called when current message finishes (used by PromptQueue)
     private var completionHandler: (() -> Void)?
 
-    init(project: EonProject) {
+    init(project: NaviProject) {
         self.id = project.id
         self.project = project
         self.conversation = Conversation(projectID: project.id, model: project.activeModel)

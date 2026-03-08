@@ -100,7 +100,7 @@ struct BrowserAgentLogView: View {
         case .planning:       return .orange
         case .working:        return .green
         case .waitingForUser: return .yellow
-        case .complete:       return .accentEon
+        case .complete:       return .accentNavi
         case .failed:         return .red
         }
     }
@@ -151,7 +151,7 @@ struct BrowserLogEntryRow: View {
         case .failure:             return .red
         case .warning:             return .orange
         case .question, .answer:   return .yellow
-        case .goal, .subGoal:      return .accentEon
+        case .goal, .subGoal:      return .accentNavi
         case .vision, .screenshot: return .purple
         case .cost:                return .cyan
         default:                   return .secondary.opacity(0.6)

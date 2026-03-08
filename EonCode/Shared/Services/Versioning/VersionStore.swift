@@ -12,7 +12,7 @@ final class VersionStore: ObservableObject {
     // MARK: - Snapshot
 
     func createSnapshot(
-        for project: EonProject,
+        for project: NaviProject,
         name: String? = nil,
         branch: String = "main",
         changedFiles: [String] = []
@@ -56,7 +56,7 @@ final class VersionStore: ObservableObject {
 
     // MARK: - Load versions
 
-    func loadVersions(for project: EonProject) async {
+    func loadVersions(for project: NaviProject) async {
         guard let dir = sync.versionsRoot?.appendingPathComponent(project.id.uuidString),
               let subdirs = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
         else { return }
@@ -74,7 +74,7 @@ final class VersionStore: ObservableObject {
 
     // MARK: - Rollback
 
-    func rollback(to version: ProjectVersion, project: EonProject) async throws {
+    func rollback(to version: ProjectVersion, project: NaviProject) async throws {
         guard let snapshotPath = version.snapshotPath,
               let versionsRoot = sync.versionsRoot
         else { throw VersionError.noSnapshot }

@@ -56,7 +56,7 @@ final class DeviceStatusBroadcaster: ObservableObject {
     }
 
     private var signalFileURL: URL? {
-        sync.eonCodeRoot?.appendingPathComponent("device-signal.json")
+        sync.naviRoot?.appendingPathComponent("device-signal.json")
     }
 
     private init() {
@@ -127,7 +127,7 @@ final class DeviceStatusBroadcaster: ObservableObject {
     }
 
     private func startSignalMonitoring() {
-        guard let root = sync.eonCodeRoot else { return }
+        guard let root = sync.naviRoot else { return }
         let signalPath = root.appendingPathComponent("device-signal.json").path
 
         let query = NSMetadataQuery()

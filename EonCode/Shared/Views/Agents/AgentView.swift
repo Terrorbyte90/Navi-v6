@@ -40,12 +40,16 @@ struct AgentView: View {
                 .navigationTitle("Agenter")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button { showCreateSheet = true } label: { Image(systemName: "plus") }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { showCreateSheet = true } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-                #endif
         }
     }
 
@@ -53,6 +57,7 @@ struct AgentView: View {
 
     var agentList: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
             HStack {
                 Text("Agenter")
                     .font(.system(size: 13, weight: .semibold))
@@ -69,6 +74,7 @@ struct AgentView: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             Divider()
+            #endif
 
             if runner.agents.isEmpty {
                 VStack(spacing: 12) {
@@ -143,70 +149,84 @@ struct AgentRowView: View {
         }
     }
 
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(statusColor.opacity(0.15)).frame(width: 34, height: 34)
-                        .scaleEffect(pulsing && agent.status.isActive ? 1.2 : 1.0)
-                    Image(systemName: agent.status.isActive ? "cpu.fill" : "cpu")
-                        .font(.system(size: 14)).foregroundColor(statusColor)
+    private var rowContent: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(statusColor.opacity(0.15)).frame(width: 34, height: 34)
+                    .scaleEffect(pulsing && agent.status.isActive ? 1.2 : 1.0)
+                Image(systemName: agent.status.isActive ? "cpu.fill" : "cpu")
+                    .font(.system(size: 14)).foregroundColor(statusColor)
+            }
+            .onAppear {
+                if agent.status.isActive {
+                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulsing = true }
                 }
-                .onAppear {
-                    if agent.status.isActive {
-                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulsing = true }
-                    }
-                }
-                .onChange(of: agent.status.isActive) { active in
-                    if active { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulsing = true } }
-                    else { pulsing = false }
-                }
+            }
+            .onChange(of: agent.status.isActive) { active in
+                if active { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulsing = true } }
+                else { pulsing = false }
+            }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(agent.name)
-                            .font(.system(size: 13, weight: .semibold)).foregroundColor(.primary).lineLimit(1)
-                        Spacer()
-                        Text(agent.status.displayName)
-                            .font(.system(size: 10, weight: .medium)).foregroundColor(statusColor)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(statusColor.opacity(0.12), in: Capsule())
-                    }
-                    if !agent.currentTaskDescription.isEmpty {
-                        Text(agent.currentTaskDescription)
-                            .font(.system(size: 11)).foregroundColor(.secondary).lineLimit(2)
-                    } else if let pn = agent.projectName {
-                        Text(pn).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
-                    }
-                    // Cost row
-                    HStack(spacing: 8) {
-                        Text("Iter. \(agent.iterationCount)")
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(agent.name)
+                        .font(.system(size: 13, weight: .semibold)).foregroundColor(.primary).lineLimit(1)
+                    Spacer()
+                    Text(agent.status.displayName)
+                        .font(.system(size: 10, weight: .medium)).foregroundColor(statusColor)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(statusColor.opacity(0.12), in: Capsule())
+                }
+                if !agent.currentTaskDescription.isEmpty {
+                    Text(agent.currentTaskDescription)
+                        .font(.system(size: 11)).foregroundColor(.secondary).lineLimit(2)
+                } else if let pn = agent.projectName {
+                    Text(pn).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+                }
+                // Cost row
+                HStack(spacing: 8) {
+                    Text("Iter. \(agent.iterationCount)")
+                        .font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
+                    if agent.grandTotalCostSEK > 0 {
+                        Text(String(format: "%.3f kr", agent.grandTotalCostSEK))
                             .font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
-                        if agent.grandTotalCostSEK > 0 {
-                            Text(String(format: "%.3f kr", agent.grandTotalCostSEK))
-                                .font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
-                        }
-                        if agent.assignedWorkers > 1 {
-                            Label("\(agent.assignedWorkers) workers", systemImage: "person.2.fill")
-                                .font(.system(size: 9)).foregroundColor(.secondary.opacity(0.5))
-                        }
+                    }
+                    if agent.assignedWorkers > 1 {
+                        Label("\(agent.assignedWorkers) workers", systemImage: "person.2.fill")
+                            .font(.system(size: 9)).foregroundColor(.secondary.opacity(0.5))
                     }
                 }
             }
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            .background(isSelected ? Color.surfaceHover : Color.clear)
-            .contentShape(Rectangle())
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(isSelected ? Color.surfaceHover : Color.clear)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var contextMenuItems: some View {
+        if agent.status.isActive {
+            Button { onPause() } label: { Label("Stoppa", systemImage: "stop.fill") }
+        } else {
+            Button { onStart() } label: { Label("Starta", systemImage: "play.fill") }
+        }
+        Divider()
+        Button(role: .destructive) { onDelete() } label: { Label("Ta bort", systemImage: "trash") }
+    }
+
+    var body: some View {
+        #if os(iOS)
+        NavigationLink(destination: AgentDetailView(agentID: agent.id)) {
+            rowContent
+        }
+        .contextMenu { contextMenuItems }
+        #else
+        Button(action: onSelect) {
+            rowContent
         }
         .buttonStyle(.plain)
-        .contextMenu {
-            if agent.status.isActive {
-                Button { onPause() } label: { Label("Pausa", systemImage: "pause.fill") }
-            } else {
-                Button { onStart() } label: { Label("Starta", systemImage: "play.fill") }
-            }
-            Divider()
-            Button(role: .destructive) { onDelete() } label: { Label("Ta bort", systemImage: "trash") }
-        }
+        .contextMenu { contextMenuItems }
+        #endif
     }
 }
 
@@ -287,7 +307,7 @@ struct AgentDetailView: View {
                 title: "Session",
                 value: String(format: "%.4f kr", agent.sessionCostSEK),
                 subtitle: "\(agent.sessionTokensUsed) tok",
-                color: .accentEon
+                color: .accentNavi
             )
             Divider().frame(height: 32)
             costCell(
@@ -348,7 +368,7 @@ struct AgentDetailView: View {
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         .overlay(alignment: .bottom) {
                             if selectedTab == tab {
-                                Rectangle().fill(Color.accentEon).frame(height: 2)
+                                Rectangle().fill(Color.accentNavi).frame(height: 2)
                             }
                         }
                 }
@@ -418,7 +438,7 @@ struct AgentDetailView: View {
                             label: "Orkestrator",
                             cost: agent.totalCostSEK,
                             total: agent.grandTotalCostSEK,
-                            color: .accentEon
+                            color: .accentNavi
                         )
                         costBreakdownBar(
                             label: "Workers",
@@ -431,11 +451,11 @@ struct AgentDetailView: View {
                 .padding(16)
                 .background(Color.surfaceHover, in: RoundedRectangle(cornerRadius: 12))
 
-                statCard("Iterationer",         "\(agent.iterationCount)",                                      "repeat",           .accentEon)
+                statCard("Iterationer",         "\(agent.iterationCount)",                                      "repeat",           .accentNavi)
                 statCard("Orkestrator-tokens",  "\(agent.totalTokensUsed)",                                     "text.word.spacing", .blue)
                 statCard("Worker-tokens",       "\(agent.workerTokensUsed)",                                    "person.2.fill",    .purple)
                 statCard("Totala tokens",       "\(agent.grandTotalTokens)",                                    "sum",              .primary)
-                statCard("Orkestrator-kostnad", String(format: "%.5f kr", agent.totalCostSEK),                  "dollarsign",       .accentEon)
+                statCard("Orkestrator-kostnad", String(format: "%.5f kr", agent.totalCostSEK),                  "dollarsign",       .accentNavi)
                 statCard("Worker-kostnad",      String(format: "%.5f kr", agent.workerCostSEK),                 "dollarsign.circle", .purple)
                 statCard("Total kostnad",       String(format: "%.5f kr", agent.grandTotalCostSEK),             "dollarsign.circle.fill", .green)
                 statCard("Logg-poster",         "\(agent.runLog.count)",                                        "list.bullet",      .orange)
@@ -504,10 +524,10 @@ struct AgentDetailView: View {
     func controlButton(agent: AgentDefinition) -> some View {
         if agent.status.isActive {
             Button { runner.pause(agentID) } label: {
-                Label("Pausa", systemImage: "pause.fill")
-                    .font(.system(size: 12, weight: .medium)).foregroundColor(.orange)
+                Label("Stoppa", systemImage: "stop.fill")
+                    .font(.system(size: 12, weight: .medium)).foregroundColor(.red)
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
         } else if agent.status == .paused || agent.status == .idle {
@@ -521,9 +541,9 @@ struct AgentDetailView: View {
         } else {
             Button { runner.restart(agentID) } label: {
                 Label("Starta om", systemImage: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .medium)).foregroundColor(.accentEon)
+                    .font(.system(size: 12, weight: .medium)).foregroundColor(.accentNavi)
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(Color.accentEon.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.accentNavi.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
         }
@@ -599,7 +619,7 @@ struct AgentSettingsEditor: View {
                             label: "Agentens modell",
                             subtitle: "Orkestratorn — planerar och resonerar",
                             icon: "cpu.fill",
-                            color: .accentEon,
+                            color: .accentNavi,
                             selection: $model
                         )
                         .onChange(of: model) { save() }
@@ -707,7 +727,7 @@ struct AgentSettingsEditor: View {
                         if assignedWorkers > 1 { assignedWorkers -= 1; save() }
                     } label: {
                         Image(systemName: "minus.circle.fill")
-                            .font(.system(size: 20)).foregroundColor(assignedWorkers > 1 ? .accentEon : .secondary.opacity(0.3))
+                            .font(.system(size: 20)).foregroundColor(assignedWorkers > 1 ? .accentNavi : .secondary.opacity(0.3))
                     }
                     .buttonStyle(.plain)
 
@@ -719,7 +739,7 @@ struct AgentSettingsEditor: View {
                         if assignedWorkers < 10 { assignedWorkers += 1; save() }
                     } label: {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 20)).foregroundColor(assignedWorkers < 10 ? .accentEon : .secondary.opacity(0.3))
+                            .font(.system(size: 20)).foregroundColor(assignedWorkers < 10 ? .accentNavi : .secondary.opacity(0.3))
                     }
                     .buttonStyle(.plain)
                 }
@@ -729,10 +749,10 @@ struct AgentSettingsEditor: View {
             HStack(spacing: 5) {
                 ForEach(1...10, id: \.self) { i in
                     Circle()
-                        .fill(i <= assignedWorkers ? Color.accentEon : Color.primary.opacity(0.1))
+                        .fill(i <= assignedWorkers ? Color.accentNavi : Color.primary.opacity(0.1))
                         .frame(width: 14, height: 14)
                         .overlay(
-                            Circle().stroke(Color.accentEon.opacity(i <= assignedWorkers ? 0 : 0.2), lineWidth: 1)
+                            Circle().stroke(Color.accentNavi.opacity(i <= assignedWorkers ? 0 : 0.2), lineWidth: 1)
                         )
                         .animation(.easeInOut(duration: 0.15), value: assignedWorkers)
                         .onTapGesture { assignedWorkers = i; save() }
@@ -887,7 +907,7 @@ struct AgentLogEntryRow: View {
     var color: Color {
         switch entry.type {
         case .thought:          return .yellow
-        case .action:           return .accentEon
+        case .action:           return .accentNavi
         case .result:           return .green
         case .tool:             return .purple
         case .error:            return .red
@@ -975,7 +995,7 @@ struct AgentStreamingRow: View {
 // MARK: - Create Agent Sheet
 
 struct CreateAgentSheet: View {
-    let projects: [EonProject]
+    let projects: [NaviProject]
     @Environment(\.dismiss) private var dismiss
     @StateObject private var runner = AutonomousAgentRunner.shared
 
@@ -1028,7 +1048,7 @@ struct CreateAgentSheet: View {
                         label: "Agentens modell",
                         subtitle: "Orkestratorn — planerar och resonerar",
                         icon: "cpu.fill",
-                        color: .accentEon,
+                        color: .accentNavi,
                         selection: $model
                     )
                     AgentModelCard(
@@ -1045,13 +1065,13 @@ struct CreateAgentSheet: View {
                         HStack(spacing: 6) {
                             Button { if assignedWorkers > 1 { assignedWorkers -= 1 } } label: {
                                 Image(systemName: "minus.circle.fill").font(.system(size: 20))
-                                    .foregroundColor(assignedWorkers > 1 ? .accentEon : .secondary.opacity(0.3))
+                                    .foregroundColor(assignedWorkers > 1 ? .accentNavi : .secondary.opacity(0.3))
                             }
                             .buttonStyle(.plain)
                             Text("\(assignedWorkers)").font(.system(size: 16, weight: .bold, design: .monospaced)).frame(width: 28)
                             Button { if assignedWorkers < 10 { assignedWorkers += 1 } } label: {
                                 Image(systemName: "plus.circle.fill").font(.system(size: 20))
-                                    .foregroundColor(assignedWorkers < 10 ? .accentEon : .secondary.opacity(0.3))
+                                    .foregroundColor(assignedWorkers < 10 ? .accentNavi : .secondary.opacity(0.3))
                             }
                             .buttonStyle(.plain)
                         }

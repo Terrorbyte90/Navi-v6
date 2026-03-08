@@ -5,7 +5,7 @@ import SwiftUI
 // new-item + settings at bottom.
 
 struct SidebarView: View {
-    @Binding var selectedProject: EonProject?
+    @Binding var selectedProject: NaviProject?
     @Binding var showNewProject: Bool
     @Binding var section: AppSection
 
@@ -16,6 +16,7 @@ struct SidebarView: View {
     @StateObject private var artifactStore = ArtifactStore.shared
     @StateObject private var statusBroadcaster = DeviceStatusBroadcaster.shared
     @StateObject private var ghManager = GitHubManager.shared
+    @StateObject private var mediaManager = MediaGenerationManager.shared
 
     @State private var searchText = ""
     @State private var showSettings = false
@@ -73,6 +74,9 @@ struct SidebarView: View {
                 Text("Navi")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color.primary)
+                Text("— By: Ted Svärd")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color.secondary.opacity(0.5))
             }
             .padding(.leading, 14)
 
@@ -147,6 +151,7 @@ struct SidebarView: View {
         case .artifacts: return "Sök artefakter…"
         case .github:    return "Sök repos…"
         case .agents:    return "Sök agenter…"
+        case .media:     return "Sök media…"
         default:         return "Sök projekt…"
         }
     }
@@ -163,6 +168,8 @@ struct SidebarView: View {
                     badge: agentsBadge)
             navItem(icon: "map.fill",                          label: "Planera",     target: .planning)
             navItem(icon: "globe",                             label: "Webb",        target: .browser)
+            navItem(icon: "photo.stack.fill",                  label: "Media",       target: .media,
+                    badge: mediaBadge)
             navItem(icon: "tray.2.fill",                       label: "Artefakter",  target: .artifacts,
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
         }
@@ -172,6 +179,11 @@ struct SidebarView: View {
     private var agentsBadge: String? {
         let running = AutonomousAgentRunner.shared.agents.filter { $0.status.isActive }.count
         return running > 0 ? "\(running)" : nil
+    }
+
+    private var mediaBadge: String? {
+        let active = mediaManager.activeGenerations.count
+        return active > 0 ? "\(active)" : nil
     }
 
     private var githubBadge: String? {
@@ -189,7 +201,7 @@ struct SidebarView: View {
             HStack(spacing: 9) {
                 Image(systemName: icon)
                     .font(.system(size: 13))
-                    .foregroundColor(isActive ? .accentEon : .secondary)
+                    .foregroundColor(isActive ? .accentNavi : .secondary)
                     .frame(width: 18)
                 Text(label)
                     .font(.system(size: 13, weight: isActive ? .semibold : .regular))
@@ -226,13 +238,14 @@ struct SidebarView: View {
         case .artifacts:           artifactList
         case .github:              githubRepoList
         case .agents:              agentSidebarList
+        case .media:               mediaHistoryList
         case .project, .browser:   projectList
         }
     }
 
     // MARK: - Project list
 
-    var filteredProjects: [EonProject] {
+    var filteredProjects: [NaviProject] {
         searchText.isEmpty ? store.projects
             : store.projects.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
@@ -329,7 +342,7 @@ struct SidebarView: View {
             HStack(spacing: 8) {
                 Image(systemName: plan.status.icon)
                     .font(.system(size: 11))
-                    .foregroundColor(isActive ? .accentEon : .secondary.opacity(0.5))
+                    .foregroundColor(isActive ? .accentNavi : .secondary.opacity(0.5))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(plan.title)
                         .font(.system(size: 13, weight: isActive ? .semibold : .regular))
@@ -543,6 +556,78 @@ struct SidebarView: View {
         }
     }
 
+    // MARK: - Media history list
+
+    var mediaHistoryList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 1) {
+                let active = mediaManager.activeGenerations
+                let completed = mediaManager.completedGenerations.filter {
+                    searchText.isEmpty || $0.prompt.localizedCaseInsensitiveContains(searchText)
+                }
+
+                if !active.isEmpty {
+                    listSectionHeader("Aktiva")
+                    ForEach(active) { gen in
+                        mediaRow(gen, isActive: true)
+                    }
+                }
+
+                if !completed.isEmpty {
+                    listSectionHeader("Historik")
+                    ForEach(completed.prefix(30)) { gen in
+                        mediaRow(gen, isActive: false)
+                    }
+                }
+
+                if active.isEmpty && completed.isEmpty {
+                    emptyHint(icon: "photo.stack", text: searchText.isEmpty ? "Ingen media" : "Inga träffar")
+                }
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func mediaRow(_ gen: MediaGeneration, isActive: Bool) -> some View {
+        Button { section = .media } label: {
+            HStack(spacing: 8) {
+                Image(systemName: gen.type == .image ? "photo" : "video")
+                    .font(.system(size: 11))
+                    .foregroundColor(isActive ? .orange : .secondary.opacity(0.5))
+                    .frame(width: 14)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(gen.displayTitle)
+                        .font(.system(size: 13))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if isActive {
+                            Text(gen.status.displayName)
+                                .foregroundColor(.orange)
+                        } else {
+                            Text(gen.createdAt.relativeString)
+                        }
+                        if gen.costSEK > 0 {
+                            Text("·")
+                            Text(String(format: "%.2f kr", gen.costSEK))
+                        }
+                    }
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.45))
+                }
+                Spacer()
+                if isActive {
+                    ProgressView().scaleEffect(0.55)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+    }
+
     // MARK: - Bottom bar
 
     var bottomBar: some View {
@@ -696,8 +781,8 @@ struct SidebarSectionHeader: View {
 // MARK: - ProjectRow
 
 struct ProjectRow: View {
-    let project: EonProject
-    @Binding var selectedProject: EonProject?
+    let project: NaviProject
+    @Binding var selectedProject: NaviProject?
     @StateObject private var agentPool = AgentPool.shared
 
     private var isSelected: Bool { selectedProject?.id == project.id }

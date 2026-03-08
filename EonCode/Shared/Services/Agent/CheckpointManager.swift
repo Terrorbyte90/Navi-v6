@@ -6,7 +6,7 @@ final class CheckpointManager: ObservableObject {
 
     private let fm = FileManager.default
     private var checkpointDir: URL? {
-        iCloudSyncEngine.shared.eonCodeRoot?.appendingPathComponent(Constants.iCloud.checkpointsFolder)
+        iCloudSyncEngine.shared.naviRoot?.appendingPathComponent(Constants.iCloud.checkpointsFolder)
     }
 
     private init() {}

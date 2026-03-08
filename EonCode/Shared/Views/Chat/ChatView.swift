@@ -66,6 +66,9 @@ struct ChatView: View {
                 .scrollDismissesKeyboard(.interactively)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
+                        AgentActivityOverlay()
+                            .padding(.horizontal, 12)
+
                         if queue.hasActive {
                             QueueStatusBar(queue: queue)
                         }
@@ -83,13 +86,19 @@ struct ChatView: View {
                         ) {
                             sendMessage()
                         }
+
+                        Text("Navi kan göra misstag. Kontrollera viktig information.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 4)
                     }
                 }
                 .onChange(of: agent.conversation.messages.count) { _ in
                     scrollToBottom(proxy: proxy, animated: true)
                 }
-                .onChange(of: agent.streamingText) { _ in
-                    // Throttled scroll during streaming — avoids layout thrash
+                .onChange(of: agent.streamingText.count / 80) { _ in
+                    // Throttled scroll during streaming — only scrolls every ~80 chars
                     scrollToBottom(proxy: proxy, animated: false)
                 }
                 .onAppear {
@@ -277,7 +286,7 @@ struct QueueItemRow: View {
                     if item.iterationsTotal > 1 {
                         Text("\(item.iterationsDone)/\(item.iterationsTotal)")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.accentEon.opacity(0.8))
+                            .foregroundColor(.accentNavi.opacity(0.8))
                     }
                     Text(item.isAgentMode ? "Agent" : "Chat")
                         .font(.system(size: 11))
@@ -336,7 +345,7 @@ struct QueueItemRow: View {
 
     var rowBackground: Color {
         switch item.status {
-        case .running: return Color.accentEon.opacity(0.06)
+        case .running: return Color.accentNavi.opacity(0.06)
         case .completed: return Color.green.opacity(0.04)
         case .failed: return Color.red.opacity(0.04)
         default: return Color.white.opacity(0.03)
@@ -355,7 +364,7 @@ struct CircularProgress: View {
                 .stroke(Color.white.opacity(0.08), lineWidth: 2)
             Circle()
                 .trim(from: 0, to: value)
-                .stroke(Color.accentEon, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(Color.accentNavi, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
     }
@@ -423,7 +432,7 @@ struct MessageBubble: View {
                     if !cleaned.isEmpty {
                         if message.role == .user {
                             Text(cleaned)
-                                .font(.system(size: 15))
+                                .font(.system(size: 15.5))
                                 .foregroundColor(.primary)
                                 .lineSpacing(4)
                                 .textSelection(.enabled)
@@ -637,7 +646,7 @@ struct StreamingBubble: View {
                         HStack(spacing: 0) {
                             Spacer().frame(width: 0)
                             RoundedRectangle(cornerRadius: 1)
-                                .fill(Color.accentEon.opacity(0.8))
+                                .fill(Color.accentNavi.opacity(0.8))
                                 .frame(width: 2, height: 16)
                                 .opacity(cursorVisible ? 1 : 0)
                         }
@@ -683,7 +692,7 @@ struct ActivityStatusBar: View {
                             .frame(width: 12, height: 12)
                         Text(status)
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.accentEon)
+                            .foregroundColor(.accentNavi)
                             .lineLimit(1)
                     }
                 }
@@ -694,7 +703,7 @@ struct ActivityStatusBar: View {
                     HStack(spacing: 4) {
                         Image(systemName: "doc.text.fill")
                             .font(.system(size: 10))
-                            .foregroundColor(.accentEon.opacity(0.5))
+                            .foregroundColor(.accentNavi.opacity(0.5))
                         Text(files.joined(separator: ", "))
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(.primary.opacity(0.6))
@@ -722,10 +731,10 @@ struct ActivityStatusBar: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.accentEon.opacity(0.04))
+                .fill(Color.accentNavi.opacity(0.04))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.accentEon.opacity(0.1), lineWidth: 0.5)
+                        .strokeBorder(Color.accentNavi.opacity(0.1), lineWidth: 0.5)
                 )
         )
     }
@@ -818,7 +827,7 @@ struct ToolActionBadge: View {
                 HStack(spacing: 6) {
                     Image(systemName: icon)
                         .font(.system(size: 11))
-                        .foregroundColor(.accentEon.opacity(0.7))
+                        .foregroundColor(.accentNavi.opacity(0.7))
                     Text(label)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary.opacity(0.8))
@@ -856,10 +865,10 @@ struct ToolActionBadge: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.accentEon.opacity(0.04))
+                .fill(Color.accentNavi.opacity(0.04))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.accentEon.opacity(0.1), lineWidth: 0.5)
+                        .strokeBorder(Color.accentNavi.opacity(0.1), lineWidth: 0.5)
                 )
         )
     }
@@ -878,17 +887,17 @@ struct FileActivityCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "doc.text.fill")
                     .font(.system(size: 12))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                 Text(fileName)
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundColor(.primary.opacity(0.8))
                 Spacer()
                 Text(status)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.accentEon.opacity(0.1))
+                    .background(Color.accentNavi.opacity(0.1))
                     .cornerRadius(4)
             }
             .padding(.horizontal, 12)
@@ -913,7 +922,7 @@ struct FileActivityCard: View {
                 .fill(Color.codeBackground.opacity(0.6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.accentEon.opacity(0.08), lineWidth: 0.5)
+                        .strokeBorder(Color.accentNavi.opacity(0.08), lineWidth: 0.5)
                 )
         )
     }
@@ -935,7 +944,7 @@ struct AgentTodoCard: View {
             HStack(spacing: 6) {
                 Image(systemName: "checklist")
                     .font(.system(size: 12))
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                 Text("Uppgifter")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.primary.opacity(0.8))
@@ -1066,7 +1075,7 @@ struct InputBar: View {
                     } label: {
                         Image(systemName: isAgentMode ? "cpu.fill" : "cpu")
                             .font(.system(size: 15))
-                            .foregroundColor(isAgentMode ? .accentEon : .secondary)
+                            .foregroundColor(isAgentMode ? .accentNavi : .secondary)
                             .frame(width: 32, height: 32)
                             .contentShape(Circle())
                     }
@@ -1090,7 +1099,7 @@ struct InputBar: View {
                         } label: {
                             Text("\(iterationCount)x")
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundColor(iterationCount > 1 ? .accentEon : .secondary.opacity(0.5))
+                                .foregroundColor(iterationCount > 1 ? .accentNavi : .secondary.opacity(0.5))
                                 .frame(width: 28, height: 32)
                         }
                     }
@@ -1137,7 +1146,7 @@ struct InputBar: View {
                 if isAgentMode {
                     Text("Agent")
                         .font(.system(size: 12))
-                        .foregroundColor(.accentEon.opacity(0.6))
+                        .foregroundColor(.accentNavi.opacity(0.6))
                 }
 
                 Spacer()
@@ -1149,7 +1158,7 @@ struct InputBar: View {
                         if queueCount > 0 {
                             Text("\(queueCount)")
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.accentEon)
+                                .foregroundColor(.accentNavi)
                         }
                     }
                     .foregroundColor(.secondary.opacity(0.4))
@@ -1161,12 +1170,7 @@ struct InputBar: View {
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.4))
                 }
-                let sessionCost = CostTracker.shared.sessionSEK
-                if sessionCost > 0.001 {
-                    Text(String(format: "%.2f kr", sessionCost))
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.secondary.opacity(0.3))
-                }
+                SessionCostLabel(fontSize: 12, opacity: 0.3)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
@@ -1178,7 +1182,7 @@ struct InputBar: View {
 // MARK: - Previews
 
 #Preview("ChatView") {
-    let project = EonProject(name: "Navi Preview", rootPath: "/tmp/preview")
+    let project = NaviProject(name: "Navi Preview", rootPath: "/tmp/preview")
     let agent = ProjectAgent(project: project)
     return ChatView(agent: agent)
         .frame(width: 500, height: 600)

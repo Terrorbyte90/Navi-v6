@@ -46,6 +46,12 @@ final class SettingsStore: ObservableObject {
     @Published var selectedVoiceName: String {
         didSet { save("selectedVoiceName", value: selectedVoiceName) }
     }
+    @Published var macHandoffEnabled: Bool {
+        didSet { save("macHandoffEnabled", value: macHandoffEnabled) }
+    }
+    @Published var macRemoteEnabled: Bool {
+        didSet { save("macRemoteEnabled", value: macRemoteEnabled) }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -64,6 +70,8 @@ final class SettingsStore: ObservableObject {
         autoExtractMemories = UserDefaults.standard.value(forKey: "autoExtractMemories") as? Bool ?? true
         selectedVoiceID = UserDefaults.standard.string(forKey: "selectedVoiceID") ?? "21m00Tcm4TlvDq8ikWAM"
         selectedVoiceName = UserDefaults.standard.string(forKey: "selectedVoiceName") ?? "Rachel"
+        macHandoffEnabled = UserDefaults.standard.value(forKey: "macHandoffEnabled") as? Bool ?? false
+        macRemoteEnabled = UserDefaults.standard.value(forKey: "macRemoteEnabled") as? Bool ?? false
     }
 
     private func save(_ key: String, value: Any?) {

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // MARK: - ChatManager
 // Manages pure chat conversations (no project/agent context).
@@ -15,22 +16,36 @@ final class ChatManager: ObservableObject {
 
     private let store = iCloudChatStore.shared
     private let api = ClaudeAPIClient.shared
+    private var cancellables = Set<AnyCancellable>()
 
     private init() {
         Task {
             await load()
             isLoading = false
         }
+
+        // Reload conversations when iCloud syncs
+        NotificationCenter.default.publisher(for: .iCloudDidSync)
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                Task { @MainActor in
+                    await self.load()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Load
 
     func load() async {
         do {
-            conversations = try await store.loadAll()
+            let loaded = try await store.loadAll()
+            let loadedIDs = Set(loaded.map(\.id))
+            let unsaved = conversations.filter { !loadedIDs.contains($0.id) }
+            conversations = loaded + unsaved
         } catch {
             NaviLog.error("ChatManager: kunde inte ladda konversationer", error: error)
-            conversations = []
         }
     }
 
@@ -41,7 +56,13 @@ final class ChatManager: ObservableObject {
         let conv = ChatConversation(model: model)
         conversations.insert(conv, at: 0)
         activeConversation = conv
-        Task { try? await store.save(conv) }
+        Task {
+            do {
+                try await store.save(conv)
+            } catch {
+                NaviLog.error("ChatManager: kunde inte spara ny konversation", error: error)
+            }
+        }
         return conv
     }
 
@@ -51,6 +72,7 @@ final class ChatManager: ObservableObject {
         text: String,
         images: [Data] = [],
         in conversation: inout ChatConversation,
+        voiceInstruction: String? = nil,
         onToken: @escaping (String) -> Void
     ) async throws {
         let userMsg = PureChatMessage(role: .user, content: text, imageData: images.isEmpty ? nil : images)
@@ -86,6 +108,11 @@ final class ChatManager: ObservableObject {
             systemPrompt += "\n\nAKTIV VY: \(MessageBuilder.currentViewContext)"
         }
 
+        // Voice mode instruction (appended to system prompt, not visible in chat)
+        if let voiceInst = voiceInstruction {
+            systemPrompt += "\n\n[RÖSTLÄGE] \(voiceInst)"
+        }
+
         isStreaming = true
         streamingText = ""
         defer { isStreaming = false; streamingText = "" }
@@ -93,14 +120,8 @@ final class ChatManager: ObservableObject {
         var fullText = ""
         var finalUsage: TokenUsage?
 
-        try await api.streamMessage(
-            messages: apiMessages,
-            model: conversation.model,
-            systemPrompt: systemPrompt,
-            tools: nil,
-            usePromptCaching: true
-        ) { [self] event in
-            // ChatManager is @MainActor — no inner Task needed, direct mutation is safe
+        // Route streaming by provider
+        let eventHandler: (StreamEvent) -> Void = { [self] event in
             switch event {
             case .contentBlockDelta(_, let delta):
                 if case .text(let chunk) = delta {
@@ -113,6 +134,25 @@ final class ChatManager: ObservableObject {
             default:
                 break
             }
+        }
+
+        switch conversation.model.provider {
+        case .anthropic:
+            try await api.streamMessage(
+                messages: apiMessages,
+                model: conversation.model,
+                systemPrompt: systemPrompt,
+                tools: nil,
+                usePromptCaching: true,
+                onEvent: eventHandler
+            )
+        case .xai:
+            try await XAIClient.shared.streamChatCompletion(
+                messages: apiMessages,
+                model: conversation.model,
+                systemPrompt: systemPrompt,
+                onEvent: eventHandler
+            )
         }
 
         // Calculate cost

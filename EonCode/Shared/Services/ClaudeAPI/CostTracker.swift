@@ -54,6 +54,21 @@ final class CostTracker: ObservableObject {
         save()
     }
 
+    // MARK: - Record media generation cost (no TokenUsage)
+
+    func recordMediaCost(usd: Double, model: String) {
+        lastRequestUSD = usd
+        lastRequestModel = nil
+        lastRequestTokens = nil
+
+        totalUSD += usd
+        sessionUSD += usd
+        totalRequests += 1
+        sessionRequests += 1
+
+        save()
+    }
+
     // MARK: - Reset session (call on app foreground)
 
     func resetSession() {

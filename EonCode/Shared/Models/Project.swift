@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct EonProject: Identifiable, Codable, Equatable {
+struct NaviProject: Identifiable, Codable, Equatable {
     var id: UUID
     var name: String
     var description: String
@@ -62,7 +62,7 @@ struct EonProject: Identifiable, Codable, Equatable {
         return nil
     }
 
-    static func == (lhs: EonProject, rhs: EonProject) -> Bool {
+    static func == (lhs: NaviProject, rhs: NaviProject) -> Bool {
         lhs.id == rhs.id
     }
 }

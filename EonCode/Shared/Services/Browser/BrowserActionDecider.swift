@@ -87,8 +87,13 @@ struct BrowserActionDecider {
         strategy: BrowserAgent.BrowsingStrategy,
         apiClient: ClaudeAPIClient
     ) async throws -> BrowserDecisionResult {
-        let historyText = history.map(\.displayText).joined(separator: "\n")
+        // Sliding window: keep only the last 5 history steps to reduce token usage
+        let recentHistory = history.suffix(5)
+        let historyText = recentHistory.map(\.displayText).joined(separator: "\n")
         let activeGoal = subGoal ?? goal
+
+        // Truncate page summary to max 3000 chars to reduce token usage
+        let truncatedSummary = String(pageContent.summary.prefix(3000))
 
         let userMessage = """
         MÅL: \(goal)\(subGoal != nil ? "\nDELMÅL: \(activeGoal)" : "")
@@ -97,7 +102,7 @@ struct BrowserActionDecider {
         \(historyText.isEmpty ? "(start)" : historyText)
 
         SIDA:
-        \(pageContent.summary)
+        \(truncatedSummary)
 
         Nästa steg?
         """
@@ -120,7 +125,8 @@ struct BrowserActionDecider {
         history: ArraySlice<BrowserLogEntry>,
         apiClient: ClaudeAPIClient
     ) async throws -> BrowserDecisionResult {
-        let historyText = history.map(\.displayText).joined(separator: "\n")
+        // Sliding window: keep only the last 5 history steps to reduce token usage
+        let historyText = history.suffix(5).map(\.displayText).joined(separator: "\n")
         let domContext = basicDOM.map { "URL: \($0.url)\nTitel: \($0.title)" } ?? ""
 
         let messages = [ChatMessage(
@@ -168,8 +174,8 @@ struct BrowserActionDecider {
     3. Om sidan har en specifik navigeringslänk till rätt sektion — klicka den direkt.
     4. CAPTCHA/inloggning: ask_user.
     5. Vid jämförelser: besök FLERA sidor, sammanställ i goal_complete.
-    6. Om du scrollat 3+ gånger utan resultat: sök annorlunda, go_back, eller prova en annan URL.
-    7. Om du fastnat (upprepar samma action): BYT strategi — prova screenshot, annan URL, eller go_back.
+    6. SCROLLA ALDRIG mer än 2 gånger i samma riktning. Om du inte hittat det du söker efter 2 scrolls: använd go_back, goal_complete med det du hittat, eller navigera till en annan URL.
+    7. Om du fastnat (upprepar samma action): BYT strategi DIREKT — goal_complete med det du redan hittat, go_back, eller prova en annan URL. Upprepa ALDRIG samma action mer än 2 gånger.
     8. Testa minst 3 alternativ innan goal_failed.
     9. goal_complete MÅSTE innehålla hela svaret/resultatet — aldrig bara "klart".
     10. Var SNABB: välj direkt rätt action, slösa inte steg.

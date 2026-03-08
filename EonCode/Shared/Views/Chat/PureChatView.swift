@@ -58,7 +58,7 @@ struct CostDetailPopover: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "dollarsign.circle.fill")
-                    .foregroundColor(.accentEon)
+                    .foregroundColor(.accentNavi)
                 Text("Kostnad")
                     .font(.system(size: 14, weight: .semibold))
             }
@@ -100,7 +100,7 @@ struct CostDetailPopover: View {
                 HStack {
                     Text("Modell").font(.system(size: 12)).foregroundColor(.secondary)
                     Spacer()
-                    Text(model.displayName).font(.system(size: 12, weight: .medium)).foregroundColor(.accentEon)
+                    Text(model.displayName).font(.system(size: 12, weight: .medium)).foregroundColor(.accentNavi)
                 }
             }
         }
@@ -131,7 +131,6 @@ struct CostDetailPopover: View {
 
 struct PureChatView: View {
     @StateObject private var manager = ChatManager.shared
-    @StateObject private var costTracker = CostTracker.shared
     @State private var inputText = ""
     @State private var selectedImages: [Data] = []
     @State private var isShowingImagePicker = false
@@ -185,7 +184,9 @@ struct PureChatView: View {
                     }
                     .onAppear { scrollProxy = proxy; scrollToBottom(proxy, animated: false) }
                     .onChange(of: conv.messages.count) { scrollToBottom(proxy, animated: true) }
-                    .onChange(of: manager.streamingText) { scrollToBottom(proxy, animated: false) }
+                    .onChange(of: manager.streamingText.count / 80) { _ in
+                        scrollToBottom(proxy, animated: false)
+                    }
                 }
             } else {
                 ZStack(alignment: .bottom) {
@@ -232,16 +233,33 @@ struct PureChatView: View {
             // "Navi  ModelName ⌄"
             if let conv = conversation {
                 Menu {
-                    ForEach(ClaudeModel.allCases) { model in
-                        Button {
-                            if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
-                                manager.conversations[idx].model = model
-                                manager.activeConversation?.model = model
+                    Section("Anthropic") {
+                        ForEach(ClaudeModel.anthropicModels) { model in
+                            Button {
+                                if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
+                                    manager.conversations[idx].model = model
+                                    manager.activeConversation?.model = model
+                                }
+                            } label: {
+                                HStack {
+                                    Text(model.displayName)
+                                    if model == conv.model { Image(systemName: "checkmark") }
+                                }
                             }
-                        } label: {
-                            HStack {
-                                Text(model.displayName)
-                                if model == conv.model { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Section("xAI / Grok") {
+                        ForEach(ClaudeModel.xaiModels) { model in
+                            Button {
+                                if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
+                                    manager.conversations[idx].model = model
+                                    manager.activeConversation?.model = model
+                                }
+                            } label: {
+                                HStack {
+                                    Text(model.displayName)
+                                    if model == conv.model { Image(systemName: "checkmark") }
+                                }
                             }
                         }
                     }
@@ -274,11 +292,7 @@ struct PureChatView: View {
             Spacer()
 
             // Cost + new chat
-            if costTracker.sessionSEK > 0 {
-                Text(costTracker.formattedSession().components(separatedBy: " (").first ?? "")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Color.secondary.opacity(0.6))
-            }
+            SessionCostLabel()
 
             Button { _ = manager.newConversation() } label: {
                 Image(systemName: "square.and.pencil")
@@ -328,6 +342,9 @@ struct PureChatView: View {
 
     var chatInputBar: some View {
         VStack(spacing: 6) {
+            // Agent activity is isolated to avoid triggering input bar redraws
+            AgentActivityOverlay()
+
             // Image previews
             if !selectedImages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -454,11 +471,7 @@ struct PureChatView: View {
                     .font(.caption2)
                     .foregroundColor(Color.secondary.opacity(0.6))
                 Spacer()
-                if costTracker.sessionSEK > 0 {
-                    Text(costTracker.formattedSession().components(separatedBy: " (").first ?? "")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Color.secondary.opacity(0.6).opacity(0.6))
-                }
+                SessionCostLabel(fontSize: 10, opacity: 0.36)
             }
         }
         .padding(.horizontal, 16)
@@ -526,9 +539,9 @@ struct PureChatBubble: View {
                         imageRow(imgs)
                     }
                     Text(message.content)
-                        .font(.callout)
+                        .font(.system(size: 15.5))
                         .foregroundColor(textPrimary)
-                        .lineSpacing(3)
+                        .lineSpacing(4)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(RoundedRectangle(cornerRadius: 18).fill(userBubbleColor))
@@ -626,7 +639,7 @@ struct PureChatBubble: View {
 // MARK: - Project Context Banner
 
 struct ProjectContextBanner: View {
-    let project: EonProject
+    let project: NaviProject
 
     var body: some View {
         HStack(spacing: 10) {
@@ -681,18 +694,35 @@ struct MarkdownTextView: View, Equatable {
 
     var body: some View {
         let blocks = parseBlocks(text)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let t):
-                    Text(.init(t))
-                        .font(.system(size: 15))
-                        .lineSpacing(4)
+                    Self.renderMarkdownText(t)
                         .fixedSize(horizontal: false, vertical: true)
                 case .code(let lang, let code):
                     MarkdownCodeBlock(language: lang, code: code)
                 }
             }
+        }
+    }
+
+    /// Renders markdown text with proper **bold**, *italic*, `code`, and ~~strikethrough~~ support.
+    @ViewBuilder
+    private static func renderMarkdownText(_ raw: String) -> some View {
+        // Use AttributedString for rich markdown rendering (bold, italic, inline code, etc.)
+        if let attributed = try? AttributedString(
+            markdown: raw,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            Text(attributed)
+                .font(.system(size: 15.5))
+                .lineSpacing(5)
+        } else {
+            // Fallback for malformed markdown
+            Text(raw)
+                .font(.system(size: 15.5))
+                .lineSpacing(5)
         }
     }
 
@@ -791,5 +821,37 @@ struct MarkdownCodeBlock: View {
         #endif
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+    }
+}
+
+// MARK: - Isolated Session Cost Label (prevents parent redraw cascades)
+
+/// Lightweight view that self-manages CostTracker observation.
+/// Using this instead of observing CostTracker in parent views
+/// prevents the entire chat UI from re-rendering on every cost update.
+struct SessionCostLabel: View {
+    var fontSize: CGFloat = 11
+    var opacity: Double = 0.6
+
+    @StateObject private var tracker = CostTracker.shared
+
+    var body: some View {
+        if tracker.sessionSEK > 0 {
+            Text(tracker.formattedSession().components(separatedBy: " (").first ?? "")
+                .font(.system(size: fontSize, design: .monospaced))
+                .foregroundColor(Color.secondary.opacity(opacity))
+        }
+    }
+}
+
+// MARK: - Isolated Agent Activity Overlay (prevents input bar redraws)
+
+/// Wraps AgentActivityView in its own struct so that orchestrator
+/// activity updates only rebuild this small view — not the entire input bar.
+struct AgentActivityOverlay: View {
+    var body: some View {
+        AgentActivityView(activity: NaviOrchestrator.shared.activity, compact: true)
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
     }
 }

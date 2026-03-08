@@ -16,6 +16,7 @@ struct ChatHistorySidebar: View {
     @StateObject private var statusBroadcaster = DeviceStatusBroadcaster.shared
     @StateObject private var ghManager = GitHubManager.shared
     @StateObject private var agentPool = AgentPool.shared
+    @StateObject private var mediaManager = MediaGenerationManager.shared
 
     @State private var searchText = ""
     @State private var showSettings = false
@@ -170,6 +171,10 @@ struct ChatHistorySidebar: View {
             ) {
                 selectedTab = .github; showSidebar = false
             }
+            navItem(icon: "photo.stack.fill", label: "Media", isActive: selectedTab == .media,
+                    badge: { let n = mediaManager.activeGenerations.count; return n > 0 ? "\(n)" : nil }()) {
+                selectedTab = .media; showSidebar = false
+            }
 
             Divider().opacity(0.08).padding(.vertical, 4)
 
@@ -204,6 +209,8 @@ struct ChatHistorySidebar: View {
             githubHistory
         case .agents:
             agentsHistory
+        case .media:
+            mediaHistory
         }
     }
 
@@ -252,7 +259,7 @@ struct ChatHistorySidebar: View {
 
     // MARK: - Project history
 
-    var filteredProjects: [EonProject] {
+    var filteredProjects: [NaviProject] {
         searchText.isEmpty
             ? projectStore.projects
             : projectStore.projects.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
@@ -336,7 +343,7 @@ struct ChatHistorySidebar: View {
     }
 
     @ViewBuilder
-    private func projectRow(_ project: EonProject) -> some View {
+    private func projectRow(_ project: NaviProject) -> some View {
         Button {
             projectStore.activeProject = project
             selectedTab = .project
@@ -571,6 +578,82 @@ struct ChatHistorySidebar: View {
         case .completed: return .blue
         case .failed:    return .red
         case .idle:      return .secondary
+        }
+    }
+
+    // MARK: - Media history
+
+    @ViewBuilder
+    var mediaHistory: some View {
+        let active = mediaManager.activeGenerations
+        let completed = mediaManager.completedGenerations.filter {
+            searchText.isEmpty || $0.prompt.localizedCaseInsensitiveContains(searchText)
+        }
+
+        if active.isEmpty && completed.isEmpty {
+            emptyHistoryHint(icon: "photo.stack", text: "Ingen media ännu")
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                if !active.isEmpty {
+                    sectionHeader("Aktiva")
+                    ForEach(active) { gen in
+                        Button { selectedTab = .media; showSidebar = false } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: gen.type.icon)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.orange)
+                                    .frame(width: 18)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(gen.displayTitle)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+                                    Text(gen.status.displayName)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.orange)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                ProgressView().scaleEffect(0.6)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                if !completed.isEmpty {
+                    sectionHeader("Historik")
+                    ForEach(completed.prefix(20)) { gen in
+                        Button { selectedTab = .media; showSidebar = false } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: gen.type.icon)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 18)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(gen.displayTitle)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+                                    HStack(spacing: 4) {
+                                        Text(gen.createdAt.relativeString)
+                                        if gen.costSEK > 0 {
+                                            Text("·")
+                                            Text(String(format: "%.2f kr", gen.costSEK))
+                                        }
+                                    }
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
         }
     }
 
@@ -813,7 +896,7 @@ struct ChatHistorySidebar: View {
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
         let name = url.lastPathComponent
-        var project = EonProject(name: name, rootPath: url.path, iCloudPath: url.path)
+        var project = NaviProject(name: name, rootPath: url.path, iCloudPath: url.path)
         project.localPath = url.path
 
         Task {

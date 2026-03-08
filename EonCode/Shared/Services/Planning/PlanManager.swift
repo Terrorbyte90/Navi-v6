@@ -110,6 +110,13 @@ final class PlanManager: ObservableObject {
         }
     }
 
+    // MARK: - Cancel streaming
+
+    func cancelStreaming() {
+        isStreaming = false
+        streamingText = ""
+    }
+
     // MARK: - New plan
 
     func newPlan(model: ClaudeModel = .sonnet45) -> ProjectPlan {
@@ -390,7 +397,9 @@ final class PlanManager: ObservableObject {
             UserDefaults.standard.removeObject(forKey: legacyKey)
         }
 
-        plans = loaded.sorted { $0.updatedAt > $1.updatedAt }
+        let loadedIDs = Set(loaded.map(\.id))
+        let unsaved = plans.filter { !loadedIDs.contains($0.id) }
+        plans = (loaded + unsaved).sorted { $0.updatedAt > $1.updatedAt }
         activePlan = plans.first(where: { $0.status == .active }) ?? plans.first
     }
 }
