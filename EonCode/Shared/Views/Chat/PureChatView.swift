@@ -291,9 +291,6 @@ struct PureChatView: View {
 
             Spacer()
 
-            // Cost + new chat
-            SessionCostLabel()
-
             Button { _ = manager.newConversation() } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 14))
@@ -338,144 +335,19 @@ struct PureChatView: View {
         .padding(40)
     }
 
-    // MARK: - Input bar (Mockup11 / ChatGPT-faithful pill)
+    // MARK: - Input bar — isolated struct prevents streaming redraw cascade
 
     var chatInputBar: some View {
-        VStack(spacing: 6) {
-            // Agent activity is isolated to avoid triggering input bar redraws
-            AgentActivityOverlay()
-
-            // Image previews
-            if !selectedImages.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, data in
-                            ZStack(alignment: .topTrailing) {
-                                #if os(iOS)
-                                if let ui = UIImage(data: data) {
-                                    Image(uiImage: ui).resizable().scaledToFill()
-                                        .frame(width: 52, height: 52)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
-                                #else
-                                if let ns = NSImage(data: data) {
-                                    Image(nsImage: ns).resizable().scaledToFill()
-                                        .frame(width: 52, height: 52)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
-                                #endif
-                                Button { selectedImages.remove(at: idx) } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.white)
-                                        .background(Circle().fill(Color.black.opacity(0.5)))
-                                }
-                                .buttonStyle(.plain)
-                                .offset(x: 4, y: -4)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 6)
-                }
-            }
-
-            // Pill — exact ChatGPT shape
-            HStack(alignment: .center, spacing: 8) {
-                Menu {
-                    Button { isShowingImagePicker = true } label: {
-                        Label("Bild", systemImage: "photo")
-                    }
-                    Button { isShowingFilePicker = true } label: {
-                        Label("Fil", systemImage: "doc")
-                    }
-                    #if os(iOS)
-                    Button { isShowingImagePicker = true } label: {
-                        Label("Kamera", systemImage: "camera")
-                    }
-                    #endif
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.surfaceHover)
-                            .frame(width: 30, height: 30)
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Color.secondary)
-                    }
-                }
-                #if os(macOS)
-                .menuStyle(.borderlessButton)
-                #endif
-
-                TextField("Skicka ett meddelande till Navi", text: $inputText, axis: .vertical)
-                    .focused($inputFocused)
-                    .font(.callout)
-                    .foregroundColor(Color.primary)
-                    .lineLimit(1...6)
-                    .textFieldStyle(.plain)
-                    .padding(.vertical, 10)
-                    .padding(.leading, 4)
-
-                if manager.isStreaming {
-                    Button(action: sendMessage) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.primary)
-                                .frame(width: 30, height: 30)
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.chatBackground)
-                                .frame(width: 10, height: 10)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                } else if inputText.isBlank && selectedImages.isEmpty {
-                    Button { showVoiceMode = true } label: {
-                        ZStack {
-                            Circle()
-                                .fill(Color.secondary.opacity(0.15))
-                                .frame(width: 30, height: 30)
-                            Image(systemName: "waveform")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color.secondary.opacity(0.7))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button(action: sendMessage) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.primary)
-                                .frame(width: 30, height: 30)
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Color.chatBackground)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(Color.userBubble)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 22)
-                            .strokeBorder(Color.inputBorder, lineWidth: 0.5)
-                    )
-            )
-
-            // Disclaimer + session cost
-            HStack {
-                Text("Navi kan göra misstag. Kontrollera viktig information.")
-                    .font(.caption2)
-                    .foregroundColor(Color.secondary.opacity(0.6))
-                Spacer()
-                SessionCostLabel(fontSize: 10, opacity: 0.36)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        PureChatInputBar(
+            inputText: $inputText,
+            selectedImages: $selectedImages,
+            isShowingImagePicker: $isShowingImagePicker,
+            isShowingFilePicker: $isShowingFilePicker,
+            showVoiceMode: $showVoiceMode,
+            isStreaming: manager.isStreaming,
+            inputFocused: $inputFocused,
+            onSend: sendMessage
+        )
     }
 
     // MARK: - Send
@@ -824,22 +696,186 @@ struct MarkdownCodeBlock: View {
     }
 }
 
-// MARK: - Isolated Session Cost Label (prevents parent redraw cascades)
+// MARK: - Isolated Input Bar (prevents streaming redraw cascade on keyboard focus)
 
-/// Lightweight view that self-manages CostTracker observation.
-/// Using this instead of observing CostTracker in parent views
-/// prevents the entire chat UI from re-rendering on every cost update.
-struct SessionCostLabel: View {
-    var fontSize: CGFloat = 11
-    var opacity: Double = 0.6
-
-    @StateObject private var tracker = CostTracker.shared
+/// Extracted as its own struct so that ChatManager streaming updates
+/// (streamingText changes every token) don't force this view to re-render.
+/// Only `isStreaming: Bool` matters here — it changes twice per message, not per token.
+private struct PureChatInputBar: View {
+    @Binding var inputText: String
+    @Binding var selectedImages: [Data]
+    @Binding var isShowingImagePicker: Bool
+    @Binding var isShowingFilePicker: Bool
+    @Binding var showVoiceMode: Bool
+    let isStreaming: Bool
+    var inputFocused: FocusState<Bool>.Binding
+    let onSend: () -> Void
 
     var body: some View {
-        if tracker.sessionSEK > 0 {
-            Text(tracker.formattedSession().components(separatedBy: " (").first ?? "")
-                .font(.system(size: fontSize, design: .monospaced))
-                .foregroundColor(Color.secondary.opacity(opacity))
+        VStack(spacing: 6) {
+            // Agent activity isolated to avoid triggering input bar redraws
+            AgentActivityOverlay()
+
+            // Cached image thumbnails — decoded once, not on every re-render
+            if !selectedImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, data in
+                            InputImageThumb(data: data) {
+                                selectedImages.remove(at: idx)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+                }
+            }
+
+            // ChatGPT-style pill
+            HStack(alignment: .center, spacing: 8) {
+                Menu {
+                    Button { isShowingImagePicker = true } label: {
+                        Label("Bild", systemImage: "photo")
+                    }
+                    Button { isShowingFilePicker = true } label: {
+                        Label("Fil", systemImage: "doc")
+                    }
+                    #if os(iOS)
+                    Button { isShowingImagePicker = true } label: {
+                        Label("Kamera", systemImage: "camera")
+                    }
+                    #endif
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.surfaceHover)
+                            .frame(width: 30, height: 30)
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Color.secondary)
+                    }
+                }
+                #if os(macOS)
+                .menuStyle(.borderlessButton)
+                #endif
+
+                TextField("Skicka ett meddelande till Navi", text: $inputText, axis: .vertical)
+                    .focused(inputFocused)
+                    .font(.callout)
+                    .foregroundColor(Color.primary)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.plain)
+                    .padding(.vertical, 10)
+                    .padding(.leading, 4)
+
+                if isStreaming {
+                    Button(action: onSend) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.primary)
+                                .frame(width: 30, height: 30)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.chatBackground)
+                                .frame(width: 10, height: 10)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else if inputText.isBlank && selectedImages.isEmpty {
+                    Button { showVoiceMode = true } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.secondary.opacity(0.15))
+                                .frame(width: 30, height: 30)
+                            Image(systemName: "waveform")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color.secondary.opacity(0.7))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button(action: onSend) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.primary)
+                                .frame(width: 30, height: 30)
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Color.chatBackground)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 22)
+                    .fill(Color.userBubble)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22)
+                            .strokeBorder(Color.inputBorder, lineWidth: 0.5)
+                    )
+            )
+
+            // Disclaimer
+            Text("Navi kan göra misstag. Kontrollera viktig information.")
+                .font(.caption2)
+                .foregroundColor(Color.secondary.opacity(0.5))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Image Thumbnail (decodes Data → Image once, not on every streaming redraw)
+
+/// Memoizes the platform image so that streaming updates don't
+/// re-decode raw Data on every render cycle.
+private struct InputImageThumb: View {
+    let data: Data
+    let onRemove: () -> Void
+
+    #if os(iOS)
+    @State private var cached: UIImage?
+    #else
+    @State private var cached: NSImage?
+    #endif
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let cached {
+                    #if os(iOS)
+                    Image(uiImage: cached)
+                        .resizable()
+                        .scaledToFill()
+                    #else
+                    Image(nsImage: cached)
+                        .resizable()
+                        .scaledToFill()
+                    #endif
+                } else {
+                    Color.surfaceHover
+                }
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.white)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+            .offset(x: 4, y: -4)
+        }
+        .task(id: data) {
+            #if os(iOS)
+            cached = UIImage(data: data)
+            #else
+            cached = NSImage(data: data)
+            #endif
         }
     }
 }

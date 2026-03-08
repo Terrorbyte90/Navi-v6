@@ -8,13 +8,17 @@ struct MediaView: View {
 
     @State private var prompt = ""
     @State private var selectedMode: MediaType = .image
-    @State private var imageSize = "1024x1024"
+    @State private var imageSize = "1080x1920"
     @State private var imageVariations = 1
     @State private var useProModel = false
     @State private var selectedGeneration: MediaGeneration?
     @State private var isGenerating = false
     @State private var errorMessage: String?
     @FocusState private var promptFocused: Bool
+
+    // Reference image (image-to-video / image-to-image)
+    @State private var referenceImageData: Data? = nil
+    @State private var showReferenceImagePicker = false
 
     var body: some View {
         #if os(macOS)
@@ -36,6 +40,13 @@ struct MediaView: View {
         }
         .background(Color.chatBackground)
         .onAppear { Task { await manager.refreshBalance() } }
+        .sheet(isPresented: $showReferenceImagePicker) {
+            ImagePicker(selectedImages: Binding(
+                get: { referenceImageData.map { [$0] } ?? [] },
+                set: { referenceImageData = $0.first }
+            ))
+            .frame(minWidth: 500, minHeight: 400)
+        }
     }
     #endif
 
@@ -52,6 +63,12 @@ struct MediaView: View {
         }
         .background(Color.chatBackground)
         .onAppear { Task { await manager.refreshBalance() } }
+        .sheet(isPresented: $showReferenceImagePicker) {
+            ImagePicker(selectedImages: Binding(
+                get: { referenceImageData.map { [$0] } ?? [] },
+                set: { referenceImageData = $0.first }
+            ))
+        }
     }
 
     var emptyStateWithPrompt: some View {
@@ -104,27 +121,80 @@ struct MediaView: View {
     #if os(iOS)
     var promptBar: some View {
         VStack(spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
-                Menu {
-                    Picker("Storlek", selection: $imageSize) {
-                        Text("1024×1024").tag("1024x1024")
-                        Text("1792×1024").tag("1792x1024")
-                        Text("1024×1792").tag("1024x1792")
+            // Reference image thumbnail (if set)
+            if let imgData = referenceImageData, let ui = UIImage(data: imgData) {
+                HStack(spacing: 8) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(uiImage: ui)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        Button { referenceImageData = nil } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.white)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 4, y: -4)
                     }
-                    Picker("Variationer", selection: $imageVariations) {
-                        ForEach(1...4, id: \.self) { n in
-                            Text("\(n) bild\(n > 1 ? "er" : "")").tag(n)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Referensbild")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Text("Används som underlag")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 4)
+            }
+
+            HStack(alignment: .center, spacing: 8) {
+                // Settings + image upload menu
+                Menu {
+                    Section("Upplösning") {
+                        Picker("Upplösning", selection: $imageSize) {
+                            Text("720p Stående (720×1280)").tag("720x1280")
+                            Text("1080p Stående (1080×1920)").tag("1080x1920")
                         }
                     }
-                    Toggle("Pro-modell ($0.07)", isOn: $useProModel)
+                    Section("Antal") {
+                        Picker("Bilder", selection: $imageVariations) {
+                            ForEach(1...4, id: \.self) { n in
+                                Text("\(n) bild\(n > 1 ? "er" : "")").tag(n)
+                            }
+                        }
+                    }
+                    Section("Kvalitet") {
+                        Toggle("Pro ($0.07/bild)", isOn: $useProModel)
+                    }
+                    Divider()
+                    Button {
+                        showReferenceImagePicker = true
+                    } label: {
+                        Label(
+                            referenceImageData == nil ? "Ladda upp referensbild" : "Byt referensbild",
+                            systemImage: "photo.badge.arrow.down"
+                        )
+                    }
+                    if referenceImageData != nil {
+                        Button(role: .destructive) {
+                            referenceImageData = nil
+                        } label: {
+                            Label("Ta bort referensbild", systemImage: "trash")
+                        }
+                    }
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color.surfaceHover)
+                            .fill(referenceImageData != nil ? Color.orange.opacity(0.15) : Color.surfaceHover)
                             .frame(width: 30, height: 30)
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
+                        Image(systemName: referenceImageData != nil ? "photo.badge.checkmark" : "slider.horizontal.3")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(referenceImageData != nil ? .orange : .secondary)
                     }
                 }
 
@@ -169,7 +239,8 @@ struct MediaView: View {
             HStack {
                 let cost = estimateCostSEK()
                 if cost > 0 {
-                    Text("~\(String(format: "%.2f kr", cost)) · \(useProModel ? "Pro" : "Standard") · \(imageSize)")
+                    let res = imageSize == "1080x1920" ? "1080p" : "720p"
+                    Text("~\(String(format: "%.2f kr", cost)) · \(useProModel ? "Pro" : "Standard") · \(res) · \(imageVariations) bild\(imageVariations > 1 ? "er" : "")")
                         .font(.caption2)
                         .foregroundColor(.secondary.opacity(0.6))
                 }
@@ -384,26 +455,80 @@ struct MediaView: View {
     }
 
     var imageParameters: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            // Resolution — portrait iPhone only
             HStack {
-                Text("Storlek").font(.system(size: 13)).foregroundColor(.secondary)
+                Text("Upplösning").font(.system(size: 13)).foregroundColor(.secondary)
                 Spacer()
                 Picker("", selection: $imageSize) {
-                    Text("1024×1024").tag("1024x1024")
-                    Text("1792×1024").tag("1792x1024")
-                    Text("1024×1792").tag("1024x1792")
+                    Text("720p Stående (720×1280)").tag("720x1280")
+                    Text("1080p Stående (1080×1920)").tag("1080x1920")
                 }
                 .pickerStyle(.menu).font(.system(size: 12))
             }
 
+            // Variations 1–4
             HStack {
-                Text("Variationer: \(imageVariations)").font(.system(size: 13)).foregroundColor(.secondary)
+                Text("Bilder: \(imageVariations)").font(.system(size: 13)).foregroundColor(.secondary)
                 Spacer()
                 Stepper("", value: $imageVariations, in: 1...4).labelsHidden()
             }
 
-            Toggle("Pro-modell (grok-imagine-image-pro)", isOn: $useProModel)
+            // Pro toggle
+            Toggle("Pro-modell ($0.07/bild)", isOn: $useProModel)
                 .font(.system(size: 13))
+
+            Divider().opacity(0.15)
+
+            // Reference image upload
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Referensbild (valfri)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                if let imgData = referenceImageData {
+                    #if os(macOS)
+                    if let ns = NSImage(data: imgData) {
+                        HStack(spacing: 10) {
+                            Image(nsImage: ns)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Referensbild inladdad")
+                                    .font(.system(size: 12))
+                                Button("Ta bort") { referenceImageData = nil }
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.red.opacity(0.8))
+                                    .buttonStyle(.plain)
+                            }
+                            Spacer()
+                        }
+                    }
+                    #endif
+                } else {
+                    Button {
+                        showReferenceImagePicker = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "photo.badge.arrow.down")
+                                .font(.system(size: 13))
+                            Text("Välj referensbild…")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.08))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    Text("Används som underlag för bild- och videogenerering")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+            }
         }
         .padding(12)
         .background(Color.userBubble)
@@ -427,15 +552,17 @@ struct MediaView: View {
     var costEstimate: some View {
         let sek = estimateCostSEK()
         let usd = estimateCostUSD()
+        let res = imageSize == "1080x1920" ? "1080p" : "720p"
 
         return HStack(spacing: 8) {
             Image(systemName: "banknote").font(.system(size: 12)).foregroundColor(.orange)
-            Text("Uppskattad kostnad:").font(.system(size: 12)).foregroundColor(.secondary)
-            Text(String(format: "%.2f kr", sek))
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-            Text("(\(String(format: "$%.3f", usd)))")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.secondary.opacity(0.6))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(String(format: "%.2f kr  ($%.3f)", sek, usd))
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                Text("\(useProModel ? "Pro" : "Standard") · \(res) stående · \(imageVariations) bild\(imageVariations > 1 ? "er" : "")")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
         }
         .padding(10)
         .background(Color.orange.opacity(0.06))

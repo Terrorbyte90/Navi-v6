@@ -1170,7 +1170,6 @@ struct InputBar: View {
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.4))
                 }
-                SessionCostLabel(fontSize: 12, opacity: 0.3)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
