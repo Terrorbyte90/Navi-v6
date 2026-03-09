@@ -42,10 +42,6 @@ struct SettingsView: View {
                 .tabItem { Label("Synk", systemImage: "arrow.triangle.2.circlepath") }
                 .padding()
 
-            costSection
-                .tabItem { Label("Kostnad", systemImage: "chart.bar") }
-                .padding()
-
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     memoriesSection
@@ -93,8 +89,6 @@ struct SettingsView: View {
                 VoicePickerRow()
             }
             Section("Minnen") { memoriesSection }
-
-            Section("API-saldon") { apiBalancesSection }
         }
         .navigationTitle("Inställningar")
         #if os(iOS)
@@ -102,10 +96,6 @@ struct SettingsView: View {
         #endif
         .background(Color.chatBackground)
         .scrollContentBackground(.hidden)
-    }
-
-    var apiBalancesSection: some View {
-        APIBalancesView()
     }
 
     var iOSAgentModeSection: some View {
@@ -232,9 +222,10 @@ struct SettingsView: View {
                 icon: "bolt.fill",
                 placeholder: "xai-…",
                 text: $xaiKey,
-                hint: "Används för Grok-modeller i chatt samt bild/video-generering under Media.",
+                hint: "Används för Grok-modeller i chatt och bildgenerering under Media.",
                 isRevealable: true
             )
+
 
             // ── GitHub ───────────────────────────────────────────────────────
             APIKeyRow(
@@ -385,10 +376,6 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
         }
-    }
-
-    var costSection: some View {
-        CostDashboardView()
     }
 
     private func saveKeys() {
@@ -779,412 +766,7 @@ struct ModelPickerView: View {
     }
 }
 
-// MARK: - Cost Dashboard
-
-struct CostDashboardView: View {
-    @StateObject private var exchange = ExchangeRateService.shared
-    @StateObject private var tracker = CostTracker.shared
-    @State private var showResetConfirm = false
-    @State private var xaiBalance: XAIBalance?
-    @State private var isLoadingXAI = false
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-
-                // MARK: API-saldon
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("API-saldon")
-                            .font(.system(size: 16, weight: .bold))
-                        Spacer()
-                        GlassButton("Uppdatera", icon: "arrow.clockwise") {
-                            Task { await refreshBalances() }
-                        }
-                    }
-
-                    HStack(spacing: 12) {
-                        // Anthropic — no balance API, show tracked spend
-                        balanceCard(
-                            provider: "Anthropic",
-                            icon: "brain",
-                            iconColor: .accentNavi,
-                            balance: nil,
-                            spent: tracker.totalSEK,
-                            note: "Inget saldo-API — visar spenderat"
-                        )
-
-                        // xAI / Grok — live balance
-                        balanceCard(
-                            provider: "xAI / Grok",
-                            icon: "bolt.fill",
-                            iconColor: Color(red: 1.0, green: 0.45, blue: 0.0),
-                            balance: xaiBalance,
-                            spent: nil,
-                            note: xaiBalance == nil ? "Tryck uppdatera" : nil
-                        )
-                    }
-                }
-
-                Divider().opacity(0.2)
-
-                // MARK: Totals
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Kostnadsspårning")
-                        .font(.system(size: 16, weight: .bold))
-
-                    HStack(spacing: 12) {
-                        costCard(
-                            title: "Totalt spenderat",
-                            icon: "chart.bar.fill",
-                            iconColor: .accentNavi,
-                            primary: tracker.formattedTotal().components(separatedBy: " (").first ?? "—",
-                            secondary: tracker.formattedTotal().components(separatedBy: " (").last.map { String($0.dropLast()) } ?? ""
-                        )
-                        costCard(
-                            title: "Denna session",
-                            icon: "clock.fill",
-                            iconColor: .green,
-                            primary: tracker.formattedSession().components(separatedBy: " (").first ?? "—",
-                            secondary: tracker.formattedSession().components(separatedBy: " (").last.map { String($0.dropLast()) } ?? ""
-                        )
-                    }
-
-                    if tracker.lastRequestSEK > 0 {
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                            Text("Senaste svar:")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                            Text(tracker.formattedLast())
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            if let model = tracker.lastRequestModel {
-                                Text("·")
-                                    .foregroundColor(.secondary.opacity(0.4))
-                                Text(model.displayName)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.accentNavi)
-                            }
-                        }
-                    }
-                }
-
-                Divider().opacity(0.2)
-
-                // MARK: Token stats
-                if tracker.totalRequests > 0 {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Token-statistik (totalt)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.secondary)
-
-                        HStack(spacing: 12) {
-                            tokenStatCard("Anrop", value: "\(tracker.totalRequests)", color: .accentNavi)
-                            tokenStatCard("Indata", value: formatTokens(tracker.totalInputTokens), color: .blue)
-                            tokenStatCard("Utdata", value: formatTokens(tracker.totalOutputTokens), color: .purple)
-                        }
-
-                        if tracker.totalCacheReadTokens > 0 {
-                            HStack(spacing: 6) {
-                                Image(systemName: "bolt.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.green)
-                                Text("\(formatTokens(tracker.totalCacheReadTokens)) tokens från cache (−90% kostnad)")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary.opacity(0.7))
-                            }
-                        }
-                    }
-
-                    Divider().opacity(0.2)
-                }
-
-                // MARK: Exchange rate
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Växelkurs")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                        Text("1 USD = \(String(format: "%.2f", exchange.usdToSEK)) SEK")
-                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    }
-                    Spacer()
-                    GlassButton("Uppdatera", icon: "arrow.clockwise") {
-                        Task { await exchange.refresh() }
-                    }
-                }
-
-                Divider().opacity(0.2)
-
-                // MARK: Pricing table
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Pris per miljon tokens (USD)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-
-                    // Anthropic
-                    Text("Anthropic")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary.opacity(0.6))
-                        .padding(.top, 4)
-
-                    ForEach(ClaudeModel.anthropicModels) { model in
-                        pricingRow(model: model)
-                    }
-
-                    // xAI / Grok
-                    Text("xAI / Grok")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary.opacity(0.6))
-                        .padding(.top, 4)
-
-                    ForEach(ClaudeModel.xaiModels) { model in
-                        pricingRow(model: model)
-                    }
-
-                    Text("Cache-läsning kostar 10% av normalpris (Anthropic). Prompt-caching aktiveras automatiskt.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-
-                Divider().opacity(0.2)
-
-                // MARK: Reset
-                HStack {
-                    Spacer()
-                    Button {
-                        showResetConfirm = true
-                    } label: {
-                        Label("Nollställ statistik", systemImage: "trash")
-                            .font(.system(size: 12))
-                            .foregroundColor(.red.opacity(0.7))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .confirmationDialog("Nollställ all kostnadsstatistik?", isPresented: $showResetConfirm, titleVisibility: .visible) {
-                    Button("Nollställ", role: .destructive) { tracker.resetAll() }
-                    Button("Avbryt", role: .cancel) {}
-                }
-            }
-            .padding()
-        }
-        .onAppear {
-            if xaiBalance == nil && KeychainManager.shared.xaiAPIKey?.isEmpty == false {
-                Task { await refreshBalances() }
-            }
-        }
-    }
-
-    // MARK: - Helpers
-
-    @ViewBuilder
-    private func balanceCard(provider: String, icon: String, iconColor: Color, balance: XAIBalance?, spent: Double?, note: String?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
-                    .foregroundColor(iconColor)
-                Text(provider)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-
-            if let balance, let remaining = balance.remainingCredits {
-                let sek = remaining * ExchangeRateService.shared.usdToSEK
-                Text(String(format: "%.0f kr", sek))
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                Text(String(format: "$%.2f", remaining))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.6))
-            } else if let spent {
-                Text(String(format: "%.2f kr", spent))
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.orange)
-                Text("spenderat")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.6))
-            } else if isLoadingXAI {
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .frame(height: 20)
-            } else {
-                Text("—")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.4))
-            }
-
-            if let note {
-                Text(note)
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary.opacity(0.4))
-                    .lineLimit(2)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(10)
-    }
-
-    private func refreshBalances() async {
-        guard KeychainManager.shared.xaiAPIKey?.isEmpty == false else { return }
-        isLoadingXAI = true
-        defer { isLoadingXAI = false }
-        do {
-            xaiBalance = try await XAIClient.shared.fetchBalance()
-        } catch {
-            NaviLog.error("Kunde inte hämta xAI-saldo", error: error)
-        }
-    }
-
-    @ViewBuilder
-    private func pricingRow(model: ClaudeModel) -> some View {
-        HStack {
-            Text(model.displayName)
-                .font(.system(size: 12))
-            Spacer()
-            Text("In: $\(String(format: "%.2f", model.inputPricePerMTok))")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.green)
-            Text("Ut: $\(String(format: "%.2f", model.outputPricePerMTok))")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.orange)
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func formatTokens(_ n: Int) -> String {
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000 { return String(format: "%.1fk", Double(n) / 1_000) }
-        return "\(n)"
-    }
-
-    @ViewBuilder
-    private func costCard(title: String, icon: String, iconColor: Color, primary: String, secondary: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
-                    .foregroundColor(iconColor)
-                Text(title)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-            Text(primary)
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-            if !secondary.isEmpty {
-                Text(secondary)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(10)
-    }
-
-    @ViewBuilder
-    private func tokenStatCard(_ title: String, value: String, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundColor(color)
-            Text(title)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.07))
-        .cornerRadius(8)
-    }
-}
-
-// MARK: - API Balances (compact, for iOS Settings bottom)
-
-struct APIBalancesView: View {
-    @StateObject private var tracker = CostTracker.shared
-    @State private var xaiBalance: XAIBalance?
-    @State private var isLoading = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "brain")
-                    .font(.system(size: 12))
-                    .foregroundColor(.accentNavi)
-                Text("Anthropic")
-                    .font(.system(size: 13, weight: .medium))
-                Spacer()
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text("Spenderat: \(formatSEK(tracker.totalSEK))")
-                        .font(.system(size: 12, design: .monospaced))
-                    Text("Session: \(formatSEK(tracker.sessionSEK))")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Divider().opacity(0.15)
-
-            HStack {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.orange)
-                Text("xAI / Grok")
-                    .font(.system(size: 13, weight: .medium))
-                Spacer()
-                if isLoading {
-                    ProgressView().scaleEffect(0.6)
-                } else if let bal = xaiBalance {
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text("Saldo: \(bal.formattedRemaining)")
-                            .font(.system(size: 12, design: .monospaced))
-                        Text(bal.formattedRemainingInSEK)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Text("Tryck uppdatera")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-            }
-
-            Button {
-                Task { await refresh() }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11))
-                    Text("Uppdatera saldon")
-                        .font(.system(size: 12))
-                }
-                .foregroundColor(.accentNavi)
-            }
-            .buttonStyle(.plain)
-            .disabled(isLoading)
-        }
-        .onAppear { Task { await refresh() } }
-    }
-
-    private func refresh() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            xaiBalance = try await XAIClient.shared.fetchBalance()
-        } catch {
-            NaviLog.warning("Kunde inte hämta xAI-saldo")
-        }
-    }
-
-    private func formatSEK(_ v: Double) -> String {
-        v < 0.01 ? "< 0.01 kr" : String(format: "%.2f kr", v)
-    }
-}
+// MARK: - Cost Dashboard (removed — was causing performance issues)
 
 // MARK: - Previews
 
@@ -1196,13 +778,6 @@ struct APIBalancesView: View {
     ModelPickerView(currentModel: .haiku) { _ in }
         .padding()
         .frame(width: 320)
-        .background(Color.black)
-}
-
-#Preview("CostDashboardView") {
-    CostDashboardView()
-        .padding()
-        .frame(width: 400)
         .background(Color.black)
 }
 

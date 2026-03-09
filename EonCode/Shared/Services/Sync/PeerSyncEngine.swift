@@ -161,6 +161,7 @@ final class PeerSyncEngine: ObservableObject {
     // MARK: - Send/receive data
 
     func send(data: Data, to connection: NWConnection) {
+        guard case .ready = connection.state else { return }
         let lengthPrefix = withUnsafeBytes(of: UInt32(data.count).bigEndian) { Data($0) }
         let fullData = lengthPrefix + data
 
@@ -182,16 +183,19 @@ final class PeerSyncEngine: ObservableObject {
         // Connections from listener.newConnectionHandler must be started manually
         connection.stateUpdateHandler = { [weak self] state in
             Task { @MainActor in
-                if case .failed = state {
+                switch state {
+                case .ready:
+                    self?.receiveLoop(connection: connection)
+                case .failed:
                     self?.connections.removeAll { $0 === connection }
-                } else if case .cancelled = state {
+                case .cancelled:
                     self?.connections.removeAll { $0 === connection }
+                default: break
                 }
             }
         }
         connection.start(queue: .global(qos: .userInitiated))
         connections.append(connection)
-        receiveLoop(connection: connection)
     }
 
     private func receiveLoop(connection: NWConnection) {

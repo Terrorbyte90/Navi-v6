@@ -9,6 +9,7 @@ enum Constants {
         static let xaiBaseURL = "https://api.x.ai/v1"
         static let xaiChatEndpoint = "https://api.x.ai/v1/chat/completions"
         static let xaiImageEndpoint = "https://api.x.ai/v1/images/generations"
+        static let xaiVideoEndpoint = "https://api.x.ai/v1/video/generations"
     }
 
     enum iCloud {

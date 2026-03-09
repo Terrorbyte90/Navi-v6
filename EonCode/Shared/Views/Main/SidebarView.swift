@@ -608,10 +608,6 @@ struct SidebarView: View {
                         } else {
                             Text(gen.createdAt.relativeString)
                         }
-                        if gen.costSEK > 0 {
-                            Text("·")
-                            Text(String(format: "%.2f kr", gen.costSEK))
-                        }
                     }
                     .font(.system(size: 10))
                     .foregroundColor(.secondary.opacity(0.45))

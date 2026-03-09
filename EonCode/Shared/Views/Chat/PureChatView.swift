@@ -137,7 +137,6 @@ struct PureChatView: View {
     @State private var isShowingFilePicker = false
     @State private var showVoiceMode = false
     @State private var scrollProxy: ScrollViewProxy?
-    @FocusState private var inputFocused: Bool
 
     @StateObject private var projectStore = ProjectStore.shared
 
@@ -175,7 +174,7 @@ struct PureChatView: View {
                         }
                         .padding(.vertical, 16)
                         .contentShape(Rectangle())
-                        .onTapGesture { inputFocused = false }
+                        .onTapGesture { dismissKeyboard() }
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -192,7 +191,7 @@ struct PureChatView: View {
                 ZStack(alignment: .bottom) {
                     chatEmptyState
                         .contentShape(Rectangle())
-                        .onTapGesture { inputFocused = false }
+                        .onTapGesture { dismissKeyboard() }
                     chatInputBar
                         .background(Color.chatBackground)
                 }
@@ -345,7 +344,6 @@ struct PureChatView: View {
             isShowingFilePicker: $isShowingFilePicker,
             showVoiceMode: $showVoiceMode,
             isStreaming: manager.isStreaming,
-            inputFocused: $inputFocused,
             onSend: sendMessage
         )
     }
@@ -464,9 +462,6 @@ struct PureChatBubble: View {
                         }
                         .buttonStyle(.plain)
 
-                        if let cost = message.costSEK, cost > 0 {
-                            CostBadge(costSEK: cost, usage: message.tokenUsage, model: message.model)
-                        }
                     }
                     .foregroundColor(textMuted)
                     .padding(.top, 2)
@@ -708,8 +703,9 @@ private struct PureChatInputBar: View {
     @Binding var isShowingFilePicker: Bool
     @Binding var showVoiceMode: Bool
     let isStreaming: Bool
-    var inputFocused: FocusState<Bool>.Binding
     let onSend: () -> Void
+
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 6) {
@@ -760,7 +756,7 @@ private struct PureChatInputBar: View {
                 #endif
 
                 TextField("Skicka ett meddelande till Navi", text: $inputText, axis: .vertical)
-                    .focused(inputFocused)
+                    .focused($inputFocused)
                     .font(.callout)
                     .foregroundColor(Color.primary)
                     .lineLimit(1...6)

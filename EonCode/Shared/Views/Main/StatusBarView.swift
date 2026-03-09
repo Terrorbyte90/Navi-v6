@@ -2,7 +2,6 @@ import SwiftUI
 
 struct StatusBarView: View {
     @StateObject private var store = ProjectStore.shared
-    @StateObject private var exchange = ExchangeRateService.shared
     @StateObject private var broadcaster = DeviceStatusBroadcaster.shared
     @StateObject private var settings = SettingsStore.shared
 
@@ -16,22 +15,6 @@ struct StatusBarView: View {
             // Model picker
             if let project = store.activeProject {
                 ModelPickerCompact(project: project)
-            }
-
-            Divider()
-                .frame(height: 16)
-                .opacity(0.3)
-
-            // Session cost
-            if let agent = activeAgent {
-                HStack(spacing: 4) {
-                    Image(systemName: "coloncurrencysign.circle")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Text(ExchangeRateService.shared.formatSEK(agent.sessionCostSEK))
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
             }
 
             Divider()

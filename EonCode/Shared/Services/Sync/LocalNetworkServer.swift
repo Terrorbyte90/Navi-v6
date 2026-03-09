@@ -127,8 +127,17 @@ final class LocalNetworkServer: ObservableObject {
     // MARK: - Handle HTTP connection
 
     private func handleConnection(_ connection: NWConnection) {
+        connection.stateUpdateHandler = { [weak self] state in
+            if case .ready = state {
+                Task { @MainActor in
+                    self?.receiveHTTP(over: connection)
+                }
+            }
+        }
         connection.start(queue: .global(qos: .userInitiated))
+    }
 
+    private func receiveHTTP(over connection: NWConnection) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, _ in
             guard let data = data, !data.isEmpty else { return }
             let request = String(data: data, encoding: .utf8) ?? ""

@@ -267,14 +267,14 @@ struct ChatHistorySidebar: View {
 
     @ViewBuilder
     var projectHistory: some View {
-        if !filteredProjects.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+            if !filteredProjects.isEmpty {
                 sectionHeader("Projekt")
                 ForEach(filteredProjects) { project in
                     projectRow(project)
                 }
 
-                // Show conversation history for the active project
+                // Conversations for the active project
                 if let activeProject = projectStore.activeProject {
                     let agent = agentPool.agents[activeProject.id]
                     let convHistory = agent?.conversationHistory ?? []
@@ -289,9 +289,17 @@ struct ChatHistorySidebar: View {
                         }
                     }
                 }
+            } else if searchText.isEmpty {
+                emptyHistoryHint(icon: "folder", text: "Inga projekt ännu")
             }
-        } else if searchText.isEmpty {
-            emptyHistoryHint(icon: "folder", text: "Inga projekt ännu")
+
+            // Always show standalone chats at the bottom
+            if !filteredChats.isEmpty {
+                sectionHeader("Chattar")
+                ForEach(filteredChats) { conv in
+                    chatRow(conv)
+                }
+            }
         }
     }
 
@@ -635,15 +643,9 @@ struct ChatHistorySidebar: View {
                                         .font(.system(size: 14))
                                         .foregroundColor(.primary)
                                         .lineLimit(1)
-                                    HStack(spacing: 4) {
-                                        Text(gen.createdAt.relativeString)
-                                        if gen.costSEK > 0 {
-                                            Text("·")
-                                            Text(String(format: "%.2f kr", gen.costSEK))
-                                        }
-                                    }
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
+                                    Text(gen.createdAt.relativeString)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }

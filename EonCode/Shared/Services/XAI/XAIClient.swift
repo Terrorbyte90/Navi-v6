@@ -229,9 +229,115 @@ final class XAIClient: ObservableObject {
         }
     }
 
-    // MARK: - Download image data from URL
+    // MARK: - Video Generation (Aurora)
+
+    /// Submit a video generation task and poll until complete. Returns the finished video Data.
+    func generateVideo(
+        prompt: String,
+        imageData: Data? = nil,
+        duration: Int = 5,
+        aspectRatio: String = "9:16"
+    ) async throws -> Data {
+        let headers = try authHeaders()
+
+        var body: [String: Any] = [
+            "model": "aurora",
+            "prompt": prompt,
+            "duration": duration,
+            "aspect_ratio": aspectRatio
+        ]
+
+        if let img = imageData {
+            let base64 = img.base64EncodedString()
+            body["input_image"] = "data:image/jpeg;base64,\(base64)"
+        }
+
+        var request = URLRequest(url: URL(string: Constants.API.xaiVideoEndpoint)!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResp = response as? HTTPURLResponse else {
+            throw XAIError.invalidResponse
+        }
+        guard httpResp.statusCode == 200 || httpResp.statusCode == 202 else {
+            let errBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw XAIError.apiError(httpResp.statusCode, errBody)
+        }
+
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw XAIError.invalidResponse
+        }
+
+        // Synchronous response: data[0].url present immediately
+        if let dataArr = obj["data"] as? [[String: Any]],
+           let first = dataArr.first,
+           let videoURL = first["url"] as? String {
+            return try await downloadData(from: videoURL)
+        }
+
+        // Async/task-based response: poll using task id
+        guard let taskId = obj["id"] as? String else {
+            throw XAIError.invalidResponse
+        }
+
+        return try await pollVideoTask(taskId: taskId, headers: headers)
+    }
+
+    private func pollVideoTask(taskId: String, headers: [String: String]) async throws -> Data {
+        let statusURL = URL(string: "\(Constants.API.xaiVideoEndpoint)/\(taskId)")!
+        let maxAttempts = 60
+
+        for _ in 0..<maxAttempts {
+            try await Task.sleep(nanoseconds: 5_000_000_000) // 5s
+
+            var req = URLRequest(url: statusURL)
+            req.httpMethod = "GET"
+            for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
+
+            let (data, response) = try await session.data(for: req)
+
+            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else {
+                throw XAIError.invalidResponse
+            }
+
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw XAIError.invalidResponse
+            }
+
+            let status = obj["status"] as? String ?? ""
+
+            if status == "succeeded" || status == "completed" {
+                if let dataArr = obj["data"] as? [[String: Any]],
+                   let first = dataArr.first,
+                   let videoURL = first["url"] as? String {
+                    return try await downloadData(from: videoURL)
+                }
+                if let videoURL = obj["output_url"] as? String {
+                    return try await downloadData(from: videoURL)
+                }
+                throw XAIError.invalidResponse
+            }
+
+            if status == "failed" || status == "cancelled" {
+                let reason = obj["error"] as? String ?? "Okänt fel"
+                throw XAIError.apiError(0, reason)
+            }
+        }
+
+        throw XAIError.apiError(0, "Videogenerering tog för lång tid (timeout).")
+    }
+
+    // MARK: - Download data from URL
 
     func downloadImageData(from urlString: String) async throws -> Data {
+        try await downloadData(from: urlString)
+    }
+
+    func downloadData(from urlString: String) async throws -> Data {
         guard let url = URL(string: urlString) else {
             throw XAIError.invalidResponse
         }

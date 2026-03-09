@@ -1,30 +1,30 @@
 import SwiftUI
 #if os(iOS)
 import UserNotifications
+import UIKit
 #endif
 
 @main
 struct NaviApp: App {
     @StateObject private var projectStore = ProjectStore.shared
-    @StateObject private var exchange = ExchangeRateService.shared
     @StateObject private var icloud = iCloudSyncEngine.shared
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        // Start background services
-        Task {
-            await iCloudSyncEngine.shared.setupDirectories()
-        }
         #if os(macOS)
         Task { @MainActor in
             BackgroundDaemon.shared.start()
             TaskHandoffManager.shared.startMonitoring()
         }
         #else
+        // Global: all UIScrollViews (incl. SwiftUI ScrollView) dismiss keyboard on drag
+        UIScrollView.appearance().keyboardDismissMode = .interactive
+
         Task { @MainActor in
+            // Delay network init until after the UI renders to keep startup snappy
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
             PeerSyncEngine.shared.startBrowsing()
             InstructionQueue.shared.startProcessingLoop()
-            // Request notification permissions for handoff
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         }
         #endif

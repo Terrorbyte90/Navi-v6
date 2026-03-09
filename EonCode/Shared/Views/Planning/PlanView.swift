@@ -84,9 +84,6 @@ struct PlanView: View {
 
             Spacer()
 
-            // Isolated cost label (won't cause top bar redraws)
-            PlanSessionCostLabel()
-
             // New plan
             Button {
                 sendTask?.cancel()
@@ -335,25 +332,6 @@ struct PlanView: View {
         sendTask = nil
         manager.isStreaming = false
         manager.streamingText = ""
-    }
-}
-
-// MARK: - Isolated session cost label
-// Isolated so CostTracker updates don't cause PlanView to redraw.
-
-private struct PlanSessionCostLabel: View {
-    @StateObject private var tracker = CostTracker.shared
-
-    var body: some View {
-        if tracker.sessionSEK > 0 {
-            HStack(spacing: 3) {
-                Image(systemName: "clock")
-                    .font(.system(size: 9))
-                Text(String(format: "%.3f kr", tracker.sessionSEK))
-                    .font(.system(size: 11, design: .monospaced))
-            }
-            .foregroundColor(.secondary.opacity(0.4))
-        }
     }
 }
 

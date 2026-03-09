@@ -104,9 +104,13 @@ final class iCloudSyncEngine: ObservableObject {
             root.appendingPathComponent("Handoff/completed")
         ]
 
-        for dir in dirs {
-            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        }
+        // Offload directory creation to a background thread — never block the main actor
+        await Task.detached(priority: .background) {
+            let fm = FileManager.default
+            for dir in dirs {
+                try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            }
+        }.value
     }
 
     // MARK: - Write with coordinator

@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -82,20 +83,75 @@ final class MediaGenerationManager: ObservableObject {
                 }
             }
 
-            let pricePerImage = model.contains("pro") ? 0.07 : 0.02
-            let costUSD = Double(variations) * pricePerImage
-            gen.costUSD = costUSD
-            gen.costSEK = costUSD * ExchangeRateService.shared.usdToSEK
             gen.status = .completed
             gen.completedAt = Date()
-
             updateGeneration(gen)
-            CostTracker.shared.recordMediaCost(usd: costUSD, model: gen.model)
         } catch {
             gen.status = .failed
             gen.error = error.localizedDescription
             updateGeneration(gen)
             NaviLog.error("MediaGen: bildgenerering misslyckades", error: error)
+        }
+    }
+
+    // MARK: - Generate Video (xAI Aurora)
+
+    func generateVideo(
+        prompt: String,
+        referenceImageData: Data? = nil,
+        duration: Int = 5,
+        ratio: String = "720:1280"
+    ) async {
+        guard canGenerate else {
+            NaviLog.warning("MediaGen: max \(maxConcurrent) samtidiga genereringar nått")
+            return
+        }
+
+        // Convert "width:height" ratio to "w:h" aspect ratio string for xAI
+        let aspectRatio = ratio == "1280:720" ? "16:9" : "9:16"
+
+        var gen = MediaGeneration(
+            type: .video,
+            prompt: prompt,
+            model: "aurora",
+            parameters: MediaParameters(aspectRatio: aspectRatio, duration: duration)
+        )
+        gen.status = .generating
+        generations.insert(gen, at: 0)
+        await saveHistory()
+
+        do {
+            // Set thumbnail from reference image if provided
+            if let provided = referenceImageData {
+                gen.thumbnailData = createThumbnail(from: provided)
+                updateGeneration(gen)
+            }
+
+            // Generate video with xAI (image-to-video if reference provided, else text-to-video)
+            let videoData = try await client.generateVideo(
+                prompt: prompt,
+                imageData: referenceImageData,
+                duration: duration,
+                aspectRatio: aspectRatio
+            )
+
+            let filename = "\(gen.id.uuidString).mp4"
+            try await saveToICloud(data: videoData, folder: Constants.iCloud.mediaVideosFolder, filename: filename)
+
+            gen.resultFilename = filename
+            if gen.thumbnailData == nil {
+                gen.thumbnailData = createVideoThumbnail(from: videoData)
+            }
+
+            gen.status = .completed
+            gen.completedAt = Date()
+            updateGeneration(gen)
+
+        } catch {
+            gen.status = .failed
+            gen.error = error.localizedDescription
+            updateGeneration(gen)
+            NaviLog.error("MediaGen: videogenerering misslyckades", error: error)
         }
     }
 
@@ -200,6 +256,27 @@ final class MediaGenerationManager: ObservableObject {
             generations[idx] = gen
         }
         Task { await saveHistory() }
+    }
+
+    private func createVideoThumbnail(from videoData: Data) -> Data? {
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".mp4")
+        guard (try? videoData.write(to: tmpURL)) != nil else { return nil }
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        let asset = AVURLAsset(url: tmpURL)
+        let gen = AVAssetImageGenerator(asset: asset)
+        gen.appliesPreferredTrackTransform = true
+        guard let cgImage = try? gen.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+
+        #if os(macOS)
+        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: 200, height: 200))
+        guard let tiff = nsImage.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
+        #else
+        return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.6)
+        #endif
     }
 }
 

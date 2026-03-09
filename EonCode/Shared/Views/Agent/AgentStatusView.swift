@@ -83,21 +83,6 @@ struct AgentStatusView: View {
                     }
                 }
 
-                // Session cost
-                HStack {
-                    Image(systemName: "coloncurrencysign.circle")
-                        .foregroundColor(.secondary)
-                    Text("Session: \(ExchangeRateService.shared.formatSEK(agent.sessionCostSEK))")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    if agent.lastCostSEK > 0 {
-                        Text("Senaste: \(ExchangeRateService.shared.formatSEK(agent.lastCostSEK))")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary.opacity(0.6))
-                    }
-                }
-
                 // Stop button
                 if agent.isRunning {
                     GlassButton("Stoppa agent", icon: "stop.fill", isDestructive: true) {

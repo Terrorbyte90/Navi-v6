@@ -298,39 +298,18 @@ struct AgentDetailView: View {
         .padding(.horizontal, 20).padding(.vertical, 14)
     }
 
-    // MARK: - Cost banner (always visible)
+    // MARK: - Stats banner (iterations + tokens)
 
     @ViewBuilder
     func costBanner(agent: AgentDefinition) -> some View {
         HStack(spacing: 0) {
-            costCell(
-                title: "Session",
-                value: String(format: "%.4f kr", agent.sessionCostSEK),
-                subtitle: "\(agent.sessionTokensUsed) tok",
-                color: .accentNavi
-            )
+            statCell(title: "Iter.", value: "\(agent.iterationCount)",
+                     subtitle: agent.maxIterations > 0 ? "av \(agent.maxIterations)" : "obegränsat",
+                     color: .orange)
             Divider().frame(height: 32)
-            costCell(
-                title: "Workers",
-                value: String(format: "%.4f kr", agent.workerCostSEK),
-                subtitle: "\(agent.workerTokensUsed) tok",
-                color: .purple
-            )
-            Divider().frame(height: 32)
-            costCell(
-                title: "Totalt",
-                value: String(format: "%.4f kr", agent.grandTotalCostSEK),
-                subtitle: "\(agent.grandTotalTokens) tok",
-                color: .green,
-                bold: true
-            )
-            Divider().frame(height: 32)
-            costCell(
-                title: "Iter.",
-                value: "\(agent.iterationCount)",
-                subtitle: agent.maxIterations > 0 ? "av \(agent.maxIterations)" : "obegränsat",
-                color: .orange
-            )
+            statCell(title: "Tokens", value: formatTokens(agent.grandTotalTokens),
+                     subtitle: "\(agent.totalTokensUsed) + \(agent.workerTokensUsed)",
+                     color: .blue)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -338,13 +317,13 @@ struct AgentDetailView: View {
     }
 
     @ViewBuilder
-    func costCell(title: String, value: String, subtitle: String, color: Color, bold: Bool = false) -> some View {
+    func statCell(title: String, value: String, subtitle: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(.secondary)
             Text(value)
-                .font(.system(size: 13, weight: bold ? .bold : .semibold, design: .monospaced))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundColor(color)
             Text(subtitle)
                 .font(.system(size: 9, design: .monospaced))
@@ -352,6 +331,12 @@ struct AgentDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
+    }
+
+    private func formatTokens(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 1_000 { return String(format: "%.0fk", Double(n) / 1_000) }
+        return "\(n)"
     }
 
     // MARK: - Tab bar
@@ -429,35 +414,10 @@ struct AgentDetailView: View {
     func agentStatsView(agent: AgentDefinition) -> some View {
         ScrollView {
             VStack(spacing: 12) {
-                // Cost breakdown card
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Kostnadsfördelning", systemImage: "dollarsign.circle.fill")
-                        .font(.system(size: 13, weight: .semibold)).foregroundColor(.secondary)
-                    HStack(spacing: 12) {
-                        costBreakdownBar(
-                            label: "Orkestrator",
-                            cost: agent.totalCostSEK,
-                            total: agent.grandTotalCostSEK,
-                            color: .accentNavi
-                        )
-                        costBreakdownBar(
-                            label: "Workers",
-                            cost: agent.workerCostSEK,
-                            total: agent.grandTotalCostSEK,
-                            color: .purple
-                        )
-                    }
-                }
-                .padding(16)
-                .background(Color.surfaceHover, in: RoundedRectangle(cornerRadius: 12))
-
                 statCard("Iterationer",         "\(agent.iterationCount)",                                      "repeat",           .accentNavi)
                 statCard("Orkestrator-tokens",  "\(agent.totalTokensUsed)",                                     "text.word.spacing", .blue)
                 statCard("Worker-tokens",       "\(agent.workerTokensUsed)",                                    "person.2.fill",    .purple)
                 statCard("Totala tokens",       "\(agent.grandTotalTokens)",                                    "sum",              .primary)
-                statCard("Orkestrator-kostnad", String(format: "%.5f kr", agent.totalCostSEK),                  "dollarsign",       .accentNavi)
-                statCard("Worker-kostnad",      String(format: "%.5f kr", agent.workerCostSEK),                 "dollarsign.circle", .purple)
-                statCard("Total kostnad",       String(format: "%.5f kr", agent.grandTotalCostSEK),             "dollarsign.circle.fill", .green)
                 statCard("Logg-poster",         "\(agent.runLog.count)",                                        "list.bullet",      .orange)
                 if let la = agent.lastActiveAt {
                     statCard("Senast aktiv", RelativeDateTimeFormatter().localizedString(for: la, relativeTo: Date()), "clock", .secondary)
@@ -465,30 +425,6 @@ struct AgentDetailView: View {
             }
             .padding(16)
         }
-    }
-
-    @ViewBuilder
-    func costBreakdownBar(label: String, cost: Double, total: Double, color: Color) -> some View {
-        let fraction = total > 0 ? cost / total : 0
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Circle().fill(color).frame(width: 8, height: 8)
-                Text(label).font(.system(size: 11)).foregroundColor(.secondary)
-                Spacer()
-                Text(String(format: "%.1f%%", fraction * 100))
-                    .font(.system(size: 11, design: .monospaced)).foregroundColor(color)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.06)).frame(height: 6)
-                    RoundedRectangle(cornerRadius: 3).fill(color).frame(width: geo.size.width * fraction, height: 6)
-                }
-            }
-            .frame(height: 6)
-            Text(String(format: "%.5f kr", cost))
-                .font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary.opacity(0.7))
-        }
-        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -944,13 +880,6 @@ struct AgentLogEntryRow: View {
                 HStack(spacing: 8) {
                     Text(entry.timestamp, style: .time)
                         .font(.system(size: 10)).foregroundColor(.secondary.opacity(0.5))
-                    if let cost = entry.costSEK, cost > 0 {
-                        Text(String(format: "%.4f kr", cost))
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.green.opacity(0.7))
-                            .padding(.horizontal, 4).padding(.vertical, 1)
-                            .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
-                    }
                     if let tok = entry.tokensUsed, tok > 0 {
                         Text("\(tok) tok")
                             .font(.system(size: 9, design: .monospaced)).foregroundColor(.secondary.opacity(0.4))

@@ -174,11 +174,7 @@ final class ProjectAgent: ObservableObject, Identifiable {
                     },
                     onComplete: { [weak self] usage in
                         guard let self = self else { return }
-                        let (_, sek) = CostCalculator.shared.calculate(usage: usage, model: self.conversation.model)
-                        self.lastCostSEK = sek
-                        self.sessionCostSEK += sek
                         self.streamingText = ""
-                        CostTracker.shared.record(usage: usage, model: self.conversation.model)
                     },
                     onError: { [weak self] error in
                         self?.currentStatus = error.localizedDescription

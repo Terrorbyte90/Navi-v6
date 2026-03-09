@@ -80,7 +80,7 @@ struct ChatView: View {
                             iterationCount: $iterationCount,
                             isLoading: agent.isRunning,
                             queueCount: queue.waitingCount,
-                            costText: agent.lastCostSEK > 0 ? CostCalculator.shared.formatSEK(agent.lastCostSEK) : nil,
+                            costText: nil,
                             model: agent.conversation.model,
                             onShowQueue: { showQueuePanel.toggle() }
                         ) {
@@ -405,13 +405,6 @@ struct MessageBubble: View {
 
                         contentView
 
-                        // Cost badge
-                        if message.costSEK > 0 {
-                            let usage = message.inputTokens > 0
-                                ? TokenUsage(inputTokens: message.inputTokens, outputTokens: message.outputTokens, cacheCreationInputTokens: nil, cacheReadInputTokens: nil)
-                                : nil
-                            CostBadge(costSEK: message.costSEK, usage: usage, model: message.model)
-                        }
                     }
 
                     Spacer(minLength: 20)

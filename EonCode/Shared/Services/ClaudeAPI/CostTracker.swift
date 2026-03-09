@@ -34,40 +34,13 @@ final class CostTracker: ObservableObject {
         load()
     }
 
-    // MARK: - Record a completed request
+    // MARK: - Record a completed request (no-op — cost tracking disabled)
 
-    func record(usage: TokenUsage, model: ClaudeModel) {
-        let (usd, _) = CostCalculator.shared.calculate(usage: usage, model: model)
+    func record(usage: TokenUsage, model: ClaudeModel) {}
 
-        lastRequestUSD = usd
-        lastRequestModel = model
-        lastRequestTokens = usage
+    // MARK: - Record media generation cost (no-op)
 
-        totalUSD += usd
-        sessionUSD += usd
-        totalRequests += 1
-        sessionRequests += 1
-        totalInputTokens += usage.inputTokens
-        totalOutputTokens += usage.outputTokens
-        totalCacheReadTokens += usage.cacheReadInputTokens ?? 0
-
-        save()
-    }
-
-    // MARK: - Record media generation cost (no TokenUsage)
-
-    func recordMediaCost(usd: Double, model: String) {
-        lastRequestUSD = usd
-        lastRequestModel = nil
-        lastRequestTokens = nil
-
-        totalUSD += usd
-        sessionUSD += usd
-        totalRequests += 1
-        sessionRequests += 1
-
-        save()
-    }
+    func recordMediaCost(usd: Double, model: String) {}
 
     // MARK: - Reset session (call on app foreground)
 

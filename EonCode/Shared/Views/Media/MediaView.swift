@@ -4,13 +4,14 @@ import SwiftUI
 
 struct MediaView: View {
     @StateObject private var manager = MediaGenerationManager.shared
-    @StateObject private var exchange = ExchangeRateService.shared
 
     @State private var prompt = ""
     @State private var selectedMode: MediaType = .image
     @State private var imageSize = "1080x1920"
     @State private var imageVariations = 1
     @State private var useProModel = false
+    @State private var videoDuration = 5
+    @State private var videoRatio = "720:1280"
     @State private var selectedGeneration: MediaGeneration?
     @State private var isGenerating = false
     @State private var errorMessage: String?
@@ -39,7 +40,7 @@ struct MediaView: View {
                 .frame(minWidth: 400)
         }
         .background(Color.chatBackground)
-        .onAppear { Task { await manager.refreshBalance() } }
+        .onAppear { Task { await manager.loadHistory() } }
         .sheet(isPresented: $showReferenceImagePicker) {
             ImagePicker(selectedImages: Binding(
                 get: { referenceImageData.map { [$0] } ?? [] },
@@ -62,7 +63,7 @@ struct MediaView: View {
             }
         }
         .background(Color.chatBackground)
-        .onAppear { Task { await manager.refreshBalance() } }
+        .onAppear { Task { await manager.loadHistory() } }
         .sheet(isPresented: $showReferenceImagePicker) {
             ImagePicker(selectedImages: Binding(
                 get: { referenceImageData.map { [$0] } ?? [] },
@@ -88,7 +89,9 @@ struct MediaView: View {
                 }
                 Text("Skapa med AI")
                     .font(.system(size: 22, weight: .semibold))
-                Text("Beskriv en bild så genererar Grok den åt dig.")
+                Text(selectedMode == .image
+                     ? "Beskriv en bild så genererar Grok den åt dig."
+                     : "Beskriv en video så genererar xAI Aurora den åt dig.")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -155,28 +158,46 @@ struct MediaView: View {
             HStack(alignment: .center, spacing: 8) {
                 // Settings + image upload menu
                 Menu {
-                    Section("Upplösning") {
-                        Picker("Upplösning", selection: $imageSize) {
-                            Text("720p Stående (720×1280)").tag("720x1280")
-                            Text("1080p Stående (1080×1920)").tag("1080x1920")
-                        }
-                    }
-                    Section("Antal") {
-                        Picker("Bilder", selection: $imageVariations) {
-                            ForEach(1...4, id: \.self) { n in
-                                Text("\(n) bild\(n > 1 ? "er" : "")").tag(n)
+                    if selectedMode == .image {
+                        Section("Upplösning") {
+                            Picker("Upplösning", selection: $imageSize) {
+                                Text("720p Stående (720×1280)").tag("720x1280")
+                                Text("1080p Stående (1080×1920)").tag("1080x1920")
                             }
                         }
-                    }
-                    Section("Kvalitet") {
-                        Toggle("Pro ($0.07/bild)", isOn: $useProModel)
+                        Section("Antal") {
+                            Picker("Bilder", selection: $imageVariations) {
+                                ForEach(1...4, id: \.self) { n in
+                                    Text("\(n) bild\(n > 1 ? "er" : "")").tag(n)
+                                }
+                            }
+                        }
+                        Section("Kvalitet") {
+                            Toggle("Pro ($0.07/bild)", isOn: $useProModel)
+                        }
+                    } else {
+                        Section("Längd") {
+                            Picker("Längd", selection: $videoDuration) {
+                                Text("5 sekunder").tag(5)
+                                Text("10 sekunder").tag(10)
+                            }
+                        }
+                        Section("Format") {
+                            Picker("Format", selection: $videoRatio) {
+                                Text("Stående 9:16").tag("720:1280")
+                                Text("Liggande 16:9").tag("1280:720")
+                                Text("Kvadrat 1:1").tag("1280:1280")
+                            }
+                        }
                     }
                     Divider()
                     Button {
                         showReferenceImagePicker = true
                     } label: {
                         Label(
-                            referenceImageData == nil ? "Ladda upp referensbild" : "Byt referensbild",
+                            referenceImageData == nil
+                                ? (selectedMode == .video ? "Välj startbild (valfri)" : "Ladda upp referensbild")
+                                : "Byt bild",
                             systemImage: "photo.badge.arrow.down"
                         )
                     }
@@ -184,7 +205,7 @@ struct MediaView: View {
                         Button(role: .destructive) {
                             referenceImageData = nil
                         } label: {
-                            Label("Ta bort referensbild", systemImage: "trash")
+                            Label("Ta bort bild", systemImage: "trash")
                         }
                     }
                 } label: {
@@ -198,7 +219,7 @@ struct MediaView: View {
                     }
                 }
 
-                TextField("Beskriv bilden du vill skapa...", text: $prompt, axis: .vertical)
+                TextField(selectedMode == .image ? "Beskriv bilden du vill skapa..." : "Beskriv videon du vill skapa...", text: $prompt, axis: .vertical)
                     .focused($promptFocused)
                     .font(.callout)
                     .lineLimit(1...4)
@@ -236,21 +257,6 @@ struct MediaView: View {
                     )
             )
 
-            HStack {
-                let cost = estimateCostSEK()
-                if cost > 0 {
-                    let res = imageSize == "1080x1920" ? "1080p" : "720p"
-                    Text("~\(String(format: "%.2f kr", cost)) · \(useProModel ? "Pro" : "Standard") · \(res) · \(imageVariations) bild\(imageVariations > 1 ? "er" : "")")
-                        .font(.caption2)
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-                Spacer()
-                if let bal = manager.balance {
-                    Text("Saldo: \(bal.formattedRemaining)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-            }
         }
     }
     #endif
@@ -306,11 +312,9 @@ struct MediaView: View {
     var controlsPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                balanceBar
                 modeSelector
                 promptInput
                 parameterControls
-                costEstimate
                 generateButton
 
                 if !manager.activeGenerations.isEmpty {
@@ -331,51 +335,6 @@ struct MediaView: View {
             .padding(20)
         }
         .background(Color.sidebarBackground)
-    }
-
-    // MARK: - Balance Bar
-
-    var balanceBar: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "creditcard.fill")
-                .font(.system(size: 14))
-                .foregroundColor(.orange)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("xAI Saldo")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-                if manager.isLoadingBalance {
-                    ProgressView().scaleEffect(0.6)
-                } else if let balance = manager.balance {
-                    HStack(spacing: 8) {
-                        Text(balance.formattedRemaining)
-                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        Text("(\(balance.formattedRemainingInSEK))")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Text("Ange xAI API-nyckel i Inställningar")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-            }
-
-            Spacer()
-
-            Button {
-                Task { await manager.refreshBalance() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(12)
-        .background(Color.userBubble)
-        .cornerRadius(10)
     }
 
     // MARK: - Mode Selector
@@ -536,36 +495,91 @@ struct MediaView: View {
     }
 
     var videoParameters: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Video-generering via xAI — kommer snart")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary.opacity(0.6))
-                .italic()
+        VStack(alignment: .leading, spacing: 12) {
+            // Duration
+            HStack {
+                Text("Längd").font(.system(size: 13)).foregroundColor(.secondary)
+                Spacer()
+                Picker("", selection: $videoDuration) {
+                    Text("5 sekunder").tag(5)
+                    Text("10 sekunder").tag(10)
+                }
+                .pickerStyle(.menu).font(.system(size: 12))
+            }
+
+            // Aspect ratio
+            HStack {
+                Text("Format").font(.system(size: 13)).foregroundColor(.secondary)
+                Spacer()
+                Picker("", selection: $videoRatio) {
+                    Text("Stående (9:16)").tag("720:1280")
+                    Text("Liggande (16:9)").tag("1280:720")
+                    Text("Kvadrat (1:1)").tag("1280:1280")
+                }
+                .pickerStyle(.menu).font(.system(size: 12))
+            }
+
+            Divider().opacity(0.15)
+
+            // Reference image (optional seed frame)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Startbild (valfri)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    if referenceImageData != nil {
+                        Button("Ta bort") { referenceImageData = nil }
+                            .font(.system(size: 11))
+                            .foregroundColor(.red.opacity(0.8))
+                            .buttonStyle(.plain)
+                    }
+                }
+
+                if let imgData = referenceImageData {
+                    #if os(macOS)
+                    if let ns = NSImage(data: imgData) {
+                        Image(nsImage: ns)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 60, height: 60)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    #endif
+                } else {
+                    Button {
+                        showReferenceImagePicker = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "photo.badge.arrow.down")
+                                .font(.system(size: 13))
+                            Text("Välj startbild…")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.08))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    Text("Utan startbild genereras en automatiskt via xAI.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+            }
+
+            // xAI badge
+            HStack(spacing: 5) {
+                Image(systemName: "film.stack")
+                    .font(.system(size: 10))
+                Text("Drivs av xAI Aurora")
+                    .font(.system(size: 10))
+            }
+            .foregroundColor(.secondary.opacity(0.5))
         }
         .padding(12)
         .background(Color.userBubble)
-        .cornerRadius(8)
-    }
-
-    // MARK: - Cost Estimate
-
-    var costEstimate: some View {
-        let sek = estimateCostSEK()
-        let usd = estimateCostUSD()
-        let res = imageSize == "1080x1920" ? "1080p" : "720p"
-
-        return HStack(spacing: 8) {
-            Image(systemName: "banknote").font(.system(size: 12)).foregroundColor(.orange)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(String(format: "%.2f kr  ($%.3f)", sek, usd))
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                Text("\(useProModel ? "Pro" : "Standard") · \(res) stående · \(imageVariations) bild\(imageVariations > 1 ? "er" : "")")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-        }
-        .padding(10)
-        .background(Color.orange.opacity(0.06))
         .cornerRadius(8)
     }
 
@@ -704,15 +718,9 @@ struct MediaView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(gen.displayTitle)
                         .font(.system(size: 12)).lineLimit(2)
-                    HStack(spacing: 4) {
-                        Text(gen.createdAt.relativeString)
-                        if gen.costSEK > 0 {
-                            Text("·")
-                            Text(String(format: "%.2f kr", gen.costSEK))
-                        }
-                    }
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.5))
+                    Text(gen.createdAt.relativeString)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.5))
                 }
                 .padding(.horizontal, 8).padding(.vertical, 8)
             }
@@ -743,27 +751,16 @@ struct MediaView: View {
         }
     }
 
-    // MARK: - Cost helpers
-
-    private func estimateCostUSD() -> Double {
+    private var canGenerate: Bool {
+        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !isGenerating,
+              manager.canGenerate else { return false }
         switch selectedMode {
         case .image:
-            let perImage = useProModel ? 0.07 : 0.02
-            return Double(imageVariations) * perImage
+            return KeychainManager.shared.xaiAPIKey?.isEmpty == false
         case .video:
-            return 0.05
+            return KeychainManager.shared.xaiAPIKey?.isEmpty == false
         }
-    }
-
-    private func estimateCostSEK() -> Double {
-        estimateCostUSD() * ExchangeRateService.shared.usdToSEK
-    }
-
-    private var canGenerate: Bool {
-        !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        && !isGenerating
-        && manager.canGenerate
-        && KeychainManager.shared.xaiAPIKey?.isEmpty == false
     }
 
     // MARK: - Generate Action
@@ -776,6 +773,7 @@ struct MediaView: View {
         isGenerating = true
 
         let model = useProModel ? "grok-imagine-image-pro" : "grok-imagine-image"
+        let capturedImageData = referenceImageData
 
         Task {
             switch selectedMode {
@@ -787,7 +785,12 @@ struct MediaView: View {
                     variations: imageVariations
                 )
             case .video:
-                errorMessage = "Video-generering stöds ännu inte via xAI API."
+                await manager.generateVideo(
+                    prompt: trimmed,
+                    referenceImageData: capturedImageData,
+                    duration: videoDuration,
+                    ratio: videoRatio
+                )
             }
             isGenerating = false
             if errorMessage == nil { prompt = "" }

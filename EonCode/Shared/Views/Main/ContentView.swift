@@ -116,26 +116,27 @@ struct ContentView: View {
                     .zIndex(10)
             }
 
-            // ── Sidebar panel ───────────────────────────────────────────────
-            ChatHistorySidebar(
-                showSidebar: $showSidebar,
-                showNewProject: $showNewProject,
-                selectedTab: $selectedTab
-            )
-            .frame(width: 300)
-            .offset(x: showSidebar ? 0 : -300)
-            .zIndex(11)
+            // ── Sidebar panel (conditionally mounted to avoid 8 @StateObject overhead) ──
+            if showSidebar {
+                ChatHistorySidebar(
+                    showSidebar: $showSidebar,
+                    showNewProject: $showNewProject,
+                    selectedTab: $selectedTab
+                )
+                .frame(width: 300)
+                .transition(.move(edge: .leading))
+                .zIndex(11)
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSidebar)
         .sheet(isPresented: $showNewProject) { NewProjectView() }
         .onAppear {
-            PeerSyncEngine.shared.startBrowsing()
             updateViewContext()
             NaviOrchestrator.shared.setActiveView(appSectionForTab(selectedTab))
             NaviOrchestrator.shared.setActiveProject(activeProject)
         }
-        .onChange(of: selectedTab) { updateViewContext() }
         .onChange(of: selectedTab) { _, newTab in
+            updateViewContext()
             NaviOrchestrator.shared.setActiveView(appSectionForTab(newTab))
         }
         .onChange(of: activeProject) { _, newProject in
