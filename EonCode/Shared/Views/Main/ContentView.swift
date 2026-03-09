@@ -137,6 +137,7 @@ struct ContentView: View {
             NaviOrchestrator.shared.setActiveProject(activeProject)
         }
         .onChange(of: selectedTab) { _, newTab in
+            dismissKeyboard()   // Always dismiss keyboard when switching tabs
             updateViewContext()
             NaviOrchestrator.shared.setActiveView(appSectionForTab(newTab))
         }
@@ -447,6 +448,7 @@ struct ContentView: View {
     // MARK: - Sidebar helpers
 
     private func openSidebar() {
+        dismissKeyboard()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
             showSidebar = true
         }

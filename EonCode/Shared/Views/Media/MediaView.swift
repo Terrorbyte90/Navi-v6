@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import PhotosUI
+#endif
 
 // MARK: - MediaView (matches app-wide ChatGPT-style design)
 
@@ -19,7 +22,11 @@ struct MediaView: View {
 
     // Reference image (image-to-video / image-to-image)
     @State private var referenceImageData: Data? = nil
+    #if os(iOS)
+    @State private var referencePickerItems: [PhotosPickerItem] = []
+    #else
     @State private var showReferenceImagePicker = false
+    #endif
 
     var body: some View {
         #if os(macOS)
@@ -51,6 +58,8 @@ struct MediaView: View {
     }
     #endif
 
+
+
     // MARK: - iOS Layout
 
     #if os(iOS)
@@ -64,11 +73,14 @@ struct MediaView: View {
         }
         .background(Color.chatBackground)
         .onAppear { Task { await manager.loadHistory() } }
-        .sheet(isPresented: $showReferenceImagePicker) {
-            ImagePicker(selectedImages: Binding(
-                get: { referenceImageData.map { [$0] } ?? [] },
-                set: { referenceImageData = $0.first }
-            ))
+        .onChange(of: referencePickerItems) { _, items in
+            guard let item = items.first else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    await MainActor.run { referenceImageData = data }
+                }
+                await MainActor.run { referencePickerItems = [] }
+            }
         }
     }
 
@@ -191,9 +203,11 @@ struct MediaView: View {
                         }
                     }
                     Divider()
-                    Button {
-                        showReferenceImagePicker = true
-                    } label: {
+                    PhotosPicker(
+                        selection: $referencePickerItems,
+                        maxSelectionCount: 1,
+                        matching: .images
+                    ) {
                         Label(
                             referenceImageData == nil
                                 ? (selectedMode == .video ? "Välj startbild (valfri)" : "Ladda upp referensbild")
@@ -467,22 +481,29 @@ struct MediaView: View {
                     }
                     #endif
                 } else {
-                    Button {
-                        showReferenceImagePicker = true
-                    } label: {
+                    #if os(macOS)
+                    Button { showReferenceImagePicker = true } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "photo.badge.arrow.down")
-                                .font(.system(size: 13))
-                            Text("Välj referensbild…")
-                                .font(.system(size: 12))
+                            Image(systemName: "photo.badge.arrow.down").font(.system(size: 13))
+                            Text("Välj referensbild…").font(.system(size: 12))
                         }
                         .foregroundColor(.orange)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.orange.opacity(0.08))
-                        .cornerRadius(8)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.08)).cornerRadius(8)
                     }
                     .buttonStyle(.plain)
+                    #else
+                    PhotosPicker(selection: $referencePickerItems, maxSelectionCount: 1, matching: .images) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "photo.badge.arrow.down").font(.system(size: 13))
+                            Text("Välj referensbild…").font(.system(size: 12))
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.08)).cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    #endif
                     Text("Används som underlag för bild- och videogenerering")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary.opacity(0.5))
@@ -547,22 +568,29 @@ struct MediaView: View {
                     }
                     #endif
                 } else {
-                    Button {
-                        showReferenceImagePicker = true
-                    } label: {
+                    #if os(macOS)
+                    Button { showReferenceImagePicker = true } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "photo.badge.arrow.down")
-                                .font(.system(size: 13))
-                            Text("Välj startbild…")
-                                .font(.system(size: 12))
+                            Image(systemName: "photo.badge.arrow.down").font(.system(size: 13))
+                            Text("Välj startbild…").font(.system(size: 12))
                         }
                         .foregroundColor(.orange)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.orange.opacity(0.08))
-                        .cornerRadius(8)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.08)).cornerRadius(8)
                     }
                     .buttonStyle(.plain)
+                    #else
+                    PhotosPicker(selection: $referencePickerItems, maxSelectionCount: 1, matching: .images) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "photo.badge.arrow.down").font(.system(size: 13))
+                            Text("Välj startbild…").font(.system(size: 12))
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.08)).cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    #endif
                     Text("Utan startbild genereras en automatiskt via xAI.")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary.opacity(0.5))

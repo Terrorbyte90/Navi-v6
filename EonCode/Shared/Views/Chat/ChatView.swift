@@ -1,11 +1,13 @@
 import SwiftUI
+#if os(iOS)
+import PhotosUI
+#endif
 
 struct ChatView: View {
     @ObservedObject var agent: ProjectAgent
     @State private var inputText = ""
     @State private var selectedImages: [Data] = []
     @State private var isAgentMode = false
-    @State private var showImagePicker = false
     @State private var scrollProxy: ScrollViewProxy?
     @State private var showQueuePanel = false
     @State private var iterationCount = 1
@@ -1012,9 +1014,11 @@ struct InputBar: View {
     let onShowQueue: () -> Void
     let onSend: () -> Void
 
-    @State private var showImagePicker = false
     @State private var showIterPicker = false
     @FocusState private var inputFocused: Bool
+    #if os(iOS)
+    @State private var chatPickerItems: [PhotosPickerItem] = []
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1052,8 +1056,28 @@ struct InputBar: View {
             // Main input pill
             HStack(alignment: .bottom, spacing: 0) {
                 HStack(spacing: 4) {
+                    #if os(iOS)
+                    PhotosPicker(selection: $chatPickerItems, maxSelectionCount: 5, matching: .images) {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 16))
+                            .foregroundColor(.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .onChange(of: chatPickerItems) { _, items in
+                        Task {
+                            for item in items {
+                                if let data = try? await item.loadTransferable(type: Data.self) {
+                                    await MainActor.run { selectedImages.append(data) }
+                                }
+                            }
+                            await MainActor.run { chatPickerItems = [] }
+                        }
+                    }
+                    #else
                     Button {
-                        showImagePicker = true
+                        // macOS: no picker needed in project chat (uses menu bar)
                     } label: {
                         Image(systemName: "paperclip")
                             .font(.system(size: 16))
@@ -1062,6 +1086,7 @@ struct InputBar: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    #endif
 
                     Button {
                         isAgentMode.toggle()
