@@ -175,6 +175,12 @@ struct ChatHistorySidebar: View {
                     badge: { let n = mediaManager.activeGenerations.count; return n > 0 ? "\(n)" : nil }()) {
                 selectedTab = .media; showSidebar = false
             }
+            navItem(icon: "person.crop.circle.fill", label: "Profil", isActive: selectedTab == .profile) {
+                selectedTab = .profile; showSidebar = false
+            }
+            navItem(icon: "waveform", label: "Röst", isActive: selectedTab == .voice) {
+                selectedTab = .voice; showSidebar = false
+            }
 
             Divider().opacity(0.08).padding(.vertical, 4)
 
@@ -211,6 +217,10 @@ struct ChatHistorySidebar: View {
             agentsHistory
         case .media:
             mediaHistory
+        case .profile:
+            emptyHistoryHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
+        case .voice:
+            emptyHistoryHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
         }
     }
 

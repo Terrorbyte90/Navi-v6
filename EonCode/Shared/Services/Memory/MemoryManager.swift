@@ -101,6 +101,11 @@ final class MemoryManager: ObservableObject {
                     }
                     memories.append(memory)
                 }
+                // Auto-synthesize user profile when enough new memories accumulate
+                await UserProfileManager.shared.checkAndSynthesize(
+                    currentMemoryCount: memories.count,
+                    memories: memories
+                )
             }
         } catch {
             // Silent fail — memory extraction is best-effort

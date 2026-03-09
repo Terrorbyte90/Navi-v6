@@ -152,6 +152,8 @@ struct SidebarView: View {
         case .github:    return "Sök repos…"
         case .agents:    return "Sök agenter…"
         case .media:     return "Sök media…"
+        case .profile:   return "Profil"
+        case .voice:     return "Röst"
         default:         return "Sök projekt…"
         }
     }
@@ -172,6 +174,8 @@ struct SidebarView: View {
                     badge: mediaBadge)
             navItem(icon: "tray.2.fill",                       label: "Artefakter",  target: .artifacts,
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
+            navItem(icon: "person.crop.circle.fill",           label: "Profil",      target: .profile)
+            navItem(icon: "waveform",                          label: "Röst",        target: .voice)
         }
         .padding(.horizontal, 6)
     }
@@ -239,6 +243,8 @@ struct SidebarView: View {
         case .github:              githubRepoList
         case .agents:              agentSidebarList
         case .media:               mediaHistoryList
+        case .profile:             emptyHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
+        case .voice:               emptyHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
         case .project, .browser:   projectList
         }
     }

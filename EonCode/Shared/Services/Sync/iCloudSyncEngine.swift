@@ -72,6 +72,20 @@ final class iCloudSyncEngine: ObservableObject {
         naviRoot?.appendingPathComponent(Constants.iCloud.mediaVideosFolder)
     }
 
+    var mediaAudioRoot: URL? {
+        let base: URL
+        if let icloud = naviRoot {
+            base = icloud
+        } else if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            base = docs.appendingPathComponent("Navi")
+        } else {
+            return nil
+        }
+        let dir = base.appendingPathComponent(Constants.iCloud.mediaAudioFolder)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     private init() {
         checkAvailability()
         Task { await setupDirectories() }
@@ -100,6 +114,7 @@ final class iCloudSyncEngine: ObservableObject {
             root.appendingPathComponent(Constants.iCloud.mediaFolder),
             root.appendingPathComponent(Constants.iCloud.mediaImagesFolder),
             root.appendingPathComponent(Constants.iCloud.mediaVideosFolder),
+            root.appendingPathComponent(Constants.iCloud.mediaAudioFolder),
             root.appendingPathComponent("Handoff"),
             root.appendingPathComponent("Handoff/completed")
         ]

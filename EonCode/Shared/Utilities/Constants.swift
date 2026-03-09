@@ -26,6 +26,7 @@ enum Constants {
         static let mediaFolder = "Media"
         static let mediaImagesFolder = "Media/Images"
         static let mediaVideosFolder = "Media/Videos"
+        static let mediaAudioFolder  = "Media/Ljud"
         static let defaultProjectsFolder = "Navi/Projects"
     }
 

@@ -197,11 +197,13 @@ final class XAIClient: ObservableObject {
     ) async throws -> [XAIImageResult] {
         let headers = try authHeaders()
 
-        // xAI Aurora image API — only accepts model, prompt, n
+        // xAI image API — request b64_json to avoid downloading from imgen.x.ai
+        // (imgen.x.ai CDN URLs fail on iOS with "Socket is not connected")
         let body: [String: Any] = [
             "model": model,
             "prompt": prompt,
-            "n": n
+            "n": n,
+            "response_format": "b64_json"
         ]
 
         var request = URLRequest(url: URL(string: Constants.API.xaiImageEndpoint)!)

@@ -79,11 +79,13 @@
 		4A4E097BCF90B70311B79160 /* ProjectIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E774684432AF41D71C0FDE5F /* ProjectIndexer.swift */; };
 		4EC8FA21757084D172F8D0DA /* MediaGenerationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C060EC4823CD390A11D75959 /* MediaGenerationManager.swift */; };
 		4EDFDC0E22145E26079D1713 /* LocalAgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D7FE88018F0A2EC04931FF /* LocalAgentEngine.swift */; };
+		4F92656D9B07C97D8365BD0C /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C521378620BF312B01C21004 /* VoiceView.swift */; };
 		54B8F9A68B6D484F62052B27 /* NaviApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B074907A2FB58C840C223A /* NaviApp.swift */; };
 		5604A70C387F52B83EA0ED36 /* CodeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83122D995DEC960E5E3D0D7B /* CodeEditorView.swift */; };
 		57F0EEFB742FD4D9671F5A3D /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D37A1D74CF78B28BDF48081 /* KeychainManager.swift */; };
 		5936A65132C1A0A73A43EC62 /* DeviceStatusBroadcaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215B5630F5C90A41A92CEE6E /* DeviceStatusBroadcaster.swift */; };
 		5D51EA6A5201CCB284E302E1 /* CodeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83122D995DEC960E5E3D0D7B /* CodeEditorView.swift */; };
+		5DD477B9975194FA53A3DC98 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1275397756D5119B6F0CB4C6 /* ProfileView.swift */; };
 		5ED7A379C0D1FA1F397C5DE5 /* iCloudMemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 148E037F5901A54EFBA9F79B /* iCloudMemoryStore.swift */; };
 		5FE7DF79D2B953106E88A19D /* ScreenshotAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E87C7BE71A8355DEDB314675 /* ScreenshotAnalyzer.swift */; };
 		60F963E927EE39B12DD39EEA /* ToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855D00DD3329EAD130B86696 /* ToolExecutor.swift */; };
@@ -116,6 +118,7 @@
 		8012A3366857D936B45687B6 /* ClaudeAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C115F90C1CEA58BF2D214E0 /* ClaudeAPIClient.swift */; };
 		80414DB4F8898EFAA7B5DC98 /* PlanManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0EA62515E12ADF0F1A12C14 /* PlanManager.swift */; };
 		82281CF3E7FFC745FA0FC2AF /* CheckpointManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E0F32117BD899767E725C6 /* CheckpointManager.swift */; };
+		85571089B8B958323A81865C /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C521378620BF312B01C21004 /* VoiceView.swift */; };
 		894711675DA29D5D43CE60E7 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7423689F437F42E5120BB320 /* Project.swift */; };
 		89FCBC58979F2D3ED2A35028 /* GitHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E27477B59E6BF8D25E72B04 /* GitHubView.swift */; };
 		8A80AE8CBF036ACEE8859DEB /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF5CB0D35FBE7EA0E36306DC /* Extensions.swift */; };
@@ -125,6 +128,7 @@
 		8FE07F7C478C13E1B6B44602 /* ConflictResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3430397915FDFFD3D033BBD7 /* ConflictResolver.swift */; };
 		937DEF1D47C575C58A010E9D /* DiffEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434269EF68267911170C2CD5 /* DiffEngine.swift */; };
 		94766BE9AD812D3C6235792C /* AgentActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94EE3FC98BE93BC3B33EED93 /* AgentActivityState.swift */; };
+		954A397F7D52F8CFCF943332 /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F8746B0FDC1B0FE7EE2711 /* UserProfile.swift */; };
 		95CE705A46E915C93ABEB20F /* PromptQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = D27D316CBFB44553F01589B0 /* PromptQueue.swift */; };
 		95F91F1D19BA90AA0A79436F /* MarkdownPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B112A1A381A48BE71E8F958 /* MarkdownPreview.swift */; };
 		983E3EEDE32FC204F3D13DDA /* BrowserAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377C48BE8E59272A9F8CCC22 /* BrowserAgent.swift */; };
@@ -135,6 +139,7 @@
 		9F336D89CD8681EF0073BBFB /* XcodeBuildManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F2A1F74AE4306E978FC894 /* XcodeBuildManager.swift */; };
 		A0F4B2740ADB39E46380C8E1 /* ChatHistorySidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A685B731198521F86D8761EB /* ChatHistorySidebar.swift */; };
 		A28372688E2280CF818D94E3 /* SelfHealingLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 059CD4689B41BD5AFAF3466A /* SelfHealingLoop.swift */; };
+		A283AD7F837799A305146589 /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F8746B0FDC1B0FE7EE2711 /* UserProfile.swift */; };
 		A42154223F5651E1614BE276 /* StatusBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0979D68571B00B5A8C20148 /* StatusBarView.swift */; };
 		A48AF76267802F3A650BE578 /* iCloudMemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 148E037F5901A54EFBA9F79B /* iCloudMemoryStore.swift */; };
 		A6A429BDD4F1698872E1EB08 /* CostCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C5E877FCBF1B444E5F3AB2 /* CostCalculator.swift */; };
@@ -151,6 +156,7 @@
 		B548411A764EE2FB78BA1916 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81AB7E8B7FB42687CBD3D91 /* BrowserView.swift */; };
 		B59399D8DAAEBAEABADACB41 /* ExchangeRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433D65180DC56EA603F1EBFB /* ExchangeRate.swift */; };
 		B5BC60A63C9DEA4352010C79 /* ResultAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1ADBC4079730E2938D7E83 /* ResultAggregator.swift */; };
+		B656D55DEAD432C6EF0AE607 /* UserProfileManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E3DE8BBA1E93EEC542497F /* UserProfileManager.swift */; };
 		B7BA0BC1DC4CC800CD172107 /* CostTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E94E2A8CCC206F4C6E351B /* CostTracker.swift */; };
 		B82686B6C6590DACD74C6732 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4D9B1368F02F5A7149ABB20 /* SidebarView.swift */; };
 		B889ECA84F989A2B95D2F125 /* MemoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01628048B80A264616136454 /* MemoryManager.swift */; };
@@ -176,6 +182,7 @@
 		CF2B64E5267FB33F41ECCE78 /* XAIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C5904A31CA865599FBE864 /* XAIClient.swift */; };
 		CFFE36671C2960B0BB2A9675 /* AgentPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC455BD686DC234E86827CE3 /* AgentPlanner.swift */; };
 		D1C19B75A9BD059C611B00FB /* TerminalOutputParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 552E6D94B8D8D19A71E46ACB /* TerminalOutputParser.swift */; };
+		D227D19F7250C878071D2216 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1275397756D5119B6F0CB4C6 /* ProfileView.swift */; };
 		D40503B0647F9BD53F8BF1C7 /* LocalNetworkServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38D7DA2F19BEE81E09E8551 /* LocalNetworkServer.swift */; };
 		D7238E2AC490A7E3DFF0BD8D /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E145A4DCF8B170F35B55C /* FileNode.swift */; };
 		D891726B165B4F2881F4573C /* AgentActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 948F5C36809C348A022F30BA /* AgentActivityView.swift */; };
@@ -193,6 +200,7 @@
 		EA8B6A968930E5233FBB544F /* Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B44A0637F872657506FC2BA /* Memory.swift */; };
 		EA96CBA653E94ED559CD73D8 /* NaviOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91594D83447F904E8FCC765A /* NaviOrchestrator.swift */; };
 		EEB0947763EEFBB79ECA45D7 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B5A4D9585982D08B604BDA2 /* Constants.swift */; };
+		F4C2EDCCA55422820DF3D224 /* UserProfileManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E3DE8BBA1E93EEC542497F /* UserProfileManager.swift */; };
 		F53E39014311C18252B33566 /* InstructionComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559B066E2A53DF56232FA29A /* InstructionComposer.swift */; };
 		F6AB07813CD37C5683CF86BE /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7173C20F146C9FF898DE1E /* SettingsStore.swift */; };
 		F6F8DA683226BB1D483120D0 /* MediaGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C68851252A8669B23C61EFFD /* MediaGeneration.swift */; };
@@ -209,9 +217,11 @@
 		045176D43F23786A48503C8F /* Instruction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Instruction.swift; sourceTree = "<group>"; };
 		059CD4689B41BD5AFAF3466A /* SelfHealingLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfHealingLoop.swift; sourceTree = "<group>"; };
 		05AEADED9151CD7CE33176F8 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		05F8746B0FDC1B0FE7EE2711 /* UserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfile.swift; sourceTree = "<group>"; };
 		06075E83F58D9C6DB461B918 /* GlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassCard.swift; sourceTree = "<group>"; };
 		0B5A4D9585982D08B604BDA2 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		0D37A1D74CF78B28BDF48081 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
+		1275397756D5119B6F0CB4C6 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		13F42DAA141734671C814B49 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		148E037F5901A54EFBA9F79B /* iCloudMemoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iCloudMemoryStore.swift; sourceTree = "<group>"; };
 		20CA34933ECFDD72D23FE7D5 /* ProcessManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessManager.swift; sourceTree = "<group>"; };
@@ -251,7 +261,7 @@
 		64B074907A2FB58C840C223A /* NaviApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviApp.swift; sourceTree = "<group>"; };
 		6FD7C47B7A159B2A9A089AB6 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
 		7423689F437F42E5120BB320 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
-		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7547E53210F7158811E0657B /* BrowserAgentLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAgentLogView.swift; sourceTree = "<group>"; };
 		778D08B3D0DD0AD571D93118 /* TerminalExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalExecutor.swift; sourceTree = "<group>"; };
 		778D32197C8BE96A9E02A02E /* InstructionQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstructionQueue.swift; sourceTree = "<group>"; };
@@ -269,6 +279,7 @@
 		95D1BE98E56B93965B664E62 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
 		96F45C3172E1F715CA361E70 /* AgentDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDefinition.swift; sourceTree = "<group>"; };
 		97B15C39EA07162888568F9B /* OfflineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineManager.swift; sourceTree = "<group>"; };
+		97E3DE8BBA1E93EEC542497F /* UserProfileManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileManager.swift; sourceTree = "<group>"; };
 		99E94E2A8CCC206F4C6E351B /* CostTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostTracker.swift; sourceTree = "<group>"; };
 		9D6C4013EA73950913F95986 /* iCloudChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iCloudChatStore.swift; sourceTree = "<group>"; };
 		9FA49EBA790A1F0AE1DE761C /* PureChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PureChatView.swift; sourceTree = "<group>"; };
@@ -291,6 +302,7 @@
 		C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeManager.swift; sourceTree = "<group>"; };
 		C2403A830157B935AC89FE61 /* MediaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaView.swift; sourceTree = "<group>"; };
 		C49BB58E98745255FA2D8D44 /* Artifact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artifact.swift; sourceTree = "<group>"; };
+		C521378620BF312B01C21004 /* VoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceView.swift; sourceTree = "<group>"; };
 		C68851252A8669B23C61EFFD /* MediaGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaGeneration.swift; sourceTree = "<group>"; };
 		CA5507FA5239C43E26C9AD52 /* WorkerAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkerAgent.swift; sourceTree = "<group>"; };
 		CA7B0E1D043971209D35C110 /* AgentAction+Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AgentAction+Platform.swift"; sourceTree = "<group>"; };
@@ -319,6 +331,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		03A491A09DC0F4CE2D26BB12 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				1275397756D5119B6F0CB4C6 /* ProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
 		069368153BB85464B67003F0 /* Media */ = {
 			isa = PBXGroup;
 			children = (
@@ -490,6 +510,7 @@
 			children = (
 				148E037F5901A54EFBA9F79B /* iCloudMemoryStore.swift */,
 				01628048B80A264616136454 /* MemoryManager.swift */,
+				97E3DE8BBA1E93EEC542497F /* UserProfileManager.swift */,
 			);
 			path = Memory;
 			sourceTree = "<group>";
@@ -498,6 +519,7 @@
 			isa = PBXGroup;
 			children = (
 				8F8C9883B1DB4573FF5C9F73 /* VoiceModeOverlay.swift */,
+				C521378620BF312B01C21004 /* VoiceView.swift */,
 			);
 			path = Voice;
 			sourceTree = "<group>";
@@ -534,6 +556,7 @@
 				EC3F03F656D5BBD1B828AC83 /* Main */,
 				069368153BB85464B67003F0 /* Media */,
 				2745FBA555061545B514937F /* Planning */,
+				03A491A09DC0F4CE2D26BB12 /* Profile */,
 				8571B823B48907A4AB708A95 /* Settings */,
 				6C17E15D39D3E2092FD9311A /* Voice */,
 			);
@@ -703,6 +726,7 @@
 				C68851252A8669B23C61EFFD /* MediaGeneration.swift */,
 				5B44A0637F872657506FC2BA /* Memory.swift */,
 				7423689F437F42E5120BB320 /* Project.swift */,
+				05F8746B0FDC1B0FE7EE2711 /* UserProfile.swift */,
 				950D59A59B750776CE0BB2D1 /* Version.swift */,
 			);
 			path = Models;
@@ -809,6 +833,7 @@
 						ProvisioningStyle = Automatic;
 					};
 					DAB8911160F888000AB35966 = {
+						DevelopmentTeam = DV646H5VDP;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -924,6 +949,7 @@
 				80414DB4F8898EFAA7B5DC98 /* PlanManager.swift in Sources */,
 				C395A7DB8080B4F7FAA797A6 /* PlanView.swift in Sources */,
 				293659A7B088DB32E64CDFD3 /* ProcessManager.swift in Sources */,
+				D227D19F7250C878071D2216 /* ProfileView.swift in Sources */,
 				894711675DA29D5D43CE60E7 /* Project.swift in Sources */,
 				4A4E097BCF90B70311B79160 /* ProjectIndexer.swift in Sources */,
 				A9575147ADA2BDB3CDD853CD /* ProjectStore.swift in Sources */,
@@ -942,10 +968,13 @@
 				297774000ADEA89EA3FA58AE /* TerminalExecutor.swift in Sources */,
 				D1C19B75A9BD059C611B00FB /* TerminalOutputParser.swift in Sources */,
 				14E9A856D8E7538A42E40764 /* ToolExecutor.swift in Sources */,
+				A283AD7F837799A305146589 /* UserProfile.swift in Sources */,
+				B656D55DEAD432C6EF0AE607 /* UserProfileManager.swift in Sources */,
 				F9FC84F28E6E32579D622444 /* Version.swift in Sources */,
 				305478642D91B19AD1B6D208 /* VersionStore.swift in Sources */,
 				9E42BEE7328C4D3D9AE198B2 /* VoiceModeManager.swift in Sources */,
 				48AEE337BEEEC1649399FF30 /* VoiceModeOverlay.swift in Sources */,
+				4F92656D9B07C97D8365BD0C /* VoiceView.swift in Sources */,
 				DC9D66C757886D5B0F2D9DAB /* WebViewContainer.swift in Sources */,
 				4958BCB3590E779F31D0BAC9 /* WorkerAgent.swift in Sources */,
 				F73E2CA8756A0825FADBE7D2 /* WorkerPool.swift in Sources */,
@@ -1030,6 +1059,7 @@
 				472E9F2E97339941B69A9FFE /* PeerSyncEngine.swift in Sources */,
 				BBBB40D69211EF3F17A3AD77 /* PlanManager.swift in Sources */,
 				369FCEA91FCC946E4C007385 /* PlanView.swift in Sources */,
+				5DD477B9975194FA53A3DC98 /* ProfileView.swift in Sources */,
 				278EAD6DE903526AD0904CBC /* Project.swift in Sources */,
 				708A0CEDC5CD88DFAE432071 /* ProjectIndexer.swift in Sources */,
 				16C9B5BBC5EB8525261E9F52 /* ProjectStore.swift in Sources */,
@@ -1046,10 +1076,13 @@
 				6DF64E6E70C90181F7314737 /* TaskDecomposer.swift in Sources */,
 				0C28FBCD03B91011BB832019 /* TaskHandoff.swift in Sources */,
 				60F963E927EE39B12DD39EEA /* ToolExecutor.swift in Sources */,
+				954A397F7D52F8CFCF943332 /* UserProfile.swift in Sources */,
+				F4C2EDCCA55422820DF3D224 /* UserProfileManager.swift in Sources */,
 				0268031574BC3759F0CCC5E4 /* Version.swift in Sources */,
 				CE0DA5088F4570AC95B033DC /* VersionStore.swift in Sources */,
 				12172C21C552F91BC79429C6 /* VoiceModeManager.swift in Sources */,
 				158FDEB191AA845C344E0BC8 /* VoiceModeOverlay.swift in Sources */,
+				85571089B8B958323A81865C /* VoiceView.swift in Sources */,
 				03C63B4E79AFFDF18164CD94 /* WebViewContainer.swift in Sources */,
 				0C1D6E532B536498CBA52CB4 /* WorkerAgent.swift in Sources */,
 				DD38F4DB48551BBF6BA2CE22 /* WorkerPool.swift in Sources */,
@@ -1215,7 +1248,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = G648H762LD;
+				DEVELOPMENT_TEAM = DV646H5VDP;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1256,7 +1289,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = G648H762LD;
+				DEVELOPMENT_TEAM = DV646H5VDP;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (

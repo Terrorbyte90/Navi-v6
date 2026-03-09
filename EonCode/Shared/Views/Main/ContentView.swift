@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppSection: String, Hashable { case project, pureChat, browser, artifacts, planning, github, agents, media }
+enum AppSection: String, Hashable { case project, pureChat, browser, artifacts, planning, github, agents, media, profile, voice }
 
 struct ContentView: View {
     @StateObject private var projectStore = ProjectStore.shared
@@ -77,6 +77,10 @@ struct ContentView: View {
             AgentView()
         case .media:
             MediaView()
+        case .profile:
+            ProfileView()
+        case .voice:
+            VoiceView()
         case .project:
             if let project = activeProject, let agent = activeAgent {
                 MacMainView(project: project, agent: agent)
@@ -182,6 +186,12 @@ struct ContentView: View {
         case .media:
             viewName = "Media"
             viewPurpose = "Generera bilder och video via xAI."
+        case .profile:
+            viewName = "Profil"
+            viewPurpose = "AI-syntetiserad användarprofil baserad på minnen."
+        case .voice:
+            viewName = "Röst"
+            viewPurpose = "Text-till-tal, ljudgenerering och röstdesign via ElevenLabs."
         }
         MessageBuilder.currentViewContext = "\(viewName) — \(viewPurpose)"
     }
@@ -306,6 +316,26 @@ struct ContentView: View {
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
             }
+
+        case .profile:
+            HStack(spacing: 5) {
+                Text("Navi")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color.primary)
+                Text("Profil")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color.secondary)
+            }
+
+        case .voice:
+            HStack(spacing: 5) {
+                Text("Navi")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color.primary)
+                Text("Röst")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color.secondary)
+            }
         }
     }
 
@@ -373,6 +403,10 @@ struct ContentView: View {
             AgentView()
         case .media:
             MediaView()
+        case .profile:
+            ProfileView()
+        case .voice:
+            VoiceView()
         }
     }
 
@@ -442,6 +476,8 @@ struct ContentView: View {
         case .github: return .github
         case .agents: return .agents
         case .media: return .media
+        case .profile: return .profile
+        case .voice: return .voice
         }
     }
 
@@ -510,7 +546,7 @@ private struct ChatNavTitle: View {
 // MARK: - Tabs
 
 enum AppTab: Int, Hashable {
-    case chat, project, browser, artifacts, plan, github, agents, media
+    case chat, project, browser, artifacts, plan, github, agents, media, profile, voice
 }
 
 // MARK: - macOS Main View
