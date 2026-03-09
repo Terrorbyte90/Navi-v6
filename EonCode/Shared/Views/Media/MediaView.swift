@@ -168,7 +168,8 @@ struct MediaView: View {
             }
 
             HStack(alignment: .center, spacing: 8) {
-                // Settings + image upload menu
+                // Settings menu — quality/size/duration only, NO PhotosPicker inside
+                // (PhotosPicker inside Menu causes _UIReparentingView via UIContextMenuInteraction)
                 Menu {
                     if selectedMode == .image {
                         Section("Upplösning") {
@@ -202,36 +203,40 @@ struct MediaView: View {
                             }
                         }
                     }
-                    Divider()
-                    PhotosPicker(
-                        selection: $referencePickerItems,
-                        maxSelectionCount: 1,
-                        matching: .images
-                    ) {
-                        Label(
-                            referenceImageData == nil
-                                ? (selectedMode == .video ? "Välj startbild (valfri)" : "Ladda upp referensbild")
-                                : "Byt bild",
-                            systemImage: "photo.badge.arrow.down"
-                        )
-                    }
-                    if referenceImageData != nil {
-                        Button(role: .destructive) {
-                            referenceImageData = nil
-                        } label: {
-                            Label("Ta bort bild", systemImage: "trash")
-                        }
-                    }
                 } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.surfaceHover)
+                            .frame(width: 30, height: 30)
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color.secondary)
+                    }
+                }
+
+                #if os(iOS)
+                // Reference image button — standalone PhotosPicker, NEVER inside Menu
+                PhotosPicker(selection: $referencePickerItems, maxSelectionCount: 1, matching: .images) {
                     ZStack {
                         Circle()
                             .fill(referenceImageData != nil ? Color.orange.opacity(0.15) : Color.surfaceHover)
                             .frame(width: 30, height: 30)
-                        Image(systemName: referenceImageData != nil ? "photo.badge.checkmark" : "slider.horizontal.3")
+                        Image(systemName: referenceImageData != nil ? "photo.badge.checkmark" : "photo.badge.arrow.down")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(referenceImageData != nil ? .orange : .secondary)
                     }
                 }
+                .buttonStyle(.plain)
+                if referenceImageData != nil {
+                    Button { referenceImageData = nil } label: {
+                        ZStack {
+                            Circle().fill(Color.red.opacity(0.1)).frame(width: 24, height: 24)
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(.red.opacity(0.8))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                #endif
 
                 TextField(selectedMode == .image ? "Beskriv bilden du vill skapa..." : "Beskriv videon du vill skapa...", text: $prompt, axis: .vertical)
                     .focused($promptFocused)

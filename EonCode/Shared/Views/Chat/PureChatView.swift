@@ -726,23 +726,35 @@ private struct PureChatInputBar: View {
 
             // ChatGPT-style pill
             HStack(alignment: .center, spacing: 8) {
-                Menu {
-                    #if os(iOS)
-                    // PhotosPicker as menu item — no sheet, no _UIReparentingView
-                    PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
-                        Label("Bild / Kamera", systemImage: "photo")
+                #if os(iOS)
+                // Photo button — standalone PhotosPicker, NEVER inside Menu
+                // (PhotosPicker inside Menu causes _UIReparentingView via UIContextMenuInteraction)
+                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
+                    ZStack {
+                        Circle()
+                            .fill(selectedImages.isEmpty ? Color.surfaceHover : Color.accentNavi.opacity(0.15))
+                            .frame(width: 30, height: 30)
+                        Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.checkmark")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(selectedImages.isEmpty ? Color.secondary : Color.accentNavi)
                     }
-                    .onChange(of: photoPickerItems) { _, items in
-                        Task {
-                            for item in items {
-                                if let data = try? await item.loadTransferable(type: Data.self) {
-                                    await MainActor.run { selectedImages.append(data) }
-                                }
+                }
+                .buttonStyle(.plain)
+                .onChange(of: photoPickerItems) { _, items in
+                    Task {
+                        for item in items {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                await MainActor.run { selectedImages.append(data) }
                             }
-                            await MainActor.run { photoPickerItems = [] }
                         }
+                        await MainActor.run { photoPickerItems = [] }
                     }
-                    #else
+                }
+                #endif
+
+                // Attachment menu — file only on iOS, no PhotosPicker inside Menu
+                Menu {
+                    #if os(macOS)
                     Button { } label: { Label("Bild", systemImage: "photo") }
                     #endif
                     Button { isShowingFilePicker = true } label: {
