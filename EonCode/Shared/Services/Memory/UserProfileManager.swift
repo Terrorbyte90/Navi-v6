@@ -13,7 +13,7 @@ final class UserProfileManager: ObservableObject {
     @Published var isSynthesizing = false
 
     private let api = ClaudeAPIClient.shared
-    private let synthesisInterval = 10     // Synthesize every N new memories
+    private let synthesisInterval = 5      // Synthesize every N new memories
     private var lastSynthesisCount = 0
 
     private init() {
@@ -104,25 +104,61 @@ final class UserProfileManager: ObservableObject {
         let memoryLines = memories.map { "- [\($0.category.rawValue)] \($0.fact)" }.joined(separator: "\n")
 
         let prompt = """
-        Baserat på dessa minnesfakta om en person, skapa en detaljerad användarprofil på svenska.
+        Baserat på dessa minnesfakta om en person, skapa en djupgående, personlig användarprofil på svenska.
 
-        Returnera BARA ett JSON-objekt med exakt dessa nycklar:
+        Returnera BARA ett giltigt JSON-objekt med exakt dessa nycklar (inga andra nycklar, inga kommentarer):
         {
-          "summary": "3-5 meningar som beskriver vem personen är, deras bakgrund och passion",
-          "interests": ["intresse1", "intresse2", "intresse3", ...],
-          "projects": ["projekt1", "projekt2", ...],
-          "personalFacts": ["fakta1", "fakta2", ...],
-          "technicalSkills": ["färdighet1", "färdighet2", ...]
+          "summary": "...",
+          "interests": [...],
+          "projects": [...],
+          "personalFacts": [...],
+          "technicalSkills": [...],
+          "patterns": [...],
+          "goals": [...]
         }
 
-        Riktlinjer:
-        - summary: Skriv som en levande, personlig beskrivning (inte punktlista). Nämn personliga detaljer, drömmar, relationer
-        - interests: Max 8 intressen, sorterade efter intensitet/tydlighet i minnena. Konkreta formuleringar som "Gråzoner inom hacking", "AI-assisterad programmering"
-        - projects: Specifika projekt med kort beskrivning, t.ex. "Navi — eget AI-assistentssystem byggt med SwiftUI"
-        - personalFacts: Konkreta personliga fakta, t.ex. "Bor i Kvänum", "Har en dotter på 2 år", "Behandlas för MS"
-        - technicalSkills: Specifika tekniska kompetenser, t.ex. "SwiftUI / iOS-utveckling", "Python AI-scripting"
+        Detaljerade riktlinjer för varje fält:
 
-        Minnesfakta:
+        summary (sträng, 5–8 meningar):
+          - En levande, personlig berättelse om vem personen är — inte en punktlista
+          - Fläta ihop bakgrund, drivkrafter, personlighet, relationer och vad som gör dem unika
+          - Nämn konkreta detaljer: vart de bor, vad de bygger, vad de brinner för, livssituation
+          - Skriv i tredjeperson, varmt och respektfullt — som en välskriven bio
+
+        interests (lista med strängar, max 10 poster, sorterade efter intensitet):
+          - Mycket specifika och kontextualiserade formuleringar
+          - Inte "programmering" utan "AI-assisterad iOS-apputveckling med SwiftUI"
+          - Inte "säkerhet" utan "Offensiv säkerhet och etisk hacking i gråzoner"
+          - Fånga nyanser och djup: vad exakt fascinerar dem, inte bara ämnesområde
+
+        projects (lista med strängar, max 8 poster):
+          - Varje post: "Projektnamn — kort beskrivning av vad det är och status"
+          - T.ex. "Navi v2 — personlig AI-assistent för iOS/macOS, byggt med SwiftUI + Claude API"
+          - Inkludera hobbybyggen, professionella projekt, och pågående experiment
+
+        personalFacts (lista med strängar, max 10 poster):
+          - Konkreta, faktabaserade meningar om livet
+          - T.ex. "Bor i Kvänum, Västergötland", "Har en dotter på 2 år som heter Vera"
+          - Inkludera hälsa, familj, geografi, livsstil — det som skapar kontext
+
+        technicalSkills (lista med strängar, max 12 poster):
+          - Specifika teknologier, frameworks, verktyg och kompetensområden
+          - T.ex. "SwiftUI / Combine — avancerad nivå", "Python för AI-scripting och automation"
+          - Inkludera API-integrationer, databaser, och DevOps om det finns i minnena
+
+        patterns (lista med strängar, max 8 poster):
+          - Återkommande beteendemönster och karaktärsdrag som framkommer i minnena
+          - T.ex. "Tenderar att bygga verktyg från grunden snarare än använda färdiga lösningar"
+          - T.ex. "Fokuserar djupt på ett projekt i taget — hög intensitet i kortare spurter"
+          - T.ex. "Kombinerar kreativitet och teknisk precision — bryr sig om design och funktion lika mycket"
+
+        goals (lista med strängar, max 8 poster, blandad tidshorisont):
+          - Konkreta mål och ambitioner som framgår av minnena
+          - Blanda kortsiktiga (veckor/månader) och långsiktiga (år)
+          - T.ex. "Lansera Navi i App Store innan sommaren 2025"
+          - T.ex. "Bygga ekonomisk frihet genom egna produkter och appar"
+
+        Minnesfakta att analysera:
         \(memoryLines)
         """
 
@@ -145,6 +181,8 @@ final class UserProfileManager: ObservableObject {
                     projects: parsed.projects,
                     personalFacts: parsed.personalFacts,
                     technicalSkills: parsed.technicalSkills,
+                    patterns: parsed.patterns,
+                    goals: parsed.goals,
                     createdAt: profile?.createdAt ?? Date(),
                     updatedAt: Date(),
                     memoryCountAtGeneration: memories.count
@@ -167,6 +205,8 @@ final class UserProfileManager: ObservableObject {
         let projects: [String]
         let personalFacts: [String]
         let technicalSkills: [String]
+        let patterns: [String]
+        let goals: [String]
     }
 
     private func parseProfileJSON(_ text: String) -> ProfileJSON? {

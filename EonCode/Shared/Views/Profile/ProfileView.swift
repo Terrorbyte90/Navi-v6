@@ -176,6 +176,46 @@ struct ProfileView: View {
                 }
             }
         }
+
+        // Patterns
+        if !profile.patterns.isEmpty {
+            profileSection(title: "Beteendemönster", icon: "repeat.circle.fill") {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(profile.patterns, id: \.self) { pattern in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Color.accentNavi.opacity(0.7))
+                                .padding(.top, 3)
+                            Text(pattern)
+                                .font(.system(size: 13))
+                                .foregroundColor(.primary.opacity(0.85))
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+
+        // Goals
+        if !profile.goals.isEmpty {
+            profileSection(title: "Mål & ambitioner", icon: "target") {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(profile.goals, id: \.self) { goal in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "checkmark.circle")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.green.opacity(0.7))
+                                .padding(.top, 1)
+                            Text(goal)
+                                .font(.system(size: 13))
+                                .foregroundColor(.primary.opacity(0.85))
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Empty / Loading states

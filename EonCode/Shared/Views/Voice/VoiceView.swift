@@ -281,6 +281,9 @@ private struct TTSTab: View {
 
     func generate() async {
         guard !inputText.isBlank else { return }
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
         let voiceID = selectedVoiceID.isEmpty ? (eleven.availableVoices.first?.voice_id ?? "21m00Tcm4TlvDq8ikWAM") : selectedVoiceID
         isGenerating = true
         error = nil
@@ -514,6 +517,9 @@ private struct SoundTab: View {
 
     func generate() async {
         guard !prompt.isBlank else { return }
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
         isGenerating = true
         error = nil
         audioData = nil
@@ -776,6 +782,9 @@ private struct VoiceDesignTab: View {
 
     func generate() async {
         guard !voiceDescription.isBlank, !previewText.isBlank else { return }
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
         isGenerating = true
         error = nil
         previews = []

@@ -6,7 +6,7 @@ import PhotosUI
 // MARK: - MediaView (matches app-wide ChatGPT-style design)
 
 struct MediaView: View {
-    @StateObject private var manager = MediaGenerationManager.shared
+    @ObservedObject private var manager = MediaGenerationManager.shared
 
     @State private var prompt = ""
     @State private var selectedMode: MediaType = .image
@@ -735,15 +735,7 @@ struct MediaView: View {
                     Color.surfaceHover
 
                     if let thumbData = gen.thumbnailData {
-                        #if os(macOS)
-                        if let nsImage = NSImage(data: thumbData) {
-                            Image(nsImage: nsImage).resizable().scaledToFill()
-                        }
-                        #else
-                        if let uiImage = UIImage(data: thumbData) {
-                            Image(uiImage: uiImage).resizable().scaledToFill()
-                        }
-                        #endif
+                        ThumbnailImage(data: thumbData)
                     } else {
                         Image(systemName: gen.type == .image ? "photo" : "video")
                             .font(.system(size: 32))
@@ -826,8 +818,12 @@ struct MediaView: View {
         errorMessage = nil
         isGenerating = true
 
-        let model = useProModel ? "grok-imagine-image-pro" : "grok-imagine-image"
+        let model = "grok-2-image"  // xAI image model (no separate pro variant in API)
         let capturedImageData = referenceImageData
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+        promptFocused = false
 
         Task {
             switch selectedMode {
@@ -854,6 +850,43 @@ struct MediaView: View {
             if errorMessage == nil { prompt = "" }
         }
     }
+}
+
+// MARK: - ThumbnailImage
+// Caches the decoded UIImage/NSImage in @State so it is only created once per card.
+
+private struct ThumbnailImage: View {
+    let data: Data
+
+    #if os(macOS)
+    @State private var image: NSImage? = nil
+    var body: some View {
+        Group {
+            if let img = image {
+                Image(nsImage: img)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Color.surfaceHover
+                    .onAppear { image = NSImage(data: data) }
+            }
+        }
+    }
+    #else
+    @State private var image: UIImage? = nil
+    var body: some View {
+        Group {
+            if let img = image {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Color.surfaceHover
+                    .onAppear { image = UIImage(data: data) }
+            }
+        }
+    }
+    #endif
 }
 
 // MARK: - Preview

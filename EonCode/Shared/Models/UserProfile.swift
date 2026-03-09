@@ -6,11 +6,13 @@ import Foundation
 
 struct UserProfile: Codable, Identifiable {
     var id: UUID = UUID()
-    var summary: String                 // Main narrative (3–5 sentences about who the user is)
-    var interests: [String]             // Top interests / areas of passion (ranked)
-    var projects: [String]              // Notable projects the user has worked on
-    var personalFacts: [String]         // Personal background facts
+    var summary: String                 // Rich narrative (5–8 sentences about who the user is)
+    var interests: [String]             // Top interests / areas of passion (ranked, contextualized)
+    var projects: [String]              // Notable projects with brief descriptions
+    var personalFacts: [String]         // Personal background facts (location, family, health, etc.)
     var technicalSkills: [String]       // Technical skills and tools
+    var patterns: [String] = []         // Recurring behavioral patterns and work style observations
+    var goals: [String] = []            // Short- and long-term goals and aspirations
     var createdAt: Date
     var updatedAt: Date
     var memoryCountAtGeneration: Int    // How many memories existed when this was generated

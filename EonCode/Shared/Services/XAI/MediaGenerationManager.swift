@@ -18,6 +18,7 @@ final class MediaGenerationManager: ObservableObject {
     @Published var isLoadingBalance = false
 
     private let maxConcurrent = 10
+    private var saveDebounceTask: Task<Void, Never>? = nil
     private let icloud = iCloudSyncEngine.shared
     private let client = XAIClient.shared
     private let historyFilename = "media-history.json"
@@ -44,7 +45,7 @@ final class MediaGenerationManager: ObservableObject {
 
     func generateImage(
         prompt: String,
-        model: String = "grok-imagine-image",
+        model: String = "grok-2-image",
         size: String = "1024x1024",
         variations: Int = 1
     ) async {
@@ -86,7 +87,10 @@ final class MediaGenerationManager: ObservableObject {
 
                 if i == 0 {
                     gen.resultFilename = filename
-                    gen.thumbnailData = createThumbnail(from: imageData)
+                    let captured = imageData
+                    gen.thumbnailData = await Task.detached(priority: .utility) {
+                        MediaGenerationManager.makeThumbnail(from: captured)
+                    }.value
                 }
             }
 
@@ -130,7 +134,9 @@ final class MediaGenerationManager: ObservableObject {
         do {
             // Set thumbnail from reference image if provided
             if let provided = referenceImageData {
-                gen.thumbnailData = createThumbnail(from: provided)
+                gen.thumbnailData = await Task.detached(priority: .utility) {
+                    MediaGenerationManager.makeThumbnail(from: provided)
+                }.value
                 updateGeneration(gen)
             }
 
@@ -147,7 +153,10 @@ final class MediaGenerationManager: ObservableObject {
 
             gen.resultFilename = filename
             if gen.thumbnailData == nil {
-                gen.thumbnailData = createVideoThumbnail(from: videoData)
+                let captured = videoData
+                gen.thumbnailData = await Task.detached(priority: .utility) {
+                    MediaGenerationManager.makeVideoThumbnail(from: captured)
+                }.value
             }
 
             gen.status = .completed
@@ -234,7 +243,8 @@ final class MediaGenerationManager: ObservableObject {
             .appendingPathComponent(filename)
     }
 
-    private func createThumbnail(from imageData: Data) -> Data? {
+    // nonisolated + static: safe to call from a Task.detached (no MainActor requirement)
+    nonisolated static func makeThumbnail(from imageData: Data) -> Data? {
         #if os(macOS)
         guard let image = NSImage(data: imageData) else { return nil }
         let size = NSSize(width: 200, height: 200)
@@ -249,12 +259,11 @@ final class MediaGenerationManager: ObservableObject {
         return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
         #else
         guard let image = UIImage(data: imageData) else { return nil }
-        let size = CGSize(width: 200, height: 200)
-        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
-        image.draw(in: CGRect(origin: .zero, size: size))
-        let thumbnail = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return thumbnail?.jpegData(compressionQuality: 0.6)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 200, height: 200))
+        let thumbnail = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: CGSize(width: 200, height: 200)))
+        }
+        return thumbnail.jpegData(compressionQuality: 0.6)
         #endif
     }
 
@@ -262,10 +271,16 @@ final class MediaGenerationManager: ObservableObject {
         if let idx = generations.firstIndex(where: { $0.id == gen.id }) {
             generations[idx] = gen
         }
-        Task { await saveHistory() }
+        // Debounce saves — batch rapid status updates into a single iCloud write
+        saveDebounceTask?.cancel()
+        saveDebounceTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            guard !Task.isCancelled else { return }
+            await saveHistory()
+        }
     }
 
-    private func createVideoThumbnail(from videoData: Data) -> Data? {
+    nonisolated static func makeVideoThumbnail(from videoData: Data) -> Data? {
         let tmpURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".mp4")
         guard (try? videoData.write(to: tmpURL)) != nil else { return nil }
