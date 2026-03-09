@@ -191,7 +191,7 @@ final class XAIClient: ObservableObject {
 
     func generateImage(
         prompt: String,
-        model: String = "grok-2-image",
+        model: String = "grok-imagine-image",
         size: String = "1024x1024",   // kept for API compat but not sent to xAI
         n: Int = 1
     ) async throws -> [XAIImageResult] {

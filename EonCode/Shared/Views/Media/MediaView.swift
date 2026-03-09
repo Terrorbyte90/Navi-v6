@@ -818,7 +818,7 @@ struct MediaView: View {
         errorMessage = nil
         isGenerating = true
 
-        let model = "grok-2-image"  // xAI image model (no separate pro variant in API)
+        let model = useProModel ? "grok-imagine-image-pro" : "grok-imagine-image"
         let capturedImageData = referenceImageData
         #if os(iOS)
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)

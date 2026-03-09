@@ -45,7 +45,7 @@ final class MediaGenerationManager: ObservableObject {
 
     func generateImage(
         prompt: String,
-        model: String = "grok-2-image",
+        model: String = "grok-imagine-image",
         size: String = "1024x1024",
         variations: Int = 1
     ) async {
@@ -76,7 +76,17 @@ final class MediaGenerationManager: ObservableObject {
                 let imageData: Data
                 if let url = result.url {
                     imageData = try await client.downloadImageData(from: url)
-                } else if let b64 = result.b64, let decoded = Data(base64Encoded: b64) {
+                } else if let b64 = result.b64 {
+                    // xAI returns b64_json as "data:image/png;base64,<data>" — strip the prefix
+                    let rawBase64: String
+                    if let commaIdx = b64.firstIndex(of: ",") {
+                        rawBase64 = String(b64[b64.index(after: commaIdx)...])
+                    } else {
+                        rawBase64 = b64
+                    }
+                    guard let decoded = Data(base64Encoded: rawBase64, options: .ignoreUnknownCharacters) else {
+                        throw XAIError.invalidResponse
+                    }
                     imageData = decoded
                 } else {
                     throw XAIError.invalidResponse
