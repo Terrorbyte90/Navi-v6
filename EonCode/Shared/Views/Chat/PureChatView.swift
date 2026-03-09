@@ -173,8 +173,6 @@ struct PureChatView: View {
                                 .id("bottomAnchor")
                         }
                         .padding(.vertical, 16)
-                        .contentShape(Rectangle())
-                        .onTapGesture { dismissKeyboard() }
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -190,8 +188,6 @@ struct PureChatView: View {
             } else {
                 ZStack(alignment: .bottom) {
                     chatEmptyState
-                        .contentShape(Rectangle())
-                        .onTapGesture { dismissKeyboard() }
                     chatInputBar
                         .background(Color.chatBackground)
                 }

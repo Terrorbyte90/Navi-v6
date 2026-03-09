@@ -217,16 +217,36 @@ final class XAIClient: ObservableObject {
             throw XAIError.apiError((response as? HTTPURLResponse)?.statusCode ?? 0, errBody)
         }
 
-        // Log raw response to diagnose unexpected formats
+        // Log raw response so mismatches are visible
         let rawBody = String(data: data, encoding: .utf8) ?? "(non-utf8)"
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataArr = obj["data"] as? [[String: Any]] else {
-            NaviLog.error("XAI bildgenerering: oväntat svar (status 200 men ej data[]): \(rawBody.prefix(500))")
+        NaviLog.info("XAI bildgenerering svar: \(rawBody.prefix(800))")
+
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            NaviLog.error("XAI bildgenerering: ej JSON-svar")
             throw XAIError.invalidResponse
         }
 
-        return dataArr.compactMap { item -> XAIImageResult? in
-            // Prefer URL, fall back to base64
+        // Some APIs embed errors inside a 200 response body
+        if let errObj = obj["error"] as? [String: Any] {
+            let msg = (errObj["message"] as? String) ?? (errObj["code"] as? String) ?? rawBody
+            throw XAIError.apiError(200, msg)
+        }
+        if let errStr = obj["error"] as? String {
+            throw XAIError.apiError(200, errStr)
+        }
+
+        // Support both standard "data" key and possible "images" key
+        let items: [[String: Any]]
+        if let d = obj["data"] as? [[String: Any]] {
+            items = d
+        } else if let d = obj["images"] as? [[String: Any]] {
+            items = d
+        } else {
+            NaviLog.error("XAI bildgenerering: hittar ej data[]/images[] i svar. Nycklar: \(Array(obj.keys))")
+            throw XAIError.invalidResponse
+        }
+
+        let results = items.compactMap { item -> XAIImageResult? in
             if let url = item["url"] as? String {
                 return XAIImageResult(url: url, revisedPrompt: item["revised_prompt"] as? String)
             }
@@ -235,6 +255,11 @@ final class XAIClient: ObservableObject {
             }
             return nil
         }
+        guard !results.isEmpty else {
+            NaviLog.error("XAI bildgenerering: data-array har inga url/b64_json-objekt: \(items)")
+            throw XAIError.invalidResponse
+        }
+        return results
     }
 
     // MARK: - Video Generation (Aurora)

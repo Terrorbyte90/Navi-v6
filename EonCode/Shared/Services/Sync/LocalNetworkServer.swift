@@ -263,6 +263,9 @@ final class LocalNetworkClient {
 
     private var macURL: URL?
     private var discoveryTask: Task<Void, Never>?
+    /// How many times discoverMac() has returned nil without ever finding a Mac.
+    /// After 3 total failures we stop subnet scanning (passive mode: saved URL + iCloud only).
+    private var totalDiscoveryFailures = 0
 
     func setMacAddress(_ url: URL) {
         macURL = url
@@ -297,24 +300,40 @@ final class LocalNetworkClient {
         let saved = SettingsStore.shared.macServerURL
         if !saved.isEmpty, let url = URL(string: saved), await ping(url) {
             macURL = url
+            totalDiscoveryFailures = 0
             return url
         }
 
         // 2. Try iCloud-published URL from Mac
         if let url = await readMacURLFromiCloud(), await ping(url) {
             macURL = url
+            totalDiscoveryFailures = 0
             SettingsStore.shared.macServerURL = url.absoluteString
             return url
         }
 
-        // 3. Scan subnet
-        if let url = await subnetScan() {
-            macURL = url
-            SettingsStore.shared.macServerURL = url.absoluteString
-            return url
+        // 3. Scan subnet — only if we haven't failed too many times.
+        // After 3 consecutive all-method failures with no Mac found, switch to
+        // "passive mode" (saved URL + iCloud only) to stop generating 254 nw_connection
+        // errors on every discovery cycle.
+        if totalDiscoveryFailures < 3 {
+            if let url = await subnetScan() {
+                macURL = url
+                SettingsStore.shared.macServerURL = url.absoluteString
+                totalDiscoveryFailures = 0
+                return url
+            }
         }
 
+        totalDiscoveryFailures += 1
         return nil
+    }
+
+    /// Reset passive mode (call when user explicitly triggers re-scan from settings)
+    func resetDiscovery() {
+        totalDiscoveryFailures = 0
+        discoveryTask?.cancel()
+        discoveryTask = nil
     }
 
     func startAutoDiscovery() {
