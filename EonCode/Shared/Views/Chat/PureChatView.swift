@@ -183,7 +183,7 @@ struct PureChatView: View {
                     }
                     .onAppear { scrollProxy = proxy; scrollToBottom(proxy, animated: false) }
                     .onChange(of: conv.messages.count) { scrollToBottom(proxy, animated: true) }
-                    .onChange(of: manager.streamingText.count / 80) { _ in
+                    .onChange(of: manager.streamingScrollTick) { _ in
                         scrollToBottom(proxy, animated: false)
                     }
                 }
@@ -427,7 +427,7 @@ struct PureChatBubble: View {
                     .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    MarkdownTextView(text: ResponseCleaner.clean(message.content))
+                    MarkdownTextView(text: message.content)
                         .equatable()
                         .textSelection(.enabled)
 

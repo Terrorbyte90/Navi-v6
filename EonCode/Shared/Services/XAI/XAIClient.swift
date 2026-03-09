@@ -217,8 +217,11 @@ final class XAIClient: ObservableObject {
             throw XAIError.apiError((response as? HTTPURLResponse)?.statusCode ?? 0, errBody)
         }
 
+        // Log raw response to diagnose unexpected formats
+        let rawBody = String(data: data, encoding: .utf8) ?? "(non-utf8)"
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataArr = obj["data"] as? [[String: Any]] else {
+            NaviLog.error("XAI bildgenerering: oväntat svar (status 200 men ej data[]): \(rawBody.prefix(500))")
             throw XAIError.invalidResponse
         }
 

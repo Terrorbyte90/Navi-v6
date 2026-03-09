@@ -12,6 +12,7 @@ final class ChatManager: ObservableObject {
     @Published var activeConversation: ChatConversation?
     @Published var isStreaming = false
     @Published var streamingText = ""
+    @Published var streamingScrollTick = 0   // increments every ~80 chars; used instead of .count to avoid O(n)
     @Published var isLoading = true
 
     private let store = iCloudChatStore.shared
@@ -122,6 +123,7 @@ final class ChatManager: ObservableObject {
         // Throttle UI updates: only publish streamingText every ~60ms (~16fps)
         // to avoid re-rendering the entire chat view on every token
         var lastPublish = Date.distantPast
+        var charsSinceScroll = 0
 
         // Route streaming by provider
         let eventHandler: (StreamEvent) -> Void = { [self] event in
@@ -129,10 +131,15 @@ final class ChatManager: ObservableObject {
             case .contentBlockDelta(_, let delta):
                 if case .text(let chunk) = delta {
                     fullText += chunk
+                    charsSinceScroll += chunk.count
                     onToken(chunk)
                     let now = Date()
                     if now.timeIntervalSince(lastPublish) >= 0.06 {
                         self.streamingText = fullText
+                        if charsSinceScroll >= 80 {
+                            self.streamingScrollTick += 1
+                            charsSinceScroll = 0
+                        }
                         lastPublish = now
                     }
                 }
