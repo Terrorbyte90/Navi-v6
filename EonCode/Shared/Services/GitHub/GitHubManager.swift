@@ -1,5 +1,8 @@
 import Foundation
 import Combine
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - Models
 
@@ -173,6 +176,11 @@ final class GitHubManager: ObservableObject {
 
     private let baseURL = "https://api.github.com"
     private var cancellables = Set<AnyCancellable>()
+    private var syncTimer: Task<Void, Never>?
+
+    deinit {
+        syncTimer?.cancel()
+    }
 
     private init() {
         // Load cached repos from UserDefaults
@@ -183,8 +191,347 @@ final class GitHubManager: ObservableObject {
         if let paths = UserDefaults.standard.dictionary(forKey: "github_cloned_repos") as? [String: String] {
             clonedRepos = paths
         }
+        
         // Auto-verify token on init
         Task { await verifyToken() }
+        
+        // AUTO-SYNC: När appen startar, synka automatiskt till iCloud
+        Task {
+            // Vänta lite så att iCloud hinner bli tillgängligt
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 sekunder
+            await autoSyncToiCloud()
+        }
+    }
+    
+    // AUTO-SYNC: Körs automatiskt vid start och när repos hämtas
+    func autoSyncToiCloud() async {
+        guard let token = token, !token.isEmpty else { return }
+        
+        let icloudRoot = iCloudSyncEngine.shared.githubReposRoot
+        guard let root = icloudRoot else {
+            NaviLog.info("GitHub: iCloud inte tillgänglig ännu, väntar...")
+            // Försök igen senare
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            await autoSyncToiCloud()
+            return
+        }
+        
+        // Skapa iCloud-mappen om den inte finns
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        
+        // Hämta alla repos först
+        await fetchRepos()
+        
+        guard !repos.isEmpty else { return }
+        
+        NaviLog.info("GitHub: Synkar \(repos.count) repos till iCloud...")
+        
+        for repo in repos {
+            await syncRepoToiCloud(repo: repo, root: root)
+        }
+        
+        // Spara metadata
+        await saveRepoMetadata()
+        
+        NaviLog.info("GitHub: Auto-sync klar för \(repos.count) repos")
+        
+        // Starta periodisk synkning var 5:e minut
+        startPeriodicSync()
+    }
+    
+    // Periodisk synkning var 5:e minut
+    private func startPeriodicSync() {
+        syncTimer?.cancel()
+        syncTimer = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 minuter
+                guard !Task.isCancelled else { break }
+                NaviLog.info("GitHub: Periodisk synkning...")
+                await autoSyncToiCloud()
+            }
+        }
+    }
+    
+    // MARK: - iCloud Sync for GitHub Repos
+    
+    /// Sync ALL repos to iCloud - clones/pulls all branches
+    func syncAllReposToiCloud() async {
+        guard let token = token, !token.isEmpty else { return }
+        
+        let icloudRoot = iCloudSyncEngine.shared.githubReposRoot
+        guard let root = icloudRoot else {
+            NaviLog.error("GitHub: iCloud root not available")
+            return
+        }
+        
+        // Ensure the directory exists
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        
+        isLoadingRepos = true
+        syncStatus["_all"] = "Hämtar alla repos från GitHub..."
+        
+        // First fetch all repos from GitHub
+        await fetchRepos()
+        
+        let allRepos = repos
+        syncStatus["_all"] = "Synkar \(allRepos.count) repos till iCloud..."
+        
+        for repo in allRepos {
+            syncStatus[repo.fullName] = "Synkar \(repo.fullName)..."
+            await syncRepoToiCloud(repo: repo, root: root)
+        }
+        
+        isLoadingRepos = false
+        syncStatus["_all"] = "Synk klar!"
+        
+        // Save sync metadata
+        await saveRepoMetadata()
+        
+        NaviLog.info("GitHub: Synkade \(allRepos.count) repos till iCloud")
+    }
+    
+    /// Sync a single repo to iCloud - clone or pull if exists
+    func syncRepoToiCloud(repo: GitHubRepo, root: URL) async {
+        let repoPath = root.appendingPathComponent(sanitizeRepoName(repo.fullName))
+        let branch = repo.currentBranch
+        
+        if FileManager.default.fileExists(atPath: repoPath.path) {
+            // Already exists - pull latest
+            syncStatus[repo.fullName] = "Uppdaterar \(repo.fullName)..."
+            await pull(repo: repo)
+        } else {
+            // Clone fresh
+            syncStatus[repo.fullName] = "Klonar \(repo.fullName)..."
+            let result = await runGit(["clone", "--branch", branch, repo.cloneURL, repoPath.path])
+            if result.success {
+                clonedRepos[repo.fullName] = repoPath.path
+                UserDefaults.standard.set(clonedRepos, forKey: "github_cloned_repos")
+                NaviLog.info("GitHub: Cloned \(repo.fullName) to iCloud")
+            } else {
+                NaviLog.error("GitHub: Failed to clone \(repo.fullName): \(result.output)")
+            }
+        }
+        
+        // Fetch all branches
+        await fetchBranches(for: repo)
+        
+        // Save branch info locally
+        if let branches = branchCache[repo.fullName] {
+            await saveBranchInfo(repoName: repo.fullName, branches: branches)
+        }
+        
+        syncStatus[repo.fullName] = "Klar"
+    }
+    
+    /// Get local iCloud path for a repo
+    func getLocalRepoPath(for fullName: String) -> URL? {
+        let icloudRoot = iCloudSyncEngine.shared.githubReposRoot
+        guard let root = icloudRoot else { return nil }
+        return root.appendingPathComponent(sanitizeRepoName(fullName))
+    }
+
+    /// Check if repo exists locally in iCloud
+    func hasLocalRepo(fullName: String) -> Bool {
+        guard let path = getLocalRepoPath(for: fullName) else { return false }
+        return FileManager.default.fileExists(atPath: path.path)
+    }
+    
+    /// Get list of all local repos in iCloud
+    func getLocalRepos() -> [String] {
+        let icloudRoot = iCloudSyncEngine.shared.githubReposRoot
+        guard let root = icloudRoot else { return [] }
+        
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: root.path) else {
+            return []
+        }
+        
+        return contents.filter { !$0.hasPrefix(".") }
+    }
+    
+    /// Get files in a local repo
+    func getLocalRepoFiles(fullName: String, path: String = "") -> [String] {
+        guard let basePath = getLocalRepoPath(for: fullName) else { return [] }
+        
+        let fullPath = path.isEmpty ? basePath : basePath.appendingPathComponent(path)
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: fullPath.path) else {
+            return []
+        }
+        
+        return contents
+    }
+    
+    /// Get file content from local repo
+    func getLocalFileContent(fullName: String, filePath: String) -> String? {
+        guard let basePath = getLocalRepoPath(for: fullName) else { return nil }
+        let full = basePath.appendingPathComponent(filePath)
+        return try? String(contentsOf: full, encoding: .utf8)
+    }
+    
+    /// Get current branch for local repo
+    func getLocalCurrentBranch(fullName: String) -> String? {
+        guard let basePath = getLocalRepoPath(for: fullName) else { return nil }
+        
+        let result = runGitSync(["rev-parse", "--abbrev-ref", "HEAD"], at: basePath.path)
+        return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    /// Get latest commit hash
+    func getLocalLatestCommit(fullName: String, branch: String? = nil) -> String? {
+        guard let basePath = getLocalRepoPath(for: fullName) else { return nil }
+        
+        let branchArg = branch ?? "HEAD"
+        let result = runGitSync(["log", "-1", "--format=%H", branchArg], at: basePath.path)
+        return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    /// Get commit history
+    func getLocalCommitHistory(fullName: String, limit: Int = 10) -> [GitHubCommit] {
+        guard let basePath = getLocalRepoPath(for: fullName) else { return [] }
+        
+        let result = runGitSync([
+            "log", "-\(limit)",
+            "--format=%H|%s|%an|%ai",
+            "--date=iso"
+        ], at: basePath.path)
+        
+        let lines = result.output.components(separatedBy: "\n").filter { !$0.isEmpty }
+        
+        return lines.compactMap { line in
+            let parts = line.split(separator: "|", maxSplits: 3)
+            guard parts.count >= 4 else { return nil }
+            
+            let sha = String(parts[0])
+            let message = String(parts[1])
+            let author = String(parts[2])
+            let dateStr = String(parts[3])
+            
+            return GitHubCommit(
+                sha: sha,
+                commit: GitHubCommit.CommitDetail(
+                    message: message,
+                    author: GitHubCommit.CommitAuthor(name: author, date: dateStr)
+                ),
+                htmlURL: ""
+            )
+        }
+    }
+    
+    /// Push changes for a repo
+    func push(repo: GitHubRepo, message: String?) async -> Bool {
+        guard let path = getLocalRepoPath(for: repo.fullName) else { return false }
+        
+        // Stage all changes
+        _ = runGitSync(["add", "-A"], at: path.path)
+        
+        // Commit if message provided
+        if let msg = message, !msg.isEmpty {
+            _ = runGitSync(["commit", "-m", msg], at: path.path)
+        }
+        
+        // Push
+        let currentBranch = getLocalCurrentBranch(fullName: repo.fullName) ?? repo.currentBranch
+        let result = runGitSync(["push", "origin", currentBranch], at: path.path)
+        
+        if result.success {
+            NaviLog.info("GitHub: Pushed \(repo.fullName)")
+            return true
+        } else {
+            NaviLog.error("GitHub: Push failed for \(repo.fullName): \(result.output)")
+            return false
+        }
+    }
+    
+    /// Get git status for local repo
+    func getLocalStatus(fullName: String) -> String {
+        guard let path = getLocalRepoPath(for: fullName) else { return "" }
+        let result = runGitSync(["status", "--porcelain"], at: path.path)
+        return result.output
+    }
+    
+    /// Create and push a new branch
+    func createAndPushBranch(repoFullName: String, branchName: String, fromBranch: String) async -> Bool {
+        guard let path = getLocalRepoPath(for: repoFullName) else { return false }
+        
+        // Create branch
+        _ = runGitSync(["checkout", "-b", branchName, "origin/\(fromBranch)"], at: path.path)
+        
+        // Push
+        let result = runGitSync(["push", "-u", "origin", branchName], at: path.path)
+        
+        return result.success
+    }
+    
+    // MARK: - Helper functions
+    
+    private func sanitizeRepoName(_ fullName: String) -> String {
+        return fullName.replacingOccurrences(of: "/", with: "_")
+    }
+    
+    private func saveRepoMetadata() async {
+        let icloudRoot = iCloudSyncEngine.shared.githubReposRoot
+        guard let root = icloudRoot else { return }
+        
+        let metaPath = root.appendingPathComponent("_repos_metadata.json")
+        
+        let metadata = repos.map { repo in
+            [
+                "fullName": repo.fullName,
+                "defaultBranch": repo.defaultBranch,
+                "currentBranch": repo.currentBranch,
+                "language": repo.language ?? "",
+                "updatedAt": ISO8601DateFormatter().string(from: repo.updatedAt),
+                "hasLocal": hasLocalRepo(fullName: repo.fullName)
+            ] as [String : Any]
+        }
+        
+        if let data = try? JSONSerialization.data(withJSONObject: metadata, options: .prettyPrinted) {
+            try? data.write(to: metaPath)
+        }
+    }
+    
+    private func saveBranchInfo(repoName: String, branches: [GitHubBranch]) async {
+        let icloudRoot = iCloudSyncEngine.shared.githubReposRoot
+        guard let root = icloudRoot else { return }
+        
+        let branchPath = root.appendingPathComponent("\(sanitizeRepoName(repoName))_branches.json")
+        
+        if let data = try? JSONEncoder().encode(branches) {
+            try? data.write(to: branchPath)
+        }
+    }
+    
+    /// Run git command synchronously (macOS only)
+    private func runGitSync(_ args: [String], at path: String) -> (success: Bool, output: String) {
+        #if os(macOS)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = args
+        process.currentDirectoryURL = URL(fileURLWithPath: path)
+        
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            
+            let output = String(data: outputData, encoding: .utf8) ?? ""
+            let error = String(data: errorData, encoding: .utf8) ?? ""
+            
+            return (process.terminationStatus == 0, output + error)
+        } catch {
+            return (false, error.localizedDescription)
+        }
+        #else
+        // iOS doesn't support Process - queue to Mac
+        let cmd = "git -C \"\(path)\" " + args.joined(separator: " ")
+        return (false, "Git on iOS: \(cmd) needs Mac execution")
+        #endif
     }
 
     // MARK: - Token management (iCloud Keychain synced)
@@ -420,35 +767,6 @@ final class GitHubManager: ObservableObject {
         syncStatus[repo.fullName] = result.success ? "Uppdaterad ✓" : "Pull misslyckades: \(result.output)"
         // Refresh commit cache after pull
         if result.success {
-            commitCache["\(repo.fullName)/\(repo.currentBranch)"] = nil
-        }
-    }
-
-    // MARK: - Push
-
-    func push(repo: GitHubRepo, message: String? = nil) async {
-        guard let localPath = clonedRepos[repo.fullName] else { return }
-        syncStatus[repo.fullName] = "Pushar…"
-
-        // Ensure remote URL has token embedded for auth
-        await ensureAuthRemote(repo: repo, at: localPath)
-
-        // Stage all changes
-        let _ = await runGit(["-C", localPath, "add", "-A"])
-
-        // Commit if there are staged changes
-        let status = await runGit(["-C", localPath, "status", "--porcelain"])
-        if !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let msg = message ?? "Navi auto-commit \(Date().formatted())"
-            let _ = await runGit(["-C", localPath, "commit", "-m", msg])
-        }
-
-        // Push
-        let push = await runGit(["-C", localPath, "push", "origin", repo.currentBranch])
-        syncStatus[repo.fullName] = push.success ? "Pushad ✓" : "Push misslyckades: \(push.output)"
-
-        // Refresh commit cache after push
-        if push.success {
             commitCache["\(repo.fullName)/\(repo.currentBranch)"] = nil
         }
     }

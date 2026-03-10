@@ -294,6 +294,7 @@ final class CodeAgent: ObservableObject {
 
         // 1. Spec
         phase = .spec
+        appendMessage("📋 **Spec** — Analyserar och expanderar din idé…", role: .assistant)
         let spec = await runPhase(name: "Spec", prompt: specPrompt(for: proj), proj: &proj, model: model)
         proj.spec = spec
         updateProject(proj)
@@ -302,6 +303,7 @@ final class CodeAgent: ObservableObject {
 
         // 2. Research
         phase = .research
+        appendMessage("🔍 **Research** — Undersöker tekniska krav och beroenden…", role: .assistant)
         let research = await runPhase(name: "Research", prompt: researchPrompt(for: proj), proj: &proj, model: model)
         proj.researchNotes = research
         updateProject(proj)
@@ -310,7 +312,7 @@ final class CodeAgent: ObservableObject {
 
         // 3. Setup — create GitHub repo if available
         phase = .setup
-        appendMessage("🏗 **Setup**: Skapar GitHub-repo och projektstruktur...", role: .assistant)
+        appendMessage("🏗 **Setup** — Skapar GitHub-repo och projektstruktur…", role: .assistant)
         setLog("Setup: initierar projektstruktur")
 
         // We call GitHubManager if a NaviProject is available for this idea,
@@ -323,6 +325,7 @@ final class CodeAgent: ObservableObject {
 
         // 4. Plan
         phase = .plan
+        appendMessage("📐 **Plan** — Skapar implementationsplan med uppgifter…", role: .assistant)
         let plan = await runPhase(name: "Plan", prompt: planPrompt(for: proj), proj: &proj, model: model)
         proj.plan = plan
         updateProject(proj)
@@ -331,7 +334,7 @@ final class CodeAgent: ObservableObject {
 
         // 5. Build — extract tasks from plan and run WorkerPool
         phase = .build
-        appendMessage("⚡ **Build**: Startar parallella workers...", role: .assistant)
+        appendMessage("⚡ **Build** — Startar \(proj.parallelWorkers) parallella workers…", role: .assistant)
 
         let tasks = extractWorkerTasks(from: plan, projectID: proj.id)
         workerStatuses = (0..<min(tasks.count, proj.parallelWorkers)).map {

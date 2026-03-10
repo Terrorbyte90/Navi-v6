@@ -150,8 +150,8 @@ struct SidebarView: View {
     var navSection: some View {
         VStack(alignment: .leading, spacing: 2) {
             navItem(icon: "bubble.left.and.bubble.right", label: "Chatt",      target: .pureChat)
-            navItem(icon: "chevron.left.forwardslash.chevron.right", label: "Kod", target: .code)
-            navItem(icon: "chevron.left.forwardslash.chevron.right", label: "GitHub", target: .github,
+            navItem(icon: "terminal.fill", label: "Kod", target: .code)
+            navItem(icon: "arrow.triangle.branch", label: "GitHub", target: .github,
                     badge: githubBadge)
             navItem(icon: "cpu",                          label: "Agenter",    target: .agents,
                     badge: agentsBadge)

@@ -59,9 +59,21 @@ final class iCloudSyncEngine: ObservableObject {
         } else {
             return nil
         }
-        let dir = base.appendingPathComponent(Constants.iCloud.mediaFolder)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        return base.appendingPathComponent(Constants.iCloud.mediaFolder)
+    }
+    
+    // MARK: - GitHub repos folder (iCloud)
+    
+    var githubReposRoot: URL? {
+        let base: URL
+        if let icloud = naviRoot {
+            base = icloud
+        } else if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            base = docs.appendingPathComponent("Navi")
+        } else {
+            return nil
+        }
+        return base.appendingPathComponent(Constants.iCloud.githubReposFolder)
     }
 
     var mediaImagesRoot: URL? {

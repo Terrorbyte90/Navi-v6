@@ -46,6 +46,8 @@ struct NaviApp: App {
                     if newPhase == .active {
                         Task { @MainActor in
                             await DeviceStatusBroadcaster.shared.broadcast()
+                            // Auto-sync GitHub repos to iCloud when app becomes active
+                            await GitHubManager.shared.autoSyncToiCloud()
                         }
                     }
                 }
@@ -70,6 +72,8 @@ struct NaviApp: App {
                             await TaskHandoffManager.shared.checkForCompletions()
                             // Proactive notification check (rate-limited to once per 4h)
                             await ProactiveNotificationManager.shared.checkAndNotify()
+                            // Auto-sync GitHub repos to iCloud when app becomes active
+                            await GitHubManager.shared.autoSyncToiCloud()
                         }
                     }
                 }

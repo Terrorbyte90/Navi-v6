@@ -3,7 +3,7 @@ import SwiftUI
 import PhotosUI
 #endif
 
-// MARK: - Cost Badge
+// MARK: - Cost Badge (Hidden - cost calculations removed for performance)
 
 struct CostBadge: View {
     let costSEK: Double
@@ -11,28 +11,8 @@ struct CostBadge: View {
     let model: ClaudeModel?
     @State private var showDetail = false
 
-    private func formatSEK(_ v: Double) -> String {
-        v < 0.001 ? "< 0.001 kr" : String(format: "%.3f kr", v)
-    }
-
     var body: some View {
-        Button { showDetail.toggle() } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "dollarsign.circle")
-                    .font(.system(size: 10))
-                Text(formatSEK(costSEK))
-                    .font(.system(size: 11, design: .monospaced))
-            }
-            .foregroundColor(.secondary.opacity(0.45))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Color.primary.opacity(showDetail ? 0.04 : 0.0))
-            .cornerRadius(6)
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $showDetail) {
-            CostDetailPopover(costSEK: costSEK, usage: usage, model: model)
-        }
+        EmptyView()  // Cost display disabled for performance
     }
 }
 
@@ -155,6 +135,7 @@ struct PureChatView: View {
 
                             ForEach(conv.messages) { msg in
                                 PureChatBubble(message: msg)
+                                    .equatable()
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
@@ -271,13 +252,29 @@ struct PureChatView: View {
 
     @ViewBuilder
     private func modelMenuButton(model: ClaudeModel, currentModel: ClaudeModel, convID: UUID) -> some View {
+        let hasKey = Self.hasAPIKey(for: model)
         Button {
             manager.updateModel(model, for: convID)
+            manager.lastError = nil
         } label: {
             HStack {
                 Text(model.displayName)
+                if !hasKey {
+                    Image(systemName: "key.slash")
+                        .font(.system(size: 9))
+                        .foregroundColor(.orange)
+                }
+                Spacer()
                 if model == currentModel { Image(systemName: "checkmark") }
             }
+        }
+    }
+
+    private static func hasAPIKey(for model: ClaudeModel) -> Bool {
+        switch model.provider {
+        case .anthropic:   return KeychainManager.shared.anthropicAPIKey?.isEmpty == false
+        case .xai:         return KeychainManager.shared.xaiAPIKey?.isEmpty == false
+        case .openRouter:  return KeychainManager.shared.openRouterAPIKey?.isEmpty == false
         }
     }
 
@@ -297,10 +294,18 @@ struct PureChatView: View {
             }
 
             VStack(spacing: 8) {
-                QuickActionChip(text: "Skriv kod", icon: "chevron.left.forwardslash.chevron.right") {}
-                QuickActionChip(text: "Analysera filer", icon: "doc.text.magnifyingglass") {}
-                QuickActionChip(text: "Felsök ett problem", icon: "ant") {}
-                QuickActionChip(text: "Förklara något", icon: "lightbulb") {}
+                QuickActionChip(text: "Skriv kod", icon: "chevron.left.forwardslash.chevron.right") {
+                    inputText = "Hjälp mig skriva "
+                }
+                QuickActionChip(text: "Analysera filer", icon: "doc.text.magnifyingglass") {
+                    inputText = "Analysera den här filen: "
+                }
+                QuickActionChip(text: "Felsök ett problem", icon: "ant") {
+                    inputText = "Hjälp mig felsöka: "
+                }
+                QuickActionChip(text: "Förklara något", icon: "lightbulb") {
+                    inputText = "Förklara "
+                }
             }
             .padding(.horizontal, 40)
 
@@ -312,7 +317,29 @@ struct PureChatView: View {
     // MARK: - Input bar
 
     var chatInputBar: some View {
-        PureChatInputBar(
+        VStack(spacing: 0) {
+            // Error banner
+            if let error = manager.lastError {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                    Text(error)
+                        .font(.system(size: 12))
+                        .lineLimit(2)
+                    Spacer()
+                    Button { manager.lastError = nil } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .foregroundColor(NaviTheme.error)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(NaviTheme.error.opacity(0.08))
+            }
+
+            PureChatInputBar(
             inputText: $inputText,
             selectedImages: $selectedImages,
             isShowingFilePicker: $isShowingFilePicker,
@@ -320,6 +347,7 @@ struct PureChatView: View {
             isStreaming: manager.isStreaming,
             onSend: sendMessage
         )
+        }
     }
 
     // MARK: - Send
@@ -331,18 +359,31 @@ struct PureChatView: View {
         }
         guard let convID = manager.activeConversation?.id else { return }
 
+        // Validate API key before sending
+        if let conv = manager.activeConversation {
+            if let missing = missingAPIKey(for: conv.model) {
+                manager.lastError = "Ingen \(missing)-nyckel. Gå till Inställningar."
+                return
+            }
+        }
+
         let text = inputText
         let images = selectedImages
         inputText = ""
         selectedImages = []
         dismissKeyboard()
+        manager.lastError = nil
 
         Task {
             guard var conv = manager.conversations.first(where: { $0.id == convID })
                     ?? manager.activeConversation
             else { return }
 
-            try? await manager.send(text: text, images: images, in: &conv) { _ in }
+            do {
+                try await manager.send(text: text, images: images, in: &conv) { _ in }
+            } catch {
+                manager.lastError = error.localizedDescription
+            }
             await MainActor.run {
                 manager.activeConversation = conv
                 if let idx = manager.conversations.firstIndex(where: { $0.id == conv.id }) {
@@ -350,6 +391,18 @@ struct PureChatView: View {
                 }
             }
         }
+    }
+
+    private func missingAPIKey(for model: ClaudeModel) -> String? {
+        switch model.provider {
+        case .anthropic:
+            if KeychainManager.shared.anthropicAPIKey?.isEmpty != false { return "Anthropic API" }
+        case .xai:
+            if KeychainManager.shared.xaiAPIKey?.isEmpty != false { return "xAI API" }
+        case .openRouter:
+            if KeychainManager.shared.openRouterAPIKey?.isEmpty != false { return "OpenRouter API" }
+        }
+        return nil
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false) {
@@ -361,8 +414,13 @@ struct PureChatView: View {
 
 // MARK: - Chat bubble — Claude iOS style (no sparkle avatar)
 
-struct PureChatBubble: View {
+struct PureChatBubble: View, Equatable {
     let message: PureChatMessage
+
+    static func == (lhs: PureChatBubble, rhs: PureChatBubble) -> Bool {
+        lhs.message.id == rhs.message.id && lhs.message.content == rhs.message.content
+    }
+
     @State private var isSpeaking = false
 
     var isUser: Bool { message.role == .user }
@@ -377,9 +435,9 @@ struct PureChatBubble: View {
                         imageRow(imgs)
                     }
                     Text(message.content)
-                        .font(.system(size: 15.5))
+                        .font(.system(size: 17, weight: .regular, design: .rounded))
                         .foregroundColor(.primary)
-                        .lineSpacing(4)
+                        .lineSpacing(5)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(RoundedRectangle(cornerRadius: 18).fill(Color.userBubble))
@@ -632,13 +690,18 @@ struct ProjectContextBanner: View {
 
 struct MarkdownTextView: View, Equatable {
     let text: String
+    private let blocks: [Block]
+
+    init(text: String) {
+        self.text = text
+        self.blocks = Self.parseBlocks(text)
+    }
 
     static func == (lhs: MarkdownTextView, rhs: MarkdownTextView) -> Bool {
         lhs.text == rhs.text
     }
 
     var body: some View {
-        let blocks = parseBlocks(text)
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
@@ -659,18 +722,18 @@ struct MarkdownTextView: View, Equatable {
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) {
             Text(attributed)
-                .font(.system(size: 15.5))
-                .lineSpacing(5)
+                .font(.system(size: 17, weight: .regular, design: .rounded))
+                .lineSpacing(6)
         } else {
             Text(raw)
-                .font(.system(size: 15.5))
-                .lineSpacing(5)
+                .font(.system(size: 17, weight: .regular, design: .rounded))
+                .lineSpacing(6)
         }
     }
 
     enum Block { case text(String); case code(String, String) }
 
-    func parseBlocks(_ raw: String) -> [Block] {
+    static func parseBlocks(_ raw: String) -> [Block] {
         var blocks: [Block] = []
         let lines = raw.components(separatedBy: "\n")
         var inCode = false
@@ -712,22 +775,24 @@ struct MarkdownCodeBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Header: language label + copy button
             HStack {
                 Text(language.isEmpty ? "code" : language)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.6))
+                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .textCase(.uppercase)
                 Spacer()
                 Button { copyCode() } label: {
                     HStack(spacing: 4) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 11))
+                            .font(.system(size: 10.5))
                         Text(copied ? "Kopierad!" : "Kopiera")
-                            .font(.system(size: 12))
+                            .font(.system(size: 11.5, weight: .medium))
                     }
-                    .foregroundColor(copied ? NaviTheme.success : .secondary.opacity(0.5))
+                    .foregroundColor(copied ? NaviTheme.success : .secondary.opacity(0.45))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(copied ? NaviTheme.success.opacity(0.1) : Color.white.opacity(0.04)))
+                    .background(Capsule().fill(copied ? NaviTheme.success.opacity(0.1) : Color.primary.opacity(0.04)))
                 }
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.15), value: copied)
@@ -736,18 +801,21 @@ struct MarkdownCodeBlock: View {
             .padding(.vertical, 8)
             .background(NaviTheme.codeHeader)
 
+            // Code content
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.9))
-                    .padding(14)
+                    .font(.system(size: 13.5, design: .monospaced))
+                    .foregroundColor(NaviTheme.codeText)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
                     .textSelection(.enabled)
             }
         }
         .background(NaviTheme.codeBG)
-        .cornerRadius(12)
+        .cornerRadius(14)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(NaviTheme.codeBorder, lineWidth: 0.5)
         )
     }
@@ -785,6 +853,7 @@ struct TypingIndicator: View {
                     )
             }
         }
+        .drawingGroup()
         .onAppear { animating = true }
     }
 }
@@ -930,7 +999,7 @@ private struct PureChatInputBar: View {
             Text("Navi kan göra fel. Verifiera viktig information.")
                 .font(.system(size: 10))
                 .foregroundColor(.secondary.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 12)

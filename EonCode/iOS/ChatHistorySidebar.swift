@@ -27,7 +27,7 @@ struct ChatHistorySidebar: View {
             Divider().opacity(0.08)
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     navShortcuts
                     Divider().opacity(0.06).padding(.vertical, 8)
                     contextualHistory
@@ -111,7 +111,7 @@ struct ChatHistorySidebar: View {
             navItem(icon: "bubble.left.and.bubble.right.fill", label: "Chatt", isActive: selectedTab == .chat) {
                 selectedTab = .chat; showSidebar = false
             }
-            navItem(icon: "chevron.left.forwardslash.chevron.right.circle.fill", label: "Code", isActive: selectedTab == .code) {
+            navItem(icon: "terminal.fill", label: "Code", isActive: selectedTab == .code) {
                 selectedTab = .code; showSidebar = false
             }
             navItem(icon: "tray.2.fill", label: "Artefakter", isActive: selectedTab == .artifacts,
@@ -123,7 +123,7 @@ struct ChatHistorySidebar: View {
                 selectedTab = .agents; showSidebar = false
             }
             navItem(
-                icon: "chevron.left.forwardslash.chevron.right",
+                icon: "arrow.triangle.branch",
                 label: "GitHub",
                 isActive: selectedTab == .github,
                 badge: {

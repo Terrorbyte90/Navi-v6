@@ -89,7 +89,6 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.chatBackground)
-            .ignoresSafeArea(.keyboard)
 
             if showSidebar {
                 Color.black.opacity(0.45)
@@ -294,6 +293,7 @@ private struct ChatNavTitle: View {
 
     @ViewBuilder
     private func modelButton(_ model: ClaudeModel) -> some View {
+        let hasKey = Self.hasAPIKey(for: model)
         Button {
             if let conv = chatMgr.activeConversation {
                 chatMgr.updateModel(model, for: conv.id)
@@ -303,16 +303,31 @@ private struct ChatNavTitle: View {
         } label: {
             HStack {
                 VStack(alignment: .leading) {
-                    Text(model.displayName)
-                    Text(model.description)
+                    HStack(spacing: 4) {
+                        Text(model.displayName)
+                        if !hasKey {
+                            Image(systemName: "key.slash")
+                                .font(.system(size: 9))
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    Text(hasKey ? model.description : "Saknar API-nyckel")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(hasKey ? .secondary : .orange)
                 }
                 Spacer()
                 if model == chatMgr.activeConversation?.model {
                     Image(systemName: "checkmark")
                 }
             }
+        }
+    }
+
+    private static func hasAPIKey(for model: ClaudeModel) -> Bool {
+        switch model.provider {
+        case .anthropic:  return KeychainManager.shared.anthropicAPIKey?.isEmpty == false
+        case .xai:        return KeychainManager.shared.xaiAPIKey?.isEmpty == false
+        case .openRouter:  return KeychainManager.shared.openRouterAPIKey?.isEmpty == false
         }
     }
 }
@@ -810,6 +825,16 @@ struct ThinkingOrb: View {
                         .offset(x: -size * 0.08, y: -size * 0.08)
                 )
                 .shadow(color: Color.accentNavi.opacity(0.3), radius: size * 0.2)
+        }
+        .drawingGroup()
+        .onChange(of: isAnimating) { _, animating in
+            if animating {
+                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                    phase = .pi * 2
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.3)) { phase = 0 }
+            }
         }
         .onAppear {
             guard isAnimating else { return }

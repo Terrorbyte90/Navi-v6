@@ -50,6 +50,20 @@ enum PipelinePhase: String, Codable, CaseIterable {
         case .done: return 7
         }
     }
+
+    /// Short name for compact phase bar
+    var shortName: String {
+        switch self {
+        case .idle:     return ""
+        case .spec:     return "Spec"
+        case .research: return "Sök"
+        case .setup:    return "Setup"
+        case .plan:     return "Plan"
+        case .build:    return "Bygg"
+        case .push:     return "Push"
+        case .done:     return "Klar"
+        }
+    }
 }
 
 // MARK: - WorkerStatus

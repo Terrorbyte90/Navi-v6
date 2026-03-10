@@ -143,6 +143,13 @@ struct GitHubView: View {
                     .font(.system(size: 12)).foregroundColor(.secondary)
             }
             .buttonStyle(.plain).help("Uppdatera repos")
+            
+            // Automatisk synk aktiverad - ingen manuell knapp behövs
+            // Button { Task { await gh.syncAllReposToiCloud() } } label: {
+            //     Image(systemName: "icloud.and.arrow.down")
+            //         .font(.system(size: 12)).foregroundColor(.accentNavi)
+            // }
+            // .buttonStyle(.plain).help("Synka ALLA repos till iCloud")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }

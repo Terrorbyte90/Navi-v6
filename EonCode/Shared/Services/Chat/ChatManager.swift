@@ -3,6 +3,7 @@ import Combine
 
 // MARK: - ChatManager
 // Manages pure chat conversations (no project/agent context).
+// Supports GitHub tools when logged in.
 
 @MainActor
 final class ChatManager: ObservableObject {
@@ -14,10 +15,12 @@ final class ChatManager: ObservableObject {
     @Published var streamingText = ""
     @Published var streamingScrollTick = 0   // increments every ~80 chars; used instead of .count to avoid O(n)
     @Published var isLoading = true
+    @Published var lastError: String?
 
     private let store = iCloudChatStore.shared
     private let api = ClaudeAPIClient.shared
     private var cancellables = Set<AnyCancellable>()
+    private let toolExecutor = ToolExecutor()
 
     private init() {
         Task {
@@ -101,12 +104,47 @@ final class ChatManager: ObservableObject {
 
         // Inject active project context so the chat knows about cloned repos
         if let project = ProjectStore.shared.activeProject {
-            systemPrompt += "\n\nAktivt projekt: \(project.name)"
+            systemPrompt += "\n\n**AKTIVT PROJEKT:** \(project.name)"
             if let repo = project.githubRepoFullName {
-                systemPrompt += " (GitHub: \(repo))"
+                systemPrompt += "\n- GitHub: \(repo)"
                 if let branch = project.githubBranch {
-                    systemPrompt += " på branch \(branch)"
+                    systemPrompt += " (branch: \(branch))"
                 }
+            }
+            // Lägg till sökväg om projektet är lokalt
+            if let path = project.localPath {
+                systemPrompt += "\n- Lokal sökväg: \(path)"
+            }
+        }
+
+        // Lägg till tillgängliga GitHub-repos (om inloggad)
+        let githubToken = KeychainManager.shared.githubToken
+        if let token = githubToken, !token.isEmpty {
+            systemPrompt += "\n\n**DIN GITHUB:** Du har tillgång till GitHub och kan diskutera dina projekt, lista repos, skapa PRs, etc."
+            
+            // Lägg till info om lokala iCloud-repos
+            let localRepos = GitHubManager.shared.getLocalRepos()
+            if !localRepos.isEmpty {
+                systemPrompt += "\n\n**LOKALA REPOS I ICLOUD:**"
+                for repoName in localRepos.prefix(20) {
+                    let path = GitHubManager.shared.getLocalRepoPath(for: repoName)?.path ?? "okänd sökväg"
+                    let branch = GitHubManager.shared.getLocalCurrentBranch(fullName: repoName) ?? "main"
+                    let latestCommit = GitHubManager.shared.getLocalLatestCommit(fullName: repoName) ?? ""
+                    let status = GitHubManager.shared.getLocalStatus(fullName: repoName)
+                    let hasChanges = !status.isEmpty
+                    systemPrompt += "\n- \(repoName)"
+                    systemPrompt += "\n  Branch: \(branch)"
+                    if hasChanges {
+                        systemPrompt += " ⚠️ OUTHÄNDRINGAR FINNS"
+                    }
+                    if !latestCommit.isEmpty {
+                        systemPrompt += "\n  Senaste: \(latestCommit.prefix(7))"
+                    }
+                }
+                if localRepos.count > 20 {
+                    systemPrompt += "\n  ... och \(localRepos.count - 20) till"
+                }
+                systemPrompt += "\n\nDu kan läsa och ändra filer direkt i dessa lokala repos utan att behöva hämta från nätet!"
             }
         }
 
@@ -131,11 +169,31 @@ final class ChatManager: ObservableObject {
         var lastPublish = Date.distantPast
         var charsSinceScroll = 0
 
+        // Track tool calls for GitHub integration
+        var toolCalls: [(id: String, name: String, input: [String: AnyCodable])] = []
+        var currentToolID: String = ""
+        var currentToolName: String = ""
+        var currentToolJSON: String = ""
+        var blockType: String = ""
+
+        // Check if we have GitHub tools available
+        let useTools = KeychainManager.shared.githubToken?.isEmpty == false
+        let toolsToUse = useTools ? agentTools : nil
+
         // Route streaming by provider
         let eventHandler: (StreamEvent) -> Void = { [self] event in
             switch event {
+            case .contentBlockStart(_, let type, let id, let name):
+                blockType = type
+                currentToolID = id ?? ""
+                currentToolName = name ?? ""
+                currentToolJSON = ""
+                if type == "tool_use" {
+                    onToken("🔧 ")
+                }
             case .contentBlockDelta(_, let delta):
-                if case .text(let chunk) = delta {
+                switch delta {
+                case .text(let chunk):
                     fullText += chunk
                     charsSinceScroll += chunk.count
                     onToken(chunk)
@@ -148,7 +206,24 @@ final class ChatManager: ObservableObject {
                         }
                         lastPublish = now
                     }
+                case .inputJSON(let json):
+                    currentToolJSON += json
                 }
+            case .contentBlockStop(_):
+                if blockType == "tool_use" {
+                    // Parse the tool call
+                    if let data = currentToolJSON.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        let name = json["name"] as? String ?? currentToolName
+                        let input = json["input"] as? [String: Any] ?? [:]
+                        let inputCodable = input.mapValues { AnyCodable($0) }
+                        toolCalls.append((id: currentToolID, name: name, input: inputCodable))
+                    }
+                }
+                blockType = ""
+                currentToolID = ""
+                currentToolName = ""
+                currentToolJSON = ""
             case .messageDelta(_, let usage):
                 finalUsage = usage
             default:
@@ -156,35 +231,108 @@ final class ChatManager: ObservableObject {
             }
         }
 
-        // Use ModelRouter which handles Qwen timeout → MiniMax fallback automatically
-        // For Code, ModelRouter handles the 15s timeout with fallback
+        // Use ModelRouter - the model passed here is the EXACT model from conversation.model
+        // No hidden switching allowed
+        let requestedModel = conversation.model
+        NaviLog.info("Chat: using model \(requestedModel.rawValue) (\(requestedModel.displayName))")
+        
         do {
             let usedModel = try await ModelRouter.stream(
                 messages: apiMessages,
-                model: conversation.model,
+                model: requestedModel,
                 systemPrompt: systemPrompt,
                 maxTokens: Constants.Agent.maxTokensDefault,
-                tools: nil,
+                tools: toolsToUse,
                 onEvent: eventHandler
             )
-            // Update model if we fell back (e.g., Qwen → MiniMax)
-            if usedModel != conversation.model {
+            // Log model changes for debugging
+            if usedModel != requestedModel {
+                NaviLog.info("Chat: model changed from \(requestedModel.displayName) to \(usedModel.displayName) (fallback)")
                 conversation.model = usedModel
             }
         } catch {
+            NaviLog.error("Chat failed with model \(requestedModel.displayName): \(error)")
             throw error
         }
 
-        // Calculate cost
-        let costSEK: Double
-        if let usage = finalUsage {
-            let (_, sek) = CostCalculator.shared.calculate(usage: usage, model: conversation.model)
-            costSEK = sek
-            conversation.totalCostSEK += sek
-            CostTracker.shared.record(usage: usage, model: conversation.model)
-        } else {
-            costSEK = 0
+        // Execute tool calls if any
+        if !toolCalls.isEmpty {
+            NaviLog.info("Chat: executing \(toolCalls.count) tool calls: \(toolCalls.map { $0.name })")
+            var toolResults: [MessageContent] = []
+            
+            for tc in toolCalls {
+                NaviLog.info("Chat: calling tool \(tc.name) with params: \(tc.input.keys)")
+                let params = tc.input.mapValues { String(describing: $0.value) }
+                let result = await toolExecutor.execute(name: tc.name, params: params, projectRoot: nil)
+                NaviLog.info("Chat: tool \(tc.name) result: \(result.prefix(200))")
+                toolResults.append(.toolResult(id: tc.id, content: result, isError: result.hasPrefix("FEL:") || result.hasPrefix("❌")))
+                fullText += "\n\n🔧 **\(tc.name)**:\n\(result)"
+            }
+            
+            // Add tool results to messages and continue conversation
+            conversation.messages.append(PureChatMessage(
+                role: .user,
+                content: toolResults.map { tc in
+                    if case .toolResult(let id, let content, let error) = tc {
+                        return "🔧 \(id): \(content)"
+                    }
+                    return ""
+                }.joined(separator: "\n\n"),
+                costSEK: 0,
+                model: conversation.model,
+                tokenUsage: nil,
+                memoriesInContext: []
+            ))
+            
+            // Continue with tool results for final response
+            let secondPassMessages = apiMessages + [
+                ChatMessage(role: .assistant, content: [.text(fullText)]),
+                ChatMessage(role: .user, content: toolResults)
+            ]
+            
+            // Second pass - get final response after tools
+            fullText = ""
+            toolCalls = []
+            var lastSecondPublish = Date.distantPast
+            var charsSinceScroll2 = 0
+            
+            let secondEventHandler: (StreamEvent) -> Void = { [self] event in
+                switch event {
+                case .contentBlockDelta(_, let delta):
+                    if case .text(let chunk) = delta {
+                        fullText += chunk
+                        charsSinceScroll2 += chunk.count
+                        onToken(chunk)
+                        let now = Date()
+                        if now.timeIntervalSince(lastSecondPublish) >= 0.06 {
+                            self.streamingText = fullText
+                            lastSecondPublish = now
+                        }
+                    }
+                case .messageDelta(_, let usage):
+                    finalUsage = usage
+                default:
+                    break
+                }
+            }
+            
+            do {
+                _ = try await ModelRouter.stream(
+                    messages: secondPassMessages,
+                    model: conversation.model,
+                    systemPrompt: systemPrompt,
+                    maxTokens: Constants.Agent.maxTokensDefault,
+                    tools: nil,  // No tools on second pass
+                    onEvent: secondEventHandler
+                )
+            } catch {
+                // If second pass fails, use the first response
+                NaviLog.error("Chat tool second pass failed: \(error)")
+            }
         }
+
+        // Skip cost calculation for performance - can be added back if needed
+        let costSEK: Double = 0
 
         // Find which memories were referenced in this response (zero-cost keyword match)
         let relevantMems = MemoryManager.shared.relevantMemories(for: fullText, max: 3)

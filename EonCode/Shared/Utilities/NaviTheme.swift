@@ -57,11 +57,64 @@ enum NaviTheme {
     static var assistantBubble: Color { .clear }
     static var assistantMessageBg: Color { .clear }
 
-    // MARK: - Code blocks — always dark
+    // MARK: - Code blocks — adaptive warm tones
 
-    static let codeBG     = Color(red: 0.10, green: 0.10, blue: 0.11)
-    static let codeHeader = Color(red: 0.06, green: 0.06, blue: 0.07)
-    static let codeBorder = Color.white.opacity(0.06)
+    /// Code background: warm sand in light mode, soft slate in dark mode
+    static var codeBG: Color {
+        #if os(iOS)
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.14, green: 0.14, blue: 0.16, alpha: 1)
+            : UIColor(red: 0.96, green: 0.94, blue: 0.92, alpha: 1)
+        })
+        #else
+        Color(NSColor(name: nil) { $0.bestMatch(from: [.darkAqua]) != nil
+            ? NSColor(red: 0.14, green: 0.14, blue: 0.16, alpha: 1)
+            : NSColor(red: 0.96, green: 0.94, blue: 0.92, alpha: 1)
+        })
+        #endif
+    }
+    /// Code header: slightly deeper than background
+    static var codeHeader: Color {
+        #if os(iOS)
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.11, green: 0.11, blue: 0.13, alpha: 1)
+            : UIColor(red: 0.93, green: 0.91, blue: 0.88, alpha: 1)
+        })
+        #else
+        Color(NSColor(name: nil) { $0.bestMatch(from: [.darkAqua]) != nil
+            ? NSColor(red: 0.11, green: 0.11, blue: 0.13, alpha: 1)
+            : NSColor(red: 0.93, green: 0.91, blue: 0.88, alpha: 1)
+        })
+        #endif
+    }
+    /// Code border: subtle definition
+    static var codeBorder: Color {
+        #if os(iOS)
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 1, alpha: 0.08)
+            : UIColor(white: 0, alpha: 0.08)
+        })
+        #else
+        Color(NSColor(name: nil) { $0.bestMatch(from: [.darkAqua]) != nil
+            ? NSColor(white: 1, alpha: 0.08)
+            : NSColor(white: 0, alpha: 0.08)
+        })
+        #endif
+    }
+    /// Code text: adaptive for readability
+    static var codeText: Color {
+        #if os(iOS)
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 0.92, alpha: 1)
+            : UIColor(red: 0.20, green: 0.20, blue: 0.22, alpha: 1)
+        })
+        #else
+        Color(NSColor(name: nil) { $0.bestMatch(from: [.darkAqua]) != nil
+            ? NSColor(white: 0.92, alpha: 1)
+            : NSColor(red: 0.20, green: 0.20, blue: 0.22, alpha: 1)
+        })
+        #endif
+    }
 
     // MARK: - Semantic Colors
 

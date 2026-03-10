@@ -160,21 +160,21 @@ struct VoiceModeOverlay: View {
     @ViewBuilder
     private var orbIcon: some View {
         if vm.isListening {
-            Image(systemName: "waveform")
-                .font(.system(size: 36, weight: .medium))
-                .foregroundColor(.white)
+            // Dynamic sound bars that react to audio level
+            VoiceWaveBars(audioLevel: vm.audioLevel)
+                .frame(width: 50, height: 36)
         } else if vm.isProcessing {
-            ProgressView()
-                .tint(.white)
-                .scaleEffect(1.5)
+            // Orbiting dots
+            OrbitingDots()
+                .frame(width: 44, height: 44)
         } else if vm.isSpeaking {
-            Image(systemName: "speaker.wave.3.fill")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundColor(.white)
+            // Pulsating speech rings
+            SpeechRings(audioLevel: vm.audioLevel)
+                .frame(width: 48, height: 48)
         } else {
-            Image(systemName: "mic.fill")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundColor(.white)
+            // Breathing mic glow
+            BreathingMic()
+                .frame(width: 40, height: 40)
         }
     }
 
@@ -217,6 +217,140 @@ struct VoiceModeOverlay: View {
                     .foregroundColor(.white.opacity(0.3))
             }
         }
-        .font(.system(size: 14, weight: .medium))
+        .font(.system(size: 14, weight: .medium, design: .rounded))
+    }
+}
+
+// MARK: - VoiceWaveBars — reactive audio level bars
+
+struct VoiceWaveBars: View {
+    let audioLevel: CGFloat
+    @State private var phases: [CGFloat] = [0, 0.3, 0.6, 0.1, 0.4]
+
+    private let barCount = 5
+    private let barWidth: CGFloat = 4
+    private let spacing: CGFloat = 4
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            ForEach(0..<barCount, id: \.self) { i in
+                RoundedRectangle(cornerRadius: barWidth / 2)
+                    .fill(.white)
+                    .frame(width: barWidth, height: barHeight(for: i))
+                    .animation(.spring(response: 0.15, dampingFraction: 0.5), value: audioLevel)
+            }
+        }
+        .drawingGroup()
+        .onAppear { startAnimating() }
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let base: CGFloat = 8
+        let maxAdd: CGFloat = 28
+        let phase = phases[index % phases.count]
+        let level = max(0, audioLevel + phase * 0.3 - 0.1)
+        return base + maxAdd * min(1, level)
+    }
+
+    private func startAnimating() {
+        Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
+            phases = (0..<barCount).map { _ in CGFloat.random(in: 0...1) }
+        }
+    }
+}
+
+// MARK: - OrbitingDots — thinking/processing animation
+
+struct OrbitingDots: View {
+    @State private var rotation: Double = 0
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(.white.opacity(0.8 - Double(i) * 0.2))
+                    .frame(width: 7, height: 7)
+                    .offset(x: 16)
+                    .rotationEffect(.degrees(rotation + Double(i) * 120))
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+        }
+    }
+}
+
+// MARK: - SpeechRings — pulsating rings that follow speech
+
+struct SpeechRings: View {
+    let audioLevel: CGFloat
+    @State private var ring1 = false
+    @State private var ring2 = false
+    @State private var ring3 = false
+
+    var body: some View {
+        ZStack {
+            // Outer ring
+            Circle()
+                .stroke(.white.opacity(0.15), lineWidth: 1.5)
+                .scaleEffect(1.0 + audioLevel * 0.4 + (ring1 ? 0.15 : 0))
+                .opacity(ring1 ? 0.3 : 0.8)
+
+            // Middle ring
+            Circle()
+                .stroke(.white.opacity(0.25), lineWidth: 2)
+                .scaleEffect(0.7 + audioLevel * 0.3 + (ring2 ? 0.1 : 0))
+                .opacity(ring2 ? 0.4 : 0.9)
+
+            // Inner ring
+            Circle()
+                .stroke(.white.opacity(0.4), lineWidth: 2.5)
+                .scaleEffect(0.4 + audioLevel * 0.2 + (ring3 ? 0.05 : 0))
+
+            // Center dot
+            Circle()
+                .fill(.white)
+                .frame(width: 8, height: 8)
+                .scaleEffect(1 + audioLevel * 0.5)
+        }
+        .drawingGroup()
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { ring1 = true }
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(0.2)) { ring2 = true }
+            withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true).delay(0.3)) { ring3 = true }
+        }
+        .animation(.spring(response: 0.2), value: audioLevel)
+    }
+}
+
+// MARK: - BreathingMic — subtle idle animation
+
+struct BreathingMic: View {
+    @State private var breathe = false
+    @State private var glow = false
+
+    var body: some View {
+        ZStack {
+            // Glow ring
+            Circle()
+                .fill(.white.opacity(0.06))
+                .scaleEffect(glow ? 1.3 : 1.0)
+
+            // Mic icon with breathing
+            Image(systemName: "mic.fill")
+                .font(.system(size: 28, weight: .medium))
+                .foregroundColor(.white.opacity(0.8))
+                .scaleEffect(breathe ? 1.08 : 0.95)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                glow = true
+            }
+        }
     }
 }

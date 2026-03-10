@@ -23,8 +23,12 @@ final class ModelRouter {
         onEvent: @escaping (StreamEvent) -> Void
     ) async throws -> ClaudeModel {
 
+        // Validate API key before doing anything
+        try validateAPIKey(for: model)
+
         // Tools are Anthropic-only — fall back to sonnet46 for non-Anthropic models with tools
         if let tools, !tools.isEmpty, model.provider != .anthropic {
+            try validateAPIKey(for: .sonnet46)
             try await ClaudeAPIClient.shared.streamMessage(
                 messages: messages,
                 model: .sonnet46,
@@ -59,6 +63,25 @@ final class ModelRouter {
         return model
     }
 
+    // MARK: - API key validation
+
+    private static func validateAPIKey(for model: ClaudeModel) throws {
+        switch model.provider {
+        case .anthropic:
+            guard KeychainManager.shared.anthropicAPIKey?.isEmpty == false else {
+                throw ModelRouterError.noAPIKey("Anthropic")
+            }
+        case .xai:
+            guard KeychainManager.shared.xaiAPIKey?.isEmpty == false else {
+                throw ModelRouterError.noAPIKey("xAI")
+            }
+        case .openRouter:
+            guard KeychainManager.shared.openRouterAPIKey?.isEmpty == false else {
+                throw ModelRouterError.noAPIKey("OpenRouter")
+            }
+        }
+    }
+
     // MARK: - Qwen fallback
 
     private static func streamWithQwenFallback(
@@ -68,70 +91,76 @@ final class ModelRouter {
         onEvent: @escaping (StreamEvent) -> Void
     ) async throws -> ClaudeModel {
 
-        // Race: Qwen stream vs 15-second timer
-        let timeoutSeconds: UInt64 = 15
+        // Try Qwen with 15-second timeout
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { @MainActor in
+                    try await routeStream(
+                        messages: messages,
+                        model: .qwen3CoderFree,
+                        systemPrompt: systemPrompt,
+                        maxTokens: maxTokens,
+                        tools: nil,
+                        onEvent: onEvent
+                    )
+                }
 
-        return try await withThrowingTaskGroup(of: ClaudeModel.self) { group in
-            // Task 1: Qwen streaming
-            group.addTask {
+                group.addTask {
+                    try await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                    throw ModelRouterError.qwenTimeout
+                }
+
+                // Wait for first task to complete
+                do {
+                    try await group.next()
+                    group.cancelAll()
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch ModelRouterError.qwenTimeout {
+                    group.cancelAll()
+                    throw ModelRouterError.qwenTimeout
+                } catch {
+                    // Qwen failed with a real error — propagate, don't timeout
+                    group.cancelAll()
+                    throw error
+                }
+            }
+            return .qwen3CoderFree
+        } catch ModelRouterError.qwenTimeout {
+            // Emit fallback notice
+            onEvent(.contentBlockDelta(
+                index: 0,
+                delta: .text("\n\n⚡ *Qwen3-Coder timeout — testar MiniMax M2.5*\n\n")
+            ))
+
+            // Try MiniMax M2.5
+            do {
                 try await routeStream(
                     messages: messages,
-                    model: .qwen3CoderFree,
+                    model: .minimaxM25,
                     systemPrompt: systemPrompt,
                     maxTokens: maxTokens,
                     tools: nil,
                     onEvent: onEvent
                 )
-                return .qwen3CoderFree
-            }
-
-            // Task 2: Timeout sentinel (throws after 15s)
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeoutSeconds * 1_000_000_000)
-                throw ModelRouterError.qwenTimeout
-            }
-
-            do {
-                let result = try await group.next()!
-                group.cancelAll()
-                return result
-            } catch ModelRouterError.qwenTimeout {
-                group.cancelAll()
-
-                // Emit fallback notice so UI can display it
+                return .minimaxM25
+            } catch {
+                // MiniMax failed — try Sonnet as final fallback
                 onEvent(.contentBlockDelta(
                     index: 0,
-                    delta: .text("\n\n⚡ *Qwen3-Coder timeout (15s) — trying MiniMax M2.5*\n\n")
+                    delta: .text("\n\n⚡ *MiniMax misslyckades — byter till Sonnet*\n\n")
                 ))
 
-                // Try MiniMax M2.5
-                do {
-                    let result = try await routeStream(
-                        messages: messages,
-                        model: .minimaxM25,
-                        systemPrompt: systemPrompt,
-                        maxTokens: maxTokens,
-                        tools: nil,
-                        onEvent: onEvent
-                    )
-                    return result
-                } catch {
-                    // MiniMax also failed - try Sonnet as final fallback
-                    onEvent(.contentBlockDelta(
-                        index: 0,
-                        delta: .text("\n\n⚡ *MiniMax failed — trying Claude Sonnet*\n\n")
-                    ))
-                    
-                    try await routeStream(
-                        messages: messages,
-                        model: .sonnet45,
-                        systemPrompt: systemPrompt,
-                        maxTokens: maxTokens,
-                        tools: nil,
-                        onEvent: onEvent
-                    )
-                    return .sonnet45
-                }
+                try validateAPIKey(for: .sonnet45)
+                try await routeStream(
+                    messages: messages,
+                    model: .sonnet45,
+                    systemPrompt: systemPrompt,
+                    maxTokens: maxTokens,
+                    tools: nil,
+                    onEvent: onEvent
+                )
+                return .sonnet45
             }
         }
     }
@@ -182,11 +211,14 @@ final class ModelRouter {
 
 enum ModelRouterError: LocalizedError {
     case qwenTimeout
+    case noAPIKey(String)
 
     var errorDescription: String? {
         switch self {
         case .qwenTimeout:
             return "Qwen3-Coder timeout (15s) — byter till MiniMax M2.5"
+        case .noAPIKey(let provider):
+            return "Ingen \(provider) API-nyckel. Gå till Inställningar."
         }
     }
 }

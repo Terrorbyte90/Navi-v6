@@ -126,6 +126,7 @@ private struct TTSTab: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
         .onAppear {
             if selectedVoiceID.isEmpty {
                 selectedVoiceID = SettingsStore.shared.selectedVoiceID.isEmpty
@@ -371,6 +372,7 @@ private struct SoundTab: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     var promptSection: some View {
@@ -608,6 +610,7 @@ private struct VoiceDesignTab: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
         .alert("Namnge rösten", isPresented: $showNameAlert) {
             TextField("Röstnamn", text: $voiceSaveName)
             Button("Spara") {

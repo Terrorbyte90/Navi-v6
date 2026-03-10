@@ -39,7 +39,43 @@ let agentTools: [ClaudeTool] = [
                inputSchema: ToolInputSchema(properties: [
                    "source": ToolProperty(type: "string", description: "Källsökväg"),
                    "destination": ToolProperty(type: "string", description: "Mål zip-fil")
-               ], required: ["source", "destination"]))
+               ], required: ["source", "destination"])),
+    
+    // MARK: - GitHub Tools
+    ClaudeTool(name: "github_list_repos", description: "Lista alla dina GitHub-repositories",
+               inputSchema: ToolInputSchema(properties: [:], required: [])),
+    ClaudeTool(name: "github_get_repo", description: "Hämta information om ett specifikt GitHub-repo",
+               inputSchema: ToolInputSchema(properties: ["repo": ToolProperty(type: "string", description: "Repo-namn (t.ex. 'användare/repo')")], required: ["repo"])),
+    ClaudeTool(name: "github_list_branches", description: "Lista branches i ett repo",
+               inputSchema: ToolInputSchema(properties: ["repo": ToolProperty(type: "string", description: "Repo-namn")], required: ["repo"])),
+    ClaudeTool(name: "github_list_commits", description: "Lista commits i ett repo",
+               inputSchema: ToolInputSchema(properties: [
+                   "repo": ToolProperty(type: "string", description: "Repo-namn"),
+                   "branch": ToolProperty(type: "string", description: "Branch-namn (valfritt)")
+               ], required: ["repo"])),
+    ClaudeTool(name: "github_list_pull_requests", description: "Lista pull requests i ett repo",
+               inputSchema: ToolInputSchema(properties: [
+                   "repo": ToolProperty(type: "string", description: "Repo-namn"),
+                   "state": ToolProperty(type: "string", description: "Filtrera på state: 'open', 'closed', 'all' (default: 'open')")
+               ], required: ["repo"])),
+    ClaudeTool(name: "github_create_pull_request", description: "Skapa en ny pull request",
+               inputSchema: ToolInputSchema(properties: [
+                   "repo": ToolProperty(type: "string", description: "Repo-namn"),
+                   "title": ToolProperty(type: "string", description: "PR-titel"),
+                   "body": ToolProperty(type: "string", description: "PR-beskrivning"),
+                   "head": ToolProperty(type: "string", description: "Branch att merga från"),
+                   "base": ToolProperty(type: "string", description: "Mål-branch (t.ex. 'main')")
+               ], required: ["repo", "title", "head", "base"])),
+    ClaudeTool(name: "github_get_file_content", description: "Hämta innehållet av en fil från GitHub",
+               inputSchema: ToolInputSchema(properties: [
+                   "repo": ToolProperty(type: "string", description: "Repo-namn"),
+                   "path": ToolProperty(type: "string", description: "Sökväg till filen"),
+                   "branch": ToolProperty(type: "string", description: "Branch (valfritt, default: main)")
+               ], required: ["repo", "path"])),
+    ClaudeTool(name: "github_search_repos", description: "Sök efter repositories",
+               inputSchema: ToolInputSchema(properties: ["query": ToolProperty(type: "string", description: "Sökterm")], required: ["query"])),
+    ClaudeTool(name: "github_get_user", description: "Hämta din GitHub-användarinformation",
+               inputSchema: ToolInputSchema(properties: [:], required: [])),
 ]
 
 // MARK: - Agent Engine

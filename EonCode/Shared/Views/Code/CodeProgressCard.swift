@@ -43,16 +43,17 @@ struct CodeProgressCard: View {
 
     private var phaseRow: some View {
         HStack(spacing: 8) {
-            Text(agent.phase.displayName.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.accentNavi.opacity(0.7))
-                .tracking(0.5)
+            PhasePill(phase: agent.phase)
 
+            Spacer()
+
+            // Phase dots
             HStack(spacing: 4) {
                 ForEach(PipelinePhase.activePhasesOrdered, id: \.self) { phase in
-                    Circle()
+                    RoundedRectangle(cornerRadius: 2)
                         .fill(dotColor(for: phase))
-                        .frame(width: 5, height: 5)
+                        .frame(width: phase.ordinal == agent.phase.ordinal ? 14 : 5, height: 5)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: agent.phase)
                 }
             }
         }
@@ -63,8 +64,8 @@ struct CodeProgressCard: View {
             return agent.phase == .done ? NaviTheme.success : Color.secondary.opacity(0.3)
         }
         if phase.ordinal < agent.phase.ordinal { return NaviTheme.success }
-        if phase.ordinal == agent.phase.ordinal { return NaviTheme.warning }
-        return Color.secondary.opacity(0.3)
+        if phase.ordinal == agent.phase.ordinal { return Color.accentNavi }
+        return Color.secondary.opacity(0.15)
     }
 
     private var recentActiveCards: [WorkerStatus] {

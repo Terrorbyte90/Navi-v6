@@ -47,7 +47,7 @@ struct PhaseBadge: View {
             Image(systemName: state == .done ? "checkmark" : phase.icon)
                 .font(.system(size: 11, weight: .semibold))
             Text(phase.displayName)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -74,23 +74,23 @@ struct PhaseBadge: View {
 
     private var badgeBackground: Color {
         switch state {
-        case .done:    return Color.green.opacity(0.15)
-        case .active:  return Color.orange.opacity(0.15)
+        case .done:    return NaviTheme.success.opacity(0.12)
+        case .active:  return Color.accentNavi.opacity(0.12)
         case .pending: return Color.sidebarBackground
         }
     }
 
     private var badgeForeground: Color {
         switch state {
-        case .done:    return .green
-        case .active:  return .orange
+        case .done:    return NaviTheme.success
+        case .active:  return .accentNavi
         case .pending: return .secondary
         }
     }
 
     private var borderColor: Color {
         switch state {
-        case .active: return Color.orange.opacity(0.6)
+        case .active: return Color.accentNavi.opacity(0.5)
         default:      return .clear
         }
     }

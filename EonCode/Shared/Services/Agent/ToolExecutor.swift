@@ -21,6 +21,28 @@ final class ToolExecutor {
         case "build_project":    return await buildProject(path: params["path"] ?? "", projectRoot: projectRoot)
         case "download_file":    return await downloadFile(url: params["url"] ?? "", destination: params["destination"] ?? "", projectRoot: projectRoot)
         case "zip_files":        return await zipFiles(source: params["source"] ?? "", destination: params["destination"] ?? "", projectRoot: projectRoot)
+            
+        // MARK: - GitHub Tools
+        case "github_list_repos":         return await githubListRepos()
+        case "github_get_repo":           return await githubGetRepo(repo: params["repo"] ?? "")
+        case "github_list_branches":      return await githubListBranches(repo: params["repo"] ?? "")
+        case "github_list_commits":       return await githubListCommits(repo: params["repo"] ?? "", branch: params["branch"])
+        case "github_list_pull_requests": return await githubListPullRequests(repo: params["repo"] ?? "", state: params["state"] ?? "open")
+        case "github_create_pull_request": return await githubCreatePullRequest(
+            repo: params["repo"] ?? "",
+            title: params["title"] ?? "",
+            body: params["body"] ?? "",
+            head: params["head"] ?? "",
+            base: params["base"] ?? "main"
+        )
+        case "github_get_file_content":   return await githubGetFileContent(
+            repo: params["repo"] ?? "",
+            path: params["path"] ?? "",
+            branch: params["branch"]
+        )
+        case "github_search_repos":       return await githubSearchRepos(query: params["query"] ?? "")
+        case "github_get_user":           return await githubGetUser()
+            
         default:                 return "Okänt verktyg: \(name)"
         }
     }
@@ -328,6 +350,278 @@ final class ToolExecutor {
         if let err = coordError { return "FEL: \(err.localizedDescription)" }
         return success ? "✓ Zip skapad: \(destination)" : "FEL: Zip misslyckades"
         #endif
+    }
+    
+    // MARK: - GitHub Tools
+    
+    private var githubToken: String? {
+        KeychainManager.shared.githubToken
+    }
+    
+    private enum ToolGitHubError: LocalizedError {
+        case notAuthenticated
+        case invalidURL
+        case invalidResponse
+        case notFound
+        case rateLimited
+        case apiError(Int, String)
+        
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated:
+                return "🔒 Ej inloggad på GitHub. Lägg till din token i Inställningar."
+            case .invalidURL:
+                return "❌ Ogiltig URL"
+            case .invalidResponse:
+                return "❌ Ogiltigt svar från GitHub"
+            case .notFound:
+                return "🔍 Resursen hittades inte (404)"
+            case .rateLimited:
+                return "⏳ GitHub rate limit nådd. Vänta lite och försök igen."
+            case .apiError(let code, let msg):
+                return "❌ GitHub API-fel (\(code)): \(msg)"
+            }
+        }
+    }
+    
+    private func githubRequest(path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
+        guard let token = githubToken, !token.isEmpty else {
+            throw ToolGitHubError.notAuthenticated
+        }
+        
+        guard let url = URL(string: "https://api.github.com\(path)") else {
+            throw ToolGitHubError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        if let body = body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ToolGitHubError.invalidResponse
+        }
+        
+        if httpResponse.statusCode == 401 {
+            throw ToolGitHubError.notAuthenticated
+        }
+        if httpResponse.statusCode == 404 {
+            throw ToolGitHubError.notFound
+        }
+        if httpResponse.statusCode == 403 {
+            throw ToolGitHubError.rateLimited
+        }
+        if httpResponse.statusCode >= 400 {
+            let msg = String(data: data, encoding: .utf8) ?? "Okänt fel"
+            throw ToolGitHubError.apiError(httpResponse.statusCode, msg)
+        }
+        
+        return data
+    }
+    
+    func githubListRepos() async -> String {
+        do {
+            let data = try await githubRequest(path: "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member")
+            let repos = try JSONDecoder().decode([GitHubRepo].self, from: data)
+            if repos.isEmpty { return "Inga repositories hittades." }
+            let list = repos.map { "• \($0.fullName) - \($0.description ?? "Ingen beskrivning")" }.joined(separator: "\n")
+            return "📁 Dina repositories (\(repos.count) st):\n\n\(list)"
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubGetRepo(repo: String) async -> String {
+        guard !repo.isEmpty else { return "Ange repo-namn (t.ex. 'användare/repo')" }
+        do {
+            let encodedRepo = repo.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? repo
+            let data = try await githubRequest(path: "/repos/\(encodedRepo)")
+            let repoInfo = try JSONDecoder().decode(GitHubRepo.self, from: data)
+            return """
+            📁 \(repoInfo.fullName)
+            
+            Beskrivning: \(repoInfo.description ?? "Ingen")
+            Språk: \(repoInfo.language ?? "Okänt")
+            Stjärnor: \(repoInfo.stargazersCount)
+            Default branch: \(repoInfo.defaultBranch)
+            Privat: \(repoInfo.isPrivate ? "Ja" : "Nej")
+            URL: \(repoInfo.htmlURL)
+            """
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubListBranches(repo: String) async -> String {
+        guard !repo.isEmpty else { return "Ange repo-namn" }
+        do {
+            let encodedRepo = repo.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? repo
+            let data = try await githubRequest(path: "/repos/\(encodedRepo)/branches")
+            let branches = try JSONDecoder().decode([GitHubBranch].self, from: data)
+            if branches.isEmpty { return "Inga branches hittades." }
+            let list = branches.map { "• \($0.name)\($0.protected ? " 🔒" : "")" }.joined(separator: "\n")
+            return "🌿 Branches i \(repo) (\(branches.count) st):\n\n\(list)"
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubListCommits(repo: String, branch: String?) async -> String {
+        guard !repo.isEmpty else { return "Ange repo-namn" }
+        do {
+            let encodedRepo = repo.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? repo
+            let branchParam = branch != nil ? "?sha=\(branch!)" : ""
+            let data = try await githubRequest(path: "/repos/\(encodedRepo)/commits\(branchParam)")
+            let commits = try JSONDecoder().decode([GitHubCommit].self, from: data)
+            if commits.isEmpty { return "Inga commits hittades." }
+            let list = commits.prefix(10).map { commit in
+                let msg = commit.commit.message.components(separatedBy: "\n").first ?? ""
+                return "• \(commit.sha.prefix(7)) - \(msg) (\(commit.commit.author.date.prefix(10)))"
+            }.joined(separator: "\n")
+            return "📜 Senaste commits i \(repo):\n\n\(list)"
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubListPullRequests(repo: String, state: String = "open") async -> String {
+        guard !repo.isEmpty else { return "Ange repo-namn" }
+        do {
+            let encodedRepo = repo.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? repo
+            let data = try await githubRequest(path: "/repos/\(encodedRepo)/pulls?state=\(state)")
+            let prs = try JSONDecoder().decode([GitHubPullRequest].self, from: data)
+            if prs.isEmpty { return "Inga pull requests hittades." }
+            let list = prs.prefix(10).map { pr in
+                let draft = pr.draft == true ? " 🧨" : ""
+                return "• #\(pr.number) \(pr.title)\(draft) - \(pr.user.login)"
+            }.joined(separator: "\n")
+            return "🔀 Pull requests i \(repo) (\(prs.count) st):\n\n\(list)"
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubCreatePullRequest(repo: String, title: String, body: String, head: String, base: String) async -> String {
+        guard !repo.isEmpty, !title.isEmpty, !head.isEmpty else { return "Ange repo, title, head och base" }
+        do {
+            let encodedRepo = repo.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? repo
+            let bodyData: [String: Any] = [
+                "title": title,
+                "body": body,
+                "head": head,
+                "base": base
+            ]
+            let jsonBody = try JSONSerialization.data(withJSONObject: bodyData)
+            let data = try await githubRequest(path: "/repos/\(encodedRepo)/pulls", method: "POST", body: jsonBody)
+            let pr = try JSONDecoder().decode(GitHubPullRequest.self, from: data)
+            return "✅ Pull request skapad!\n\n#\(pr.number): \(pr.title)\n\(pr.htmlURL)"
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubGetFileContent(repo: String, path: String, branch: String?) async -> String {
+        guard !repo.isEmpty, !path.isEmpty else { return "Ange repo och sökväg" }
+        do {
+            let encodedRepo = repo.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? repo
+            let branchParam = branch ?? "main"
+            let encodedPath = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+            let data = try await githubRequest(path: "/repos/\(encodedRepo)/contents/\(encodedPath)?ref=\(branchParam)")
+            
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return "FEL: Kunde inte tolka svaret"
+            }
+            
+            // Handle directory listing
+            if let type = json["type"] as? String, type == "dir" {
+                if let files = json["entries"] as? [[String: Any]] {
+                    let list = files.map { "• \($0["name"] as? String ?? "") (\($0["type"] as? String ?? ""))" }.joined(separator: "\n")
+                    return "📂 Innehåll i \(path):\n\n\(list)"
+                }
+            }
+            
+            // Handle file content (base64 encoded)
+            if let content = json["content"] as? String {
+                // Remove newlines from base64 string
+                let cleanContent = content.replacingOccurrences(of: "\n", with: "")
+                if let decoded = Data(base64Encoded: cleanContent),
+                   let text = String(data: decoded, encoding: .utf8) {
+                    let lines = text.components(separatedBy: "\n").count
+                    if text.count > 30000 {
+                        return String(text.prefix(30000)) + "\n\n⚠️ [Fil trunkerad: \(lines) rader totalt]"
+                    }
+                    return "📄 \(path):\n\n\(text)"
+                }
+                return "FEL: Kunde inte avkoda filen"
+            }
+            
+            return "Kunde inte läsa filen"
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubSearchRepos(query: String) async -> String {
+        guard !query.isEmpty else { return "Ange en sökterm" }
+        do {
+            let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+            let data = try await githubRequest(path: "/search/repositories?q=\(encodedQuery)")
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let items = json["items"] as? [[String: Any]] else {
+                return "Inga resultat hittades"
+            }
+            if items.isEmpty { return "Inga repositories hittades för '\(query)'" }
+            let list = items.prefix(10).map { item in
+                let name = item["full_name"] as? String ?? ""
+                let desc = item["description"] as? String ?? "Ingen beskrivning"
+                let stars = item["stargazers_count"] as? Int ?? 0
+                return "• \(name) ⭐\(stars)\n  \(desc)"
+            }.joined(separator: "\n\n")
+            return "🔍 Resultat för '\(query)' (\(items.count) träffar):\n\n\(list)"
+        } catch let error as ToolGitHubError {
+            return error.localizedDescription
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+    
+    func githubGetUser() async -> String {
+        do {
+            let data = try await githubRequest(path: "/user")
+            let user = try JSONDecoder().decode(GitHubUser.self, from: data)
+            return """
+            👤 Din GitHub-profil:
+            
+            Användarnamn: \(user.login)
+            Namn: \(user.name ?? "Ej angivet")
+            Publika repos: \(user.publicRepos)
+            Privat repos: \(user.totalPrivateRepos ?? 0)
+            Avatar: \(user.avatarURL)
+            """
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
     }
 }
 

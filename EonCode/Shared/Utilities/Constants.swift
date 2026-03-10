@@ -30,6 +30,7 @@ enum Constants {
         static let mediaVideosFolder = "Media/Videos"
         static let mediaAudioFolder  = "Media/Ljud"
         static let defaultProjectsFolder = "Navi/Projects"
+        static let githubReposFolder = "GitHub/Repos"
     }
 
     enum Sync {
