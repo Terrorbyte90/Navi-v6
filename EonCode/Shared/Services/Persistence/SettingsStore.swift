@@ -53,6 +53,22 @@ final class SettingsStore: ObservableObject {
         didSet { save("macRemoteEnabled", value: macRemoteEnabled) }
     }
 
+    // MARK: - ElevenLabs Voice Preferences
+    // Defaults tuned for natural, slightly expressive speech at a comfortable pace.
+
+    @Published var voiceStability: Double {
+        didSet { save("voiceStability", value: voiceStability) }
+    }
+    @Published var voiceSimilarityBoost: Double {
+        didSet { save("voiceSimilarityBoost", value: voiceSimilarityBoost) }
+    }
+    @Published var voiceStyle: Double {
+        didSet { save("voiceStyle", value: voiceStyle) }
+    }
+    @Published var voiceSpeed: Double {
+        didSet { save("voiceSpeed", value: voiceSpeed) }
+    }
+
     private let defaults = UserDefaults.standard
 
     private init() {
@@ -72,6 +88,11 @@ final class SettingsStore: ObservableObject {
         selectedVoiceName = UserDefaults.standard.string(forKey: "selectedVoiceName") ?? "Rachel"
         macHandoffEnabled = UserDefaults.standard.value(forKey: "macHandoffEnabled") as? Bool ?? false
         macRemoteEnabled = UserDefaults.standard.value(forKey: "macRemoteEnabled") as? Bool ?? false
+        // Voice preferences — sensible defaults for natural-sounding speech
+        voiceStability      = UserDefaults.standard.object(forKey: "voiceStability") as? Double ?? 0.45
+        voiceSimilarityBoost = UserDefaults.standard.object(forKey: "voiceSimilarityBoost") as? Double ?? 0.75
+        voiceStyle          = UserDefaults.standard.object(forKey: "voiceStyle") as? Double ?? 0.25
+        voiceSpeed          = UserDefaults.standard.object(forKey: "voiceSpeed") as? Double ?? 0.80
     }
 
     private func save(_ key: String, value: Any?) {

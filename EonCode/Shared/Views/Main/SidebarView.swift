@@ -300,11 +300,46 @@ struct SidebarView: View {
             : chatManager.conversations.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
     }
 
+    // MARK: - Date-bucketed chat list
+
+    private enum ChatDateBucket: String {
+        case today      = "Idag"
+        case yesterday  = "Igår"
+        case lastWeek   = "Förra 7 dagarna"
+        case older      = "Äldre"
+    }
+
+    private func dateBucket(for date: Date) -> ChatDateBucket {
+        let cal = Calendar.current
+        if cal.isDateInToday(date)     { return .today }
+        if cal.isDateInYesterday(date) { return .yesterday }
+        if let daysAgo = cal.dateComponents([.day], from: date, to: Date()).day, daysAgo < 7 {
+            return .lastWeek
+        }
+        return .older
+    }
+
+    private var groupedChats: [(ChatDateBucket, [ChatConversation])] {
+        let bucketOrder: [ChatDateBucket] = [.today, .yesterday, .lastWeek, .older]
+        var grouped: [ChatDateBucket: [ChatConversation]] = [:]
+        for conv in filteredChats {
+            let bucket = dateBucket(for: conv.updatedAt)
+            grouped[bucket, default: []].append(conv)
+        }
+        return bucketOrder.compactMap { bucket in
+            guard let convs = grouped[bucket], !convs.isEmpty else { return nil }
+            return (bucket, convs)
+        }
+    }
+
     var chatList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
-                if !filteredChats.isEmpty {
-                    listSectionHeader("Senaste")
+                if filteredChats.isEmpty {
+                    emptyHint(icon: "bubble.left.and.bubble.right",
+                              text: searchText.isEmpty ? "Inga chattar" : "Inga träffar")
+                } else if !searchText.isEmpty {
+                    // Flat list when searching — no date groups
                     ForEach(filteredChats) { conv in
                         ChatConversationRow(
                             conversation: conv,
@@ -313,8 +348,17 @@ struct SidebarView: View {
                         )
                     }
                 } else {
-                    emptyHint(icon: "bubble.left.and.bubble.right",
-                              text: searchText.isEmpty ? "Inga chattar" : "Inga träffar")
+                    // Date-grouped list
+                    ForEach(groupedChats, id: \.0.rawValue) { bucket, convs in
+                        listSectionHeader(bucket.rawValue)
+                        ForEach(convs) { conv in
+                            ChatConversationRow(
+                                conversation: conv,
+                                isSelected: chatManager.activeConversation?.id == conv.id,
+                                onSelect: { chatManager.activeConversation = conv }
+                            )
+                        }
+                    }
                 }
             }
             .padding(.bottom, 8)

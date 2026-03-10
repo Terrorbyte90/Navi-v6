@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		003FF25E8EBBA9158882BDA3 /* MemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A62438EE133780512F78CB /* MemoryView.swift */; };
+		022CFF646296EA52C2DC9580 /* UIApplication+Keyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A669CDB04235A0EEAC894A /* UIApplication+Keyboard.swift */; };
 		0268031574BC3759F0CCC5E4 /* Version.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950D59A59B750776CE0BB2D1 /* Version.swift */; };
 		03C63B4E79AFFDF18164CD94 /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FBE4871F30BAC1E28FF834 /* WebViewContainer.swift */; };
 		045F3AF9A9FE00C7F2B57F1E /* SearchEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5072F6FBC2C8CD6FA6720068 /* SearchEngine.swift */; };
@@ -205,6 +206,7 @@
 		D7238E2AC490A7E3DFF0BD8D /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E145A4DCF8B170F35B55C /* FileNode.swift */; };
 		D7CEADF1D001464D7228191A /* OpusReviewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC2803DD69416ECDA4D031B /* OpusReviewer.swift */; };
 		D891726B165B4F2881F4573C /* AgentActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 948F5C36809C348A022F30BA /* AgentActivityView.swift */; };
+		DC73FE0B06BE8F4AC9F0C041 /* UIApplication+Keyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A669CDB04235A0EEAC894A /* UIApplication+Keyboard.swift */; };
 		DC9D66C757886D5B0F2D9DAB /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FBE4871F30BAC1E28FF834 /* WebViewContainer.swift */; };
 		DD38F4DB48551BBF6BA2CE22 /* WorkerPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A6BF9D04A4EB43B7D27EBB /* WorkerPool.swift */; };
 		DD43C3382056E034C9508147 /* OpusReviewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC2803DD69416ECDA4D031B /* OpusReviewer.swift */; };
@@ -278,6 +280,7 @@
 		3A54C6CEAE134162EADD35FA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		3A7173C20F146C9FF898DE1E /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		3EE35E70A539E90187F695B1 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
+		42A669CDB04235A0EEAC894A /* UIApplication+Keyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIApplication+Keyboard.swift"; sourceTree = "<group>"; };
 		42C5E877FCBF1B444E5F3AB2 /* CostCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostCalculator.swift; sourceTree = "<group>"; };
 		433D65180DC56EA603F1EBFB /* ExchangeRate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExchangeRate.swift; sourceTree = "<group>"; };
 		434269EF68267911170C2CD5 /* DiffEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffEngine.swift; sourceTree = "<group>"; };
@@ -553,6 +556,7 @@
 				433D65180DC56EA603F1EBFB /* ExchangeRate.swift */,
 				AF5CB0D35FBE7EA0E36306DC /* Extensions.swift */,
 				4CDC27DAA75627B1862F7AD5 /* NaviTheme.swift */,
+				42A669CDB04235A0EEAC894A /* UIApplication+Keyboard.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -1062,6 +1066,7 @@
 				297774000ADEA89EA3FA58AE /* TerminalExecutor.swift in Sources */,
 				D1C19B75A9BD059C611B00FB /* TerminalOutputParser.swift in Sources */,
 				14E9A856D8E7538A42E40764 /* ToolExecutor.swift in Sources */,
+				DC73FE0B06BE8F4AC9F0C041 /* UIApplication+Keyboard.swift in Sources */,
 				A283AD7F837799A305146589 /* UserProfile.swift in Sources */,
 				B656D55DEAD432C6EF0AE607 /* UserProfileManager.swift in Sources */,
 				F9FC84F28E6E32579D622444 /* Version.swift in Sources */,
@@ -1184,6 +1189,7 @@
 				6DF64E6E70C90181F7314737 /* TaskDecomposer.swift in Sources */,
 				0C28FBCD03B91011BB832019 /* TaskHandoff.swift in Sources */,
 				60F963E927EE39B12DD39EEA /* ToolExecutor.swift in Sources */,
+				022CFF646296EA52C2DC9580 /* UIApplication+Keyboard.swift in Sources */,
 				954A397F7D52F8CFCF943332 /* UserProfile.swift in Sources */,
 				F4C2EDCCA55422820DF3D224 /* UserProfileManager.swift in Sources */,
 				0268031574BC3759F0CCC5E4 /* Version.swift in Sources */,

@@ -89,6 +89,69 @@ struct SettingsView: View {
                 Toggle("Aktivera text-till-tal", isOn: $settings.ttsEnabled)
                 VoicePickerRow()
             }
+            // Voice quality sliders
+            Section("Röst-inställningar") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Stabilitet")
+                            .font(.system(size: 13))
+                        Spacer()
+                        Text(String(format: "%.2f", settings.voiceStability))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.voiceStability, in: 0...1, step: 0.05)
+                        .accentColor(Color.accentNavi)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Likhet (similarity)")
+                            .font(.system(size: 13))
+                        Spacer()
+                        Text(String(format: "%.2f", settings.voiceSimilarityBoost))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.voiceSimilarityBoost, in: 0...1, step: 0.05)
+                        .accentColor(Color.accentNavi)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Uttrycksfullhet (style)")
+                            .font(.system(size: 13))
+                        Spacer()
+                        Text(String(format: "%.2f", settings.voiceStyle))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.voiceStyle, in: 0...1, step: 0.05)
+                        .accentColor(Color.accentNavi)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Hastighet")
+                            .font(.system(size: 13))
+                        Spacer()
+                        Text(String(format: "%.2f×", settings.voiceSpeed))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.voiceSpeed, in: 0.5...2.0, step: 0.05)
+                        .accentColor(Color.accentNavi)
+                }
+
+                Button("Återställ standardvärden") {
+                    settings.voiceStability = 0.45
+                    settings.voiceSimilarityBoost = 0.75
+                    settings.voiceStyle = 0.25
+                    settings.voiceSpeed = 0.80
+                }
+                .font(.system(size: 13))
+                .foregroundColor(Color.accentNavi)
+            }
             Section("Minnen") { memoriesSection }
         }
         .navigationTitle("Inställningar")

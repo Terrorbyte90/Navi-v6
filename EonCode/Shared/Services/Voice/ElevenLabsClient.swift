@@ -108,10 +108,16 @@ final class ElevenLabsClient: ObservableObject {
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        let settings = SettingsStore.shared
         let body: [String: Any] = [
             "text": text,
             "model_id": "eleven_turbo_v2_5",   // Low-latency multilingual model
-            "voice_settings": ["stability": 0.5, "similarity_boost": 0.75]
+            "voice_settings": [
+                "stability":        settings.voiceStability,
+                "similarity_boost": settings.voiceSimilarityBoost,
+                "style":            settings.voiceStyle,
+                "speed":            settings.voiceSpeed
+            ]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

@@ -198,17 +198,55 @@ struct ChatHistorySidebar: View {
             : chatManager.conversations.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
     }
 
+    private enum ChatDateBucket: String {
+        case today     = "Idag"
+        case yesterday = "Igår"
+        case lastWeek  = "Förra 7 dagarna"
+        case older     = "Äldre"
+    }
+
+    private func dateBucket(for date: Date) -> ChatDateBucket {
+        let cal = Calendar.current
+        if cal.isDateInToday(date)     { return .today }
+        if cal.isDateInYesterday(date) { return .yesterday }
+        if let days = cal.dateComponents([.day], from: date, to: Date()).day, days < 7 {
+            return .lastWeek
+        }
+        return .older
+    }
+
+    private var groupedChats: [(ChatDateBucket, [ChatConversation])] {
+        let order: [ChatDateBucket] = [.today, .yesterday, .lastWeek, .older]
+        var grouped: [ChatDateBucket: [ChatConversation]] = [:]
+        for conv in filteredChats {
+            let b = dateBucket(for: conv.updatedAt)
+            grouped[b, default: []].append(conv)
+        }
+        return order.compactMap { b in
+            guard let convs = grouped[b], !convs.isEmpty else { return nil }
+            return (b, convs)
+        }
+    }
+
     @ViewBuilder
     var chatHistory: some View {
-        if !filteredChats.isEmpty {
+        if filteredChats.isEmpty {
+            if searchText.isEmpty {
+                emptyHistoryHint(icon: "bubble.left.and.bubble.right", text: "Inga chattar ännu")
+            }
+        } else if !searchText.isEmpty {
+            // Flat list when searching
             VStack(alignment: .leading, spacing: 0) {
-                sectionHeader("Chattar")
-                ForEach(filteredChats) { conv in
-                    chatRow(conv)
+                ForEach(filteredChats) { conv in chatRow(conv) }
+            }
+        } else {
+            // Date-grouped list
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(groupedChats, id: \.0.rawValue) { bucket, convs in
+                    sectionHeader(bucket.rawValue)
+                    ForEach(convs) { conv in chatRow(conv) }
                 }
             }
-        } else if searchText.isEmpty {
-            emptyHistoryHint(icon: "bubble.left.and.bubble.right", text: "Inga chattar ännu")
         }
     }
 
@@ -219,14 +257,52 @@ struct ChatHistorySidebar: View {
             selectedTab = .chat
             showSidebar = false
         } label: {
-            historyRowContent(
-                title: conv.title,
-                subtitle: "\(conv.messages.count) meddelanden",
-                isActive: chatManager.activeConversation?.id == conv.id
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(conv.title)
+                        .font(.system(size: 14, weight: chatManager.activeConversation?.id == conv.id ? .semibold : .regular))
+                        .foregroundColor(Color.primary.opacity(chatManager.activeConversation?.id == conv.id ? 1.0 : 0.85))
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(conv.updatedAt.relativeString)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        if conv.totalCostSEK > 0 {
+                            Text("·").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.3))
+                            Text(CostCalculator.shared.formatSEK(conv.totalCostSEK))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.4))
+                        }
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(chatManager.activeConversation?.id == conv.id ? Color.surfaceHover : Color.clear)
+            )
+            .overlay(
+                chatManager.activeConversation?.id == conv.id
+                    ? Rectangle()
+                        .fill(Color.accentNavi)
+                        .frame(width: 2)
+                        .frame(maxHeight: .infinity, alignment: .leading)
+                    : nil,
+                alignment: .leading
             )
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 6)
         .contextMenu {
+            Button("Öppna") {
+                chatManager.activeConversation = conv
+                selectedTab = .chat
+                showSidebar = false
+            }
+            Divider()
             Button(role: .destructive) {
                 Task { await chatManager.delete(conv) }
             } label: { Label("Radera", systemImage: "trash") }
