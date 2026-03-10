@@ -33,7 +33,7 @@ struct CodeView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Text("Code")
+            Text("Kod")
                 .font(.system(size: 17, weight: .semibold))
 
             Spacer()
@@ -160,7 +160,7 @@ struct CodeView: View {
                     )
             }
             VStack(spacing: 8) {
-                Text("Code")
+                Text("Kod")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                 Text("Beskriv ett projekt. Navi bygger det åt dig.")
                     .font(.system(size: 14))

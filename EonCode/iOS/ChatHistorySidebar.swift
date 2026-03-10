@@ -54,7 +54,7 @@ struct ChatHistorySidebar: View {
                 HStack(spacing: 7) {
                     ZStack {
                         Circle()
-                            .fill(LinearGradient(colors: [Color(red:0.455,green:0.667,blue:0.612), Color(red:0.3,green:0.55,blue:0.5)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .fill(LinearGradient(colors: [Color(red: 0.83, green: 0.64, blue: 0.45), Color(red: 0.70, green: 0.50, blue: 0.30)], startPoint: .topLeading, endPoint: .bottomTrailing))
                             .frame(width: 22, height: 22)
                         Image(systemName: "sparkles")
                             .font(.system(size: 10, weight: .semibold))

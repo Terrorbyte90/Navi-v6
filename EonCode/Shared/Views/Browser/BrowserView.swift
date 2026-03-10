@@ -107,7 +107,7 @@ struct BrowserAddressBar: View {
                     .foregroundColor(isHTTPS ? .green.opacity(0.85) : .secondary.opacity(0.45))
 
                 if isEditing {
-                    TextField("Search or enter address", text: $urlText)
+                    TextField("Sök eller ange adress", text: $urlText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 14))
                         .focused($urlFocused)
@@ -119,7 +119,7 @@ struct BrowserAddressBar: View {
                         .foregroundColor(.primary)
                 } else {
                     Text(displayURL.isEmpty
-                         ? "Search or enter address"
+                         ? "Sök eller ange adress"
                          : (displayHost.isEmpty ? displayURL : displayHost))
                         .font(.system(size: 14))
                         .foregroundColor(displayURL.isEmpty ? .secondary.opacity(0.4) : .primary.opacity(0.85))
@@ -404,7 +404,7 @@ struct BrowserAgentPanel: View {
         VStack(spacing: 0) {
             // Header
             HStack(spacing: 8) {
-                Text("Agent log")
+                Text("Agent-logg")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
                 Spacer()
@@ -426,7 +426,7 @@ struct BrowserAgentPanel: View {
                 HStack {
                     Image(systemName: "cpu.fill")
                         .foregroundColor(.secondary.opacity(0.25))
-                    Text("No activity yet")
+                    Text("Ingen aktivitet ännu")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary.opacity(0.35))
                 }
@@ -497,22 +497,22 @@ struct BrowserAgentPanel: View {
 
     private var statusText: String {
         switch agent.status {
-        case .planning:              return "Planning…"
-        case .working(let s, let t): return "Step \(s) of \(t)"
-        case .waitingForUser:        return "Waiting for your input"
-        case .complete:              return "Done!"
-        case .failed:                return "Failed"
+        case .planning:              return "Planerar…"
+        case .working(let s, let t): return "Steg \(s) av \(t)"
+        case .waitingForUser:        return "Väntar på din input"
+        case .complete:              return "Klart!"
+        case .failed:                return "Misslyckades"
         case .idle:                  return ""
         }
     }
 
     private var placeholder: String {
         switch agent.status {
-        case .waitingForUser: return agent.userQuestion.isEmpty ? "Type your answer…" : agent.userQuestion
-        case .working, .planning: return "Agent is working…"
-        case .complete:       return "Give a new goal…"
-        case .failed:         return "Try again with a different goal…"
-        case .idle:           return "Give Navi a goal to perform…"
+        case .waitingForUser: return agent.userQuestion.isEmpty ? "Skriv ditt svar…" : agent.userQuestion
+        case .working, .planning: return "Agenten arbetar…"
+        case .complete:       return "Ge ett nytt mål…"
+        case .failed:         return "Försök igen med ett annat mål…"
+        case .idle:           return "Ge Navi ett mål att utföra…"
         }
     }
 }

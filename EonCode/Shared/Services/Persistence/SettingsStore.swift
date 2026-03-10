@@ -72,7 +72,7 @@ final class SettingsStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
     private init() {
-        defaultModel = ClaudeModel(rawValue: UserDefaults.standard.string(forKey: "defaultModel") ?? "") ?? .sonnet45
+        defaultModel = ClaudeModel(rawValue: UserDefaults.standard.string(forKey: "defaultModel") ?? "") ?? .qwen3CoderFree
         ttsEnabled = UserDefaults.standard.bool(forKey: "ttsEnabled")
         darkMode = UserDefaults.standard.value(forKey: "darkMode") as? Bool ?? true
         autoSnapshot = UserDefaults.standard.value(forKey: "autoSnapshot") as? Bool ?? true

@@ -167,17 +167,17 @@ extension Color {
         })
         #endif
     }
-    // Deep purple — Claude-inspired primary accent (#7C5CBF)
-    static var accentNavi: Color { Color(red: 0.486, green: 0.361, blue: 0.749) }
+    // Warm beige/gold — Claude-inspired primary accent
+    static var accentNavi: Color { Color(red: 0.83, green: 0.64, blue: 0.45) }
     static var assistantBubble: Color { Color.clear }
     static var userBubble: Color {
         #if os(macOS)
         Color(NSColor.controlColor)
         #else
-        // Subtle purple-tinted gray — adds brand personality while staying readable
+        // Subtle warm-tinted gray — matches the new beige/gold theme
         Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.21, green: 0.195, blue: 0.235, alpha: 1)   // dark purple-tinted
-            : UIColor(red: 0.925, green: 0.915, blue: 0.955, alpha: 1)  // light lavender-gray
+            ? UIColor(red: 0.18, green: 0.17, blue: 0.16, alpha: 1)   // dark warm-tinted
+            : UIColor(red: 0.94, green: 0.93, blue: 0.92, alpha: 1)  // light warm-gray
         })
         #endif
     }

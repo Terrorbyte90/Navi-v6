@@ -177,6 +177,9 @@ struct PureChatView: View {
                         .padding(.vertical, 16)
                     }
                     .scrollDismissesKeyboard(.interactively)
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         chatInputBar
                             .background(Color.chatBackground)
@@ -192,6 +195,9 @@ struct PureChatView: View {
                     chatEmptyState
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .onTapGesture {
+                    dismissKeyboard()
+                }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     chatInputBar
                         .background(Color.chatBackground)
@@ -224,9 +230,9 @@ struct PureChatView: View {
         #endif
     }
 
-    // Model picker bar — shown on both macOS and iOS
+    // Model picker bar — shown on both macOS and iOS - Claude style
     var modelPickerBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             if let conv = conversation {
                 Menu {
                     Section("Anthropic") {
@@ -245,37 +251,35 @@ struct PureChatView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 5) {
-                        Text("Navi")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundColor(Color.accentNavi)
+                    HStack(spacing: 6) {
                         Text(conv.model.displayName)
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.secondary)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color.primary)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color.accentNavi.opacity(0.75))
+                            .foregroundColor(Color.secondary.opacity(0.5))
                     }
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.primary.opacity(0.04))
+                    )
                 }
                 .buttonStyle(.plain)
             } else {
-                HStack(spacing: 5) {
-                    Text("Navi")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundColor(Color.accentNavi)
-                    Text("Chatt")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color.secondary)
-                }
+                Text("Chatt")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Color.primary)
             }
 
             Spacer()
 
+            // New chat button - clean minimal
             Button { _ = manager.newConversation() } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 14))
-                    .foregroundColor(Color.secondary)
+                    .foregroundColor(Color.secondary.opacity(0.6))
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
@@ -301,24 +305,34 @@ struct PureChatView: View {
     }
 
     var chatEmptyState: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 32) {
             Spacer()
-            VStack(spacing: 14) {
-                // "N" monogram avatar — clean, Claude-style
+            VStack(spacing: 16) {
+                // Clean avatar - Claude style minimalist
                 ZStack {
                     Circle()
-                        .fill(Color.accentNavi.opacity(0.10))
-                        .frame(width: 64, height: 64)
-                    Text("N")
-                        .font(.system(size: 30, weight: .semibold, design: .rounded))
-                        .foregroundColor(.accentNavi)
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(width: 72, height: 72)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundColor(Color.primary.opacity(0.7))
                 }
-                VStack(spacing: 5) {
+                VStack(spacing: 8) {
                     Text("Hur kan jag hjälpa dig?")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundColor(Color.primary)
                 }
             }
+            
+            // Quick action chips - Claude style
+            VStack(spacing: 8) {
+                QuickActionChip(text: "Skriv kod") {}
+                QuickActionChip(text: "Analysera filer") {}
+                QuickActionChip(text: "Felsök ett problem") {}
+                QuickActionChip(text: "Förklara något") {}
+            }
+            .padding(.horizontal, 40)
+            
             Spacer()
         }
         .padding(40)
@@ -350,6 +364,9 @@ struct PureChatView: View {
         let images = selectedImages
         inputText = ""
         selectedImages = []
+        
+        // Dismiss keyboard after sending
+        dismissKeyboard()
 
         Task {
             guard var conv = manager.conversations.first(where: { $0.id == convID })
@@ -384,13 +401,13 @@ struct PureChatBubble: View {
 
     var isUser: Bool { message.role == .user }
 
-    private let userBubbleColor = Color.userBubble
+    private let userBubbleColor = Color.primary.opacity(0.08)
     private let textPrimary = Color.primary
-    private let textMuted = Color.secondary
+    private let textMuted = Color.secondary.opacity(0.5)
 
     var body: some View {
         if isUser {
-            // Right-aligned pill — no avatar
+            // Right-aligned pill — clean minimal style
             HStack(alignment: .top) {
                 Spacer(minLength: 80)
                 VStack(alignment: .trailing, spacing: 6) {
@@ -398,30 +415,38 @@ struct PureChatBubble: View {
                         imageRow(imgs)
                     }
                     Text(message.content)
-                        .font(.system(size: 15.5))
+                        .font(.system(size: 15))
                         .foregroundColor(textPrimary)
                         .lineSpacing(4)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 11)
-                        .background(RoundedRectangle(cornerRadius: 20).fill(userBubbleColor))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(userBubbleColor))
                         .textSelection(.enabled)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
         } else {
-            // Left-aligned: sparkle avatar + text, no bubble
-            HStack(alignment: .top, spacing: 12) {
-                AssistantAvatar()
-                    .padding(.top, 2)
+            // Left-aligned: clean message without avatar bubble
+            HStack(alignment: .top, spacing: 10) {
+                // Minimalist avatar - just a sparkle
+                ZStack {
+                    Circle()
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.primary.opacity(0.6))
+                }
+                .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 8) {
                     MarkdownTextView(text: message.content)
                         .equatable()
                         .textSelection(.enabled)
 
-                    // Action row (ChatGPT-style)
-                    HStack(spacing: 14) {
+                    // Action row - minimal, subtle
+                    HStack(spacing: 12) {
                         Button {
                             #if os(iOS)
                             UIPasteboard.general.string = message.content
@@ -430,7 +455,7 @@ struct PureChatBubble: View {
                             #endif
                         } label: {
                             Image(systemName: "doc.on.doc")
-                                .font(.system(size: 12))
+                                .font(.system(size: 11))
                         }
                         .buttonStyle(.plain)
 
@@ -446,8 +471,8 @@ struct PureChatBubble: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.2")
-                                .font(.system(size: 12))
+                            Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.1")
+                                .font(.system(size: 11))
                         }
                         .buttonStyle(.plain)
 
@@ -455,7 +480,7 @@ struct PureChatBubble: View {
                     .foregroundColor(textMuted)
                     .padding(.top, 2)
 
-                    // Memory context chips — show which facts Navi used in this response
+                    // Memory context chips
                     if !message.memoriesInContext.isEmpty {
                         MemoryChipsRow(facts: message.memoriesInContext)
                     }
@@ -464,7 +489,7 @@ struct PureChatBubble: View {
                 Spacer(minLength: 40)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 8)
         }
     }
 
@@ -533,6 +558,36 @@ struct MemoryChipsRow: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+    }
+}
+
+// MARK: - Quick Action Chip (Claude style)
+
+struct QuickActionChip: View {
+    let text: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11))
+                Text(text)
+                    .font(.system(size: 14))
+            }
+            .foregroundColor(Color.primary.opacity(0.7))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.primary.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -731,11 +786,10 @@ struct MarkdownCodeBlock: View {
     }
 }
 
-// MARK: - Isolated Input Bar (prevents streaming redraw cascade on keyboard focus)
+// MARK: - Isolated Input Bar (Claude style - clean and minimal)
 
 /// Extracted as its own struct so that ChatManager streaming updates
 /// (streamingText changes every token) don't force this view to re-render.
-/// Only `isStreaming: Bool` matters here — it changes twice per message, not per token.
 private struct PureChatInputBar: View {
     @Binding var inputText: String
     @Binding var selectedImages: [Data]
@@ -746,16 +800,15 @@ private struct PureChatInputBar: View {
 
     @FocusState private var inputFocused: Bool
     #if os(iOS)
-    // PhotosPicker lives here — no .sheet() needed, no _UIReparentingView warnings
     @State private var photoPickerItems: [PhotosPickerItem] = []
     #endif
 
     var body: some View {
-        VStack(spacing: 6) {
-            // Agent activity isolated to avoid triggering input bar redraws
+        VStack(spacing: 8) {
+            // Agent activity isolated
             AgentActivityOverlay()
 
-            // Cached image thumbnails — decoded once, not on every re-render
+            // Cached image thumbnails
             if !selectedImages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -766,23 +819,22 @@ private struct PureChatInputBar: View {
                         }
                     }
                     .padding(.horizontal, 14)
-                    .padding(.top, 6)
+                    .padding(.top, 4)
                 }
             }
 
-            // ChatGPT-style pill
+            // Clean input pill - Claude style
             HStack(alignment: .center, spacing: 8) {
                 #if os(iOS)
-                // Photo button — standalone PhotosPicker, NEVER inside Menu
-                // (PhotosPicker inside Menu causes _UIReparentingView via UIContextMenuInteraction)
+                // Photo button
                 PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
                     ZStack {
                         Circle()
-                            .fill(selectedImages.isEmpty ? Color.surfaceHover : Color.accentNavi.opacity(0.15))
-                            .frame(width: 30, height: 30)
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(width: 32, height: 32)
                         Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.checkmark")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(selectedImages.isEmpty ? Color.secondary : Color.accentNavi)
+                            .foregroundColor(Color.primary.opacity(0.6))
                     }
                 }
                 .buttonStyle(.plain)
@@ -798,46 +850,48 @@ private struct PureChatInputBar: View {
                 }
                 #endif
 
-                // Attachment menu — file only on iOS, no PhotosPicker inside Menu
+                // Attachment menu
                 Menu {
                     #if os(macOS)
-                    Button { } label: { Label("Bild", systemImage: "photo") }
+                    Button { } label: { Label("Image", systemImage: "photo") }
                     #endif
                     Button { isShowingFilePicker = true } label: {
-                        Label("Fil", systemImage: "doc")
+                        Label("File", systemImage: "doc")
                     }
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color.surfaceHover)
-                            .frame(width: 30, height: 30)
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(width: 32, height: 32)
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Color.secondary)
+                            .foregroundColor(Color.primary.opacity(0.5))
                     }
                 }
                 #if os(macOS)
                 .menuStyle(.borderlessButton)
                 #endif
 
-                TextField("Skicka ett meddelande till Navi", text: $inputText, axis: .vertical)
+                // Text input field - clean and minimal
+                TextField("Skriv till Navi", text: $inputText, axis: .vertical)
                     .focused($inputFocused)
-                    .font(.callout)
+                    .font(.system(size: 15))
                     .foregroundColor(Color.primary)
                     .lineLimit(1...6)
                     .textFieldStyle(.plain)
                     .padding(.vertical, 10)
                     .padding(.leading, 4)
 
+                // Send button or voice button
                 if isStreaming {
                     Button(action: onSend) {
                         ZStack {
                             Circle()
-                                .fill(Color.accentNavi)
-                                .frame(width: 30, height: 30)
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.white)
-                                .frame(width: 10, height: 10)
+                                .fill(Color.primary)
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.black)
                         }
                     }
                     .buttonStyle(.plain)
@@ -845,11 +899,11 @@ private struct PureChatInputBar: View {
                     Button { showVoiceMode = true } label: {
                         ZStack {
                             Circle()
-                                .fill(Color.accentNavi.opacity(0.12))
-                                .frame(width: 30, height: 30)
+                                .fill(Color.primary.opacity(0.06))
+                                .frame(width: 32, height: 32)
                             Image(systemName: "waveform")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color.accentNavi.opacity(0.7))
+                                .foregroundColor(Color.primary.opacity(0.5))
                         }
                     }
                     .buttonStyle(.plain)
@@ -857,39 +911,39 @@ private struct PureChatInputBar: View {
                     Button(action: onSend) {
                         ZStack {
                             Circle()
-                                .fill(Color.accentNavi)
-                                .frame(width: 30, height: 30)
+                                .fill(Color.primary)
+                                .frame(width: 32, height: 32)
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
+                                .foregroundColor(.black)
                         }
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 22)
+                RoundedRectangle(cornerRadius: 16)
                     #if os(iOS)
                     .fill(.regularMaterial)
                     #else
-                    .fill(Color.userBubble)
+                    .fill(Color.primary.opacity(0.04))
                     #endif
                     .overlay(
-                        RoundedRectangle(cornerRadius: 22)
-                            .strokeBorder(Color.accentNavi.opacity(0.18), lineWidth: 0.75)
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
                     )
             )
 
-            // Disclaimer
-            Text("Navi kan göra misstag. Kontrollera viktig information.")
-                .font(.caption2)
-                .foregroundColor(Color.secondary.opacity(0.5))
+            // Minimal disclaimer
+            Text("Navi kan göra fel. Verifiera viktig information.")
+                .font(.system(size: 10))
+                .foregroundColor(Color.secondary.opacity(0.4))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.bottom, 12)
     }
 }
 

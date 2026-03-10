@@ -156,30 +156,23 @@ final class ChatManager: ObservableObject {
             }
         }
 
-        switch conversation.model.provider {
-        case .anthropic:
-            try await api.streamMessage(
+        // Use ModelRouter which handles Qwen timeout → MiniMax fallback automatically
+        // For Code, ModelRouter handles the 15s timeout with fallback
+        do {
+            let usedModel = try await ModelRouter.stream(
                 messages: apiMessages,
                 model: conversation.model,
                 systemPrompt: systemPrompt,
+                maxTokens: Constants.Agent.maxTokensDefault,
                 tools: nil,
-                usePromptCaching: true,
                 onEvent: eventHandler
             )
-        case .xai:
-            try await XAIClient.shared.streamChatCompletion(
-                messages: apiMessages,
-                model: conversation.model,
-                systemPrompt: systemPrompt,
-                onEvent: eventHandler
-            )
-        case .openRouter:
-            try await OpenRouterClient.shared.streamChatCompletion(
-                messages: apiMessages,
-                model: conversation.model,
-                systemPrompt: systemPrompt,
-                onEvent: eventHandler
-            )
+            // Update model if we fell back (e.g., Qwen → MiniMax)
+            if usedModel != conversation.model {
+                conversation.model = usedModel
+            }
+        } catch {
+            throw error
         }
 
         // Calculate cost

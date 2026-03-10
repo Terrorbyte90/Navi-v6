@@ -101,18 +101,37 @@ final class ModelRouter {
                 // Emit fallback notice so UI can display it
                 onEvent(.contentBlockDelta(
                     index: 0,
-                    delta: .text("\n\n⚡ *Qwen3-Coder timeout (15s) — byter till MiniMax M2.5*\n\n")
+                    delta: .text("\n\n⚡ *Qwen3-Coder timeout (15s) — trying MiniMax M2.5*\n\n")
                 ))
 
-                try await routeStream(
-                    messages: messages,
-                    model: .minimaxM25,
-                    systemPrompt: systemPrompt,
-                    maxTokens: maxTokens,
-                    tools: nil,
-                    onEvent: onEvent
-                )
-                return .minimaxM25
+                // Try MiniMax M2.5
+                do {
+                    let result = try await routeStream(
+                        messages: messages,
+                        model: .minimaxM25,
+                        systemPrompt: systemPrompt,
+                        maxTokens: maxTokens,
+                        tools: nil,
+                        onEvent: onEvent
+                    )
+                    return result
+                } catch {
+                    // MiniMax also failed - try Sonnet as final fallback
+                    onEvent(.contentBlockDelta(
+                        index: 0,
+                        delta: .text("\n\n⚡ *MiniMax failed — trying Claude Sonnet*\n\n")
+                    ))
+                    
+                    try await routeStream(
+                        messages: messages,
+                        model: .sonnet45,
+                        systemPrompt: systemPrompt,
+                        maxTokens: maxTokens,
+                        tools: nil,
+                        onEvent: onEvent
+                    )
+                    return .sonnet45
+                }
             }
         }
     }

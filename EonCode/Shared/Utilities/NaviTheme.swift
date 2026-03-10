@@ -1,21 +1,24 @@
 import SwiftUI
 
 // MARK: - NaviTheme
-// Centralised design tokens. Inspired by Claude's clean, minimal aesthetic.
+// Centralised design tokens. Claude iOS-inspired design: clean, minimal, sophisticated.
 // Single source of truth for colors, typography, spacing, radii, animations.
-// Usage: NaviTheme.accent, NaviTheme.Spacing.md, NaviTheme.Spring.responsive
 
 enum NaviTheme {
 
-    // MARK: - Accent
+    // MARK: - Claude-inspired Accent Colors
 
-    /// Deep purple — Claude-inspired primary accent (#7C5CBF)
-    static let accent      = Color(naviHex: "#7C5CBF")
-    static let accentLight = Color(naviHex: "#9B7FD4")
-    static let accentBg    = Color(naviHex: "#7C5CBF").opacity(0.08)
-    static let accentBorder = Color(naviHex: "#7C5CBF").opacity(0.20)
+    /// Claude purple — sophisticated AI accent (#D4A373 warm beige, #2D2D2D dark)
+    static let accent      = Color(red: 0.83, green: 0.64, blue: 0.45) // Warm beige/gold
+    static let accentLight = Color(red: 0.90, green: 0.78, blue: 0.62)
+    static let accentBg    = Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.08)
+    static let accentBorder = Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.20)
 
-    // MARK: - Surfaces (adaptive light/dark)
+    /// Dark mode accent (black/charcoal for dark theme)
+    static let accentDark  = Color(red: 0.95, green: 0.95, blue: 0.95)
+    static let accentDarkBg = Color.white.opacity(0.08)
+
+    // MARK: - Surfaces (adaptive light/dark) - Claude style
 
     static var surface: Color { Color.chatBackground }
     static var surfaceSecondary: Color { Color.sidebarBackground }
@@ -27,16 +30,35 @@ enum NaviTheme {
         #endif
     }
 
+    /// Claude-inspired: subtle surface tints
+    static var surfaceElevated: Color {
+        Color.primary.opacity(0.04)
+    }
+
+    static var surfaceCard: Color {
+        #if os(iOS)
+        Color(UIColor.secondarySystemBackground)
+        #else
+        Color(NSColor.controlBackgroundColor)
+        #endif
+    }
+
     // MARK: - Text
 
     static var textPrimary: Color   { .primary }
     static var textSecondary: Color { .secondary }
     static var textMuted: Color     { Color.secondary.opacity(0.55) }
 
-    // MARK: - Chat bubbles
+    /// Claude style: softer text hierarchy
+    static var textTertiary: Color { Color.secondary.opacity(0.4) }
+
+    // MARK: - Chat bubbles - Minimalist Claude style
 
     static var userBubble: Color  { Color.userBubble }
     static var assistantBubble: Color { .clear }
+
+    /// Claude uses no bubbles for assistant - just clean text
+    static var assistantMessageBg: Color { .clear }
 
     // MARK: - Code blocks
 
@@ -44,6 +66,20 @@ enum NaviTheme {
     static let codeBG     = Color(red: 0.11, green: 0.11, blue: 0.12)
     static let codeHeader = Color(red: 0.07, green: 0.07, blue: 0.07)
     static let codeBorder = Color.white.opacity(0.06)
+
+    // MARK: - Semantic Colors - Claude palette
+
+    /// Success - muted green
+    static let success = Color(red: 0.30, green: 0.69, blue: 0.31)
+    static let successBg = Color(red: 0.30, green: 0.69, blue: 0.31).opacity(0.10)
+
+    /// Warning - muted amber
+    static let warning = Color(red: 1.0, green: 0.76, blue: 0.0)
+    static let warningBg = Color(red: 1.0, green: 0.76, blue: 0.0).opacity(0.10)
+
+    /// Error - muted red
+    static let error = Color(red: 0.91, green: 0.30, blue: 0.24)
+    static let errorBg = Color(red: 0.91, green: 0.30, blue: 0.24).opacity(0.10)
 
     // MARK: - Spacing
 
@@ -64,15 +100,16 @@ enum NaviTheme {
     static let sidebarItemPaddingH: CGFloat = 12
     static let sidebarItemPaddingV: CGFloat = 7
 
-    // MARK: - Corner Radii
+    // MARK: - Corner Radii - Softer, more sophisticated
 
     enum Radius {
-        static let xs:     CGFloat = 6
+        static let xs:     CGFloat = 4
         static let sm:     CGFloat = 8
         static let md:     CGFloat = 12
         static let lg:     CGFloat = 16
-        static let bubble: CGFloat = 18
-        static let pill:   CGFloat = 22
+        static let xl:     CGFloat = 20
+        static let bubble: CGFloat = 20
+        static let pill:   CGFloat = 24
     }
 
     // Flat aliases
@@ -80,13 +117,13 @@ enum NaviTheme {
     static let cornerRadiusMedium: CGFloat = 12
     static let cornerRadiusLarge:  CGFloat = 18
 
-    // MARK: - Typography
+    // MARK: - Typography - Clean, readable, Claude-style
 
-    static func body(_ size: CGFloat = 15.5) -> Font {
-        .system(size: size)
+    static func body(_ size: CGFloat = 15) -> Font {
+        .system(size: size, weight: .regular)
     }
-    static func bodyRounded(_ size: CGFloat = 15.5) -> Font {
-        .system(size: size, design: .rounded)
+    static func bodyRounded(_ size: CGFloat = 15) -> Font {
+        .system(size: size, weight: .regular, design: .rounded)
     }
     static func label(_ size: CGFloat = 13, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight)
@@ -101,17 +138,65 @@ enum NaviTheme {
         .system(size: size, weight: weight, design: .rounded)
     }
 
-    // MARK: - Spring Animations
+    /// Display - large titles
+    static func display(_ size: CGFloat = 28, weight: Font.Weight = .bold) -> Font {
+        .system(size: size, weight: weight)
+    }
+
+    // MARK: - Spring Animations - Smooth, subtle
 
     enum Spring {
-        /// Fast, snappy — for small UI elements (badges, toggles)
-        static let quick      = Animation.spring(response: 0.25, dampingFraction: 0.90)
+        /// Fast, snappy — for small UI elements
+        static let quick      = Animation.spring(response: 0.2, dampingFraction: 0.85)
         /// Responsive — for modals, sheets, sidebar slides
-        static let responsive = Animation.spring(response: 0.30, dampingFraction: 0.85)
-        /// Bouncy — for cards, orbs, live activity elements
-        static let bouncy     = Animation.spring(response: 0.40, dampingFraction: 0.70)
+        static let responsive = Animation.spring(response: 0.3, dampingFraction: 0.8)
+        /// Bouncy — for cards, animations
+        static let bouncy     = Animation.spring(response: 0.35, dampingFraction: 0.7)
         /// Smooth — for content fade transitions
-        static let smooth     = Animation.easeInOut(duration: 0.25)
+        static let smooth     = Animation.easeInOut(duration: 0.2)
+        /// Instant - for immediate feedback
+        static let instant    = Animation.linear(duration: 0.1)
+    }
+
+    // MARK: - Shadows - Subtle, sophisticated
+
+    enum Shadow {
+        static let small = NaviShadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+        static let medium = NaviShadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+        static let large = NaviShadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 8)
+    }
+}
+
+// MARK: - Shadow helper
+
+struct NaviShadow {
+    let color: Color
+    let radius: CGFloat
+    let x: CGFloat
+    let y: CGFloat
+
+    var modifier: some ViewModifier {
+        NaviShadowModifier(shadow: self)
+    }
+}
+
+struct NaviShadowModifier: ViewModifier {
+    let shadow: NaviShadow
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(
+                color: shadow.color,
+                radius: shadow.radius,
+                x: shadow.x,
+                y: shadow.y
+            )
+    }
+}
+
+extension View {
+    func navyShadow(_ shadow: NaviShadow) -> some View {
+        modifier(NaviShadowModifier(shadow: shadow))
     }
 }
 

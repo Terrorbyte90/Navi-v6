@@ -61,27 +61,25 @@ struct SidebarView: View {
 
     var sidebarHeader: some View {
         HStack(spacing: 0) {
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
+                // Clean minimalist logo
                 ZStack {
                     Circle()
-                        .fill(LinearGradient(colors: [Color(red:0.455,green:0.667,blue:0.612), Color(red:0.3,green:0.55,blue:0.5)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 22, height: 22)
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(width: 28, height: 28)
                     Image(systemName: "sparkles")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.primary.opacity(0.6))
                 }
                 Text("Navi")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color.primary)
-                Text("— By: Ted Svärd")
-                    .font(.system(size: 10))
-                    .foregroundColor(Color.secondary.opacity(0.5))
             }
             .padding(.leading, 14)
 
             Spacer()
 
-            // Contextual new-item button
+            // Contextual new-item button - minimal
             Button {
                 switch section {
                 case .pureChat: _ = chatManager.newConversation()
@@ -91,7 +89,7 @@ struct SidebarView: View {
             } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 14))
-                    .foregroundColor(Color.secondary)
+                    .foregroundColor(Color.secondary.opacity(0.5))
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
             }
@@ -154,24 +152,24 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Nav shortcuts (ChatGPT-style)
+    // MARK: - Nav shortcuts (Claude style - minimal)
 
     var navSection: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            navItem(icon: "bubble.left.and.bubble.right.fill", label: "Chatt",      target: .pureChat)
-            navItem(icon: "chevron.left.forwardslash.chevron.right.circle.fill", label: "Code", target: .code)
+        VStack(alignment: .leading, spacing: 2) {
+            navItem(icon: "bubble.left.and.bubble.right", label: "Chatt",      target: .pureChat)
+            navItem(icon: "chevron.left.forwardslash.chevron.right", label: "Kod", target: .code)
             navItem(icon: "chevron.left.forwardslash.chevron.right", label: "GitHub", target: .github,
                     badge: githubBadge)
-            navItem(icon: "cpu.fill",                          label: "Agenter",    target: .agents,
+            navItem(icon: "cpu",                          label: "Agenter",    target: .agents,
                     badge: agentsBadge)
-            navItem(icon: "photo.stack.fill",                  label: "Media",      target: .media,
+            navItem(icon: "photo.stack",                  label: "Media",      target: .media,
                     badge: mediaBadge)
-            navItem(icon: "tray.2.fill",                       label: "Artefakter", target: .artifacts,
+            navItem(icon: "tray.2",                       label: "Artefakter", target: .artifacts,
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
-            navItem(icon: "person.crop.circle.fill",           label: "Profil",     target: .profile)
-            navItem(icon: "waveform",                          label: "Röst",       target: .voice)
+            navItem(icon: "person.crop.circle",           label: "Profil",   target: .profile)
+            navItem(icon: "waveform",                     label: "Röst",     target: .voice)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 8)
     }
 
     private var agentsBadge: String? {
@@ -196,31 +194,31 @@ struct SidebarView: View {
     private func navItem(icon: String, label: String, target: AppSection, badge: String? = nil) -> some View {
         let isActive = section == target
         Button { section = target } label: {
-            HStack(spacing: 9) {
+            HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 13))
-                    .foregroundColor(isActive ? .accentNavi : .secondary)
+                    .font(.system(size: 14))
+                    .foregroundColor(isActive ? Color.primary : Color.secondary.opacity(0.5))
                     .frame(width: 18)
                 Text(label)
-                    .font(.system(size: 13, weight: isActive ? .semibold : .regular))
-                    .foregroundColor(isActive ? .white : .primary.opacity(0.85))
+                    .font(.system(size: 13, weight: isActive ? .medium : .regular))
+                    .foregroundColor(isActive ? Color.primary : Color.primary.opacity(0.7))
                 Spacer()
                 if let badge {
                     Text(badge)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color.secondary.opacity(0.5))
                         .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(8)
+                        .padding(.vertical, 2)
+                        .background(Color.primary.opacity(0.06))
+                        .cornerRadius(6)
                 }
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isActive ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isActive ? Color.primary.opacity(0.04) : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -615,36 +613,38 @@ struct SidebarView: View {
         .padding(.horizontal, 6)
     }
 
-    // MARK: - Bottom bar
+    // MARK: - Bottom bar (Claude style - clean)
 
     var bottomBar: some View {
         VStack(spacing: 0) {
-            // Active agent indicator (ChatGPT-style status strip)
+            // Active agent indicator
             if agentPool.activeCount > 0 {
-                HStack(spacing: 7) {
-                    Circle().fill(Color.orange).frame(width: 7, height: 7)
-                    Text("Agent aktiv — \(agentPool.activeCount) jobb")
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.primary.opacity(0.5))
+                        .frame(width: 6, height: 6)
+                    Text("\(agentPool.activeCount) active")
                         .font(.system(size: 11))
-                        .foregroundColor(Color.secondary)
+                        .foregroundColor(Color.primary.opacity(0.6))
                     Spacer()
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(Color.white.opacity(0.04))
+                .padding(.vertical, 8)
+                .background(Color.primary.opacity(0.03))
             }
 
-            Divider().opacity(0.08)
+            Divider().opacity(0.06)
 
-            // User row (ChatGPT-style)
-            HStack(spacing: 10) {
-                // Avatar
+            // User row - minimal
+            HStack(spacing: 12) {
+                // Clean avatar
                 ZStack {
                     Circle()
-                        .fill(LinearGradient(colors: [.purple, .blue], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .fill(Color.primary.opacity(0.08))
                         .frame(width: 28, height: 28)
-                    Text("E")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.primary.opacity(0.5))
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -653,25 +653,25 @@ struct SidebarView: View {
                         .foregroundColor(Color.primary)
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(statusBroadcaster.remoteMacIsOnline ? Color.green : Color.secondary.opacity(0.6))
+                            .fill(statusBroadcaster.remoteMacIsOnline ? Color.green : Color.primary.opacity(0.3))
                             .frame(width: 5, height: 5)
                         Text(statusBroadcaster.remoteMacIsOnline ? "Mac ansluten" : "Offline")
                             .font(.system(size: 10))
-                            .foregroundColor(Color.secondary.opacity(0.6))
+                            .foregroundColor(Color.primary.opacity(0.4))
                     }
                 }
 
                 Spacer()
 
                 Button { showSettings = true } label: {
-                    Image(systemName: "ellipsis")
+                    Image(systemName: "gearshape")
                         .font(.system(size: 13))
-                        .foregroundColor(Color.secondary.opacity(0.6))
+                        .foregroundColor(Color.primary.opacity(0.4))
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Inställningar")
+                .help("Settings")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
