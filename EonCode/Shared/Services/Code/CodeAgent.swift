@@ -1,6 +1,16 @@
 import Foundation
 import SwiftUI
 
+// MARK: - CodeIntent
+// Classification result from classifyIntent() — determines how Code responds.
+
+enum CodeIntent {
+    case question      // User asks something, wants analysis/summary/answer
+    case execute       // User wants to build/code/create something
+    case githubLookup  // User wants to look at / search GitHub
+    case planOnly      // User wants a plan but not immediate execution
+}
+
 // MARK: - CodeAgent
 // Orchestrates the 6-phase pipeline: spec → research → setup → plan → build → push.
 // Drives CodeView's live UI via @Published properties.
@@ -20,6 +30,7 @@ final class CodeAgent: ObservableObject {
     @Published var usedFallback: Bool = false
     @Published var actualModel: ClaudeModel = .sonnet46
     @Published var quietLog: String = ""
+    @Published var opusReviewEnabled: Bool = false
 
     // MARK: - Singleton
 
@@ -72,7 +83,121 @@ final class CodeAgent: ObservableObject {
         }
     }
 
-    // MARK: - Main entry: start full pipeline
+    // MARK: - Main entry: smart intent routing
+
+    /// Smart entry point: classifies intent before deciding to run pipeline or just answer.
+    func handleMessage(text: String, model: ClaudeModel) {
+        guard !isRunning else { return }
+
+        actualModel = model
+        usedFallback = false
+
+        currentTask = Task {
+            isRunning = true
+            defer { isRunning = false }
+
+            let intent = await classifyIntent(text: text, model: model)
+
+            switch intent {
+            case .execute:
+                // Run full pipeline
+                let proj = newProject(idea: text, model: model)
+                do {
+                    try Task.checkCancellation()
+                    await runPipeline(project: proj, model: model)
+                } catch {
+                    appendMessage("❌ \(error.localizedDescription)", role: .assistant)
+                }
+
+            case .planOnly:
+                // Create project shell, show plan, ask for confirmation
+                var proj = newProject(idea: text, model: model)
+                appendMessage(text, role: .user)
+                let planText = await runPhase(name: "Plan", prompt: planOnlyPrompt(idea: text), proj: &proj, model: model)
+                proj.plan = planText
+                updateProject(proj)
+                appendMessage("💡 **Vill du att jag kör? Svara ja för att starta bygget.**", role: .assistant)
+
+            case .githubLookup, .question:
+                // No pipeline — just stream an answer
+                if activeProject == nil {
+                    _ = newProject(idea: text, model: model)
+                }
+                appendMessage(text, role: .user)
+                guard var proj = activeProject else { return }
+                await streamAnswer(text: text, proj: &proj, model: model)
+            }
+        }
+    }
+
+    /// Fast intent classification using Haiku (1 round-trip, ~50 output tokens).
+    private func classifyIntent(text: String, model: ClaudeModel) async -> CodeIntent {
+        let systemMsg = "Du klassificerar användarintentioner. Svara ENBART med ett ord: question / execute / github / plan"
+        let userMsg = """
+        Klassificera detta meddelande i ETT ord:
+        - question = frågar något, vill ha analys/sammanfattning/svar
+        - execute = vill bygga/koda/skapa något
+        - github = vill titta på/söka GitHub
+        - plan = vill ha en plan men inte köra ännu
+
+        Meddelande: \(text)
+        """
+
+        var result = ""
+        do {
+            _ = try await ModelRouter.stream(
+                messages: [ChatMessage(role: .user, content: [.text(userMsg)])],
+                model: .haiku,
+                systemPrompt: systemMsg,
+                maxTokens: 20,
+                onEvent: { event in
+                    if case .contentBlockDelta(_, let delta) = event,
+                       case .text(let chunk) = delta {
+                        result += chunk
+                    }
+                }
+            )
+        } catch { }
+
+        let cleaned = result.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if cleaned.contains("execute") || cleaned.contains("build") { return .execute }
+        if cleaned.contains("github") { return .githubLookup }
+        if cleaned.contains("plan") { return .planOnly }
+        return .question
+    }
+
+    /// Stream a plain answer (no pipeline) — for questions and GitHub lookups.
+    private func streamAnswer(text: String, proj: inout CodeProject, model: ClaudeModel) async {
+        streamingText = ""
+        var fullText = ""
+        phase = .spec // reuse spec phase icon for "thinking"
+
+        let messages = buildAPIMessages(from: proj)
+
+        do {
+            let usedModel = try await ModelRouter.stream(
+                messages: messages,
+                model: model,
+                systemPrompt: codeSystemPrompt(for: proj),
+                onEvent: { [weak self] event in
+                    if case .contentBlockDelta(_, let delta) = event,
+                       case .text(let chunk) = delta {
+                        self?.streamingText += chunk
+                        fullText += chunk
+                    }
+                }
+            )
+            if usedModel != model { usedFallback = true; actualModel = usedModel }
+        } catch {
+            fullText = "❌ \(error.localizedDescription)"
+        }
+
+        streamingText = ""
+        appendMessage(fullText, role: .assistant)
+        phase = .idle
+    }
+
+    // MARK: - Start full pipeline directly (used internally)
 
     func start(idea: String, model: ClaudeModel) {
         guard !isRunning else { return }
@@ -104,6 +229,18 @@ final class CodeAgent: ObservableObject {
             setParallelWorkers(n)
         }
 
+        // Check if user confirmed plan execution
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("ja") &&
+           proj.plan.isEmpty == false && proj.currentPhase == .idle {
+            appendMessage(text, role: .user)
+            currentTask = Task {
+                isRunning = true
+                defer { isRunning = false }
+                await runPipeline(project: proj, model: model)
+            }
+            return
+        }
+
         appendMessage(text, role: .user)
 
         currentTask = Task {
@@ -112,7 +249,7 @@ final class CodeAgent: ObservableObject {
 
             phase = .build
 
-            var messages = buildAPIMessages(from: proj)
+            let messages = buildAPIMessages(from: proj)
             streamingText = ""
             var fullText = ""
 
@@ -232,6 +369,61 @@ final class CodeAgent: ObservableObject {
         phase = .done
         setLog("Klar!")
         appendMessage("✅ **Projekt klart!** Allt är pushat till GitHub.", role: .assistant)
+
+        // 7. Optional Opus review loop (max 3 iterations)
+        if opusReviewEnabled {
+            await runOpusReviewLoop(project: proj, model: model, results: results)
+        }
+    }
+
+    // MARK: - Opus review loop
+
+    private func runOpusReviewLoop(project: CodeProject, model: ClaudeModel, results: [WorkerResult]) async {
+        let context = results.map { $0.output }.joined(separator: "\n\n---\n\n")
+        appendMessage("🛡 **Opus** granskar projektet...", role: .assistant)
+
+        for iteration in 0..<3 {
+            guard !Task.isCancelled else { return }
+            do {
+                let review = try await OpusReviewer.review(projectName: project.name, context: context)
+                appendMessage("🛡 **Opus** (\(iteration + 1)/3): \(review)", role: .assistant)
+
+                let cleaned = review.trimmingCharacters(in: .whitespacesAndNewlines)
+                if cleaned == "✓" || cleaned.isEmpty { break }
+
+                // Primary model applies the fixes
+                let fixPrompt = """
+                Opus hittade dessa problem. Rätta till dem direkt med write_file:
+
+                \(review)
+
+                Projekt: \(project.name)
+                Spec: \(project.spec.prefix(400))
+                """
+                var fixText = ""
+                streamingText = ""
+                _ = try? await ModelRouter.stream(
+                    messages: [ChatMessage(role: .user, content: [.text(fixPrompt)])],
+                    model: model,
+                    systemPrompt: codeSystemPrompt(for: project),
+                    onEvent: { [weak self] event in
+                        if case .contentBlockDelta(_, let delta) = event,
+                           case .text(let chunk) = delta {
+                            self?.streamingText += chunk
+                            fixText += chunk
+                        }
+                    }
+                )
+                streamingText = ""
+                if !fixText.isEmpty {
+                    appendMessage(fixText, role: .assistant)
+                }
+            } catch {
+                appendMessage("⚠️ Opus granskning misslyckades: \(error.localizedDescription)", role: .assistant)
+                break
+            }
+        }
+        appendMessage("✅ **Opus granskning klar.**", role: .assistant)
     }
 
     // MARK: - Phase helper: streams to streamingText + returns full text
@@ -328,9 +520,59 @@ final class CodeAgent: ObservableObject {
 
     private func codeSystemPrompt(for proj: CodeProject) -> String {
         """
-        Du är Navi Code — en expert AI-kodassistent. Du hjälper med hela projektet: \(proj.name).
-        Skriv kod direkt, var koncis, gå rakt på sak.
-        Plattform: \(UIDevice.isMac ? "macOS" : "iOS")
+        Du är Navi Code — senior arkitekt och orkestratör i appen Navi.
+
+        ## Identitet
+        - Du är en absolut top-tier senior arkitekt med erfarenhet av iOS, macOS, Swift, Python, React
+        - Du kommunicerar alltid på svenska
+        - Du har ett absolut mandat: du ger ALDRIG upp, du hittar alltid en väg framåt
+
+        ## Modellregler
+        - Använd alltid den modell användaren väljer
+        - Opus används ALDRIG utan att användaren explicit begär det (eller via Opus-granskningsknappen)
+        - Qwen-fallback: om Qwen3-Coder timear ut (15s) → MiniMax M2.5; om MiniMax misslyckas → Sonnet
+
+        ## Ditt arbetsflöde (7 steg)
+        1. **Förstå** — Analysera användarens förfrågan exakt. Fråga om oklarheter INNAN du börjar
+        2. **Planera** — Skapa en tydlig implementation med parallelliserbara subtasks
+        3. **Presentera** — Visa planen kortfattat. Vänta på bekräftelse om det är en stor förändring
+        4. **Kör** — Exekvera med workers parallellt. Var direkt, inga onödiga förklaringar
+        5. **Validera** — Kontrollera att allt bygger och fungerar
+        6. **Opus (valfritt)** — Körs bara om användaren aktiverat granskning
+        7. **Klart** — Rapportera vad som gjordes, ge nästa steg
+
+        ## Kodkvalitet (Swift/SwiftUI)
+        - SwiftUI iOS 18+ / macOS 15+, @MainActor, async/await
+        - Inga placeholder-kommentarer som "// TODO:" eller "// implement here"
+        - Fullständig, körbar kod — inga halvfärdiga implementationer
+        - Följ befintliga mönster i projektet
+
+        ## Projektkontext
+        - Plattform: \(UIDevice.isMac ? "macOS" : "iOS")
+        - Aktivt projekt: \(proj.name.isEmpty ? "Inget aktivt" : proj.name)
+        - Stack: SwiftUI, iCloud, GitHub, ElevenLabs, xAI Grok, Anthropic Claude
+        - Parallella workers: \(proj.parallelWorkers)
+
+        ## Vad du ALDRIG gör
+        - Inga placeholders eller "// TODO:"
+        - Ingen Opus utan explicit begäran
+        - Ingen halvfärdig kod
+        - Inget antagande om att användaren förstår — förklara kortfattat
+        - Du skapar ALDRIG filer om användaren bara ställer en fråga
+        """
+    }
+
+    private func planOnlyPrompt(idea: String) -> String {
+        """
+        Skapa en kortfattad implementationsplan (max 300 ord) för:
+        \(idea)
+
+        Visa:
+        1. Nyckelkomponenter
+        2. Parallelliserbara subtasks
+        3. Uppskattad tid
+
+        Skriv INTE kod ännu — bara planen.
         """
     }
 

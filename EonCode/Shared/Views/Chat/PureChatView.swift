@@ -188,8 +188,11 @@ struct PureChatView: View {
                     }
                 }
             } else {
-                ZStack(alignment: .bottom) {
+                ScrollView {
                     chatEmptyState
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
                     chatInputBar
                         .background(Color.chatBackground)
                 }
@@ -215,8 +218,10 @@ struct PureChatView: View {
 
     @ViewBuilder
     var macModelBar: some View {
+        #if os(macOS)
         modelPickerBar
         Divider().opacity(0.08)
+        #endif
     }
 
     // Model picker bar — shown on both macOS and iOS

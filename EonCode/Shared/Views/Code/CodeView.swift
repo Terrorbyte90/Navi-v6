@@ -17,31 +17,13 @@ struct CodeView: View {
 
             Divider()
 
-            // Pipeline phase bar (visible when active or done)
-            if agent.phase != .idle {
-                PipelinePhaseView(currentPhase: agent.phase)
-                Divider()
-            }
-
             // Qwen fallback notice
             if agent.usedFallback {
                 fallbackNotice
             }
 
-            // Message area + activity console
-            ZStack(alignment: .bottom) {
-                messagesArea
-
-                // Activity console (visible during build)
-                if agent.phase == .build && !agent.workerStatuses.isEmpty {
-                    activityConsoleOverlay
-                }
-            }
-
-            Divider()
-
-            // Input bar
-            inputBar
+            // Message area (inline progress card + input bar via safeAreaInset)
+            messagesArea
         }
         .background(Color.chatBackground)
         .onAppear { selectedModel = SettingsStore.shared.defaultModel }
@@ -55,19 +37,6 @@ struct CodeView: View {
                 .font(.system(size: 17, weight: .semibold))
 
             Spacer()
-
-            // Worker count indicator
-            if agent.isRunning {
-                HStack(spacing: 4) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(.orange)
-                    Text("\(agent.activeProject?.parallelWorkers ?? SettingsStore.shared.maxParallelWorkers) workers")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                .transition(.opacity)
-            }
 
             // Model picker
             Button {
@@ -88,6 +57,19 @@ struct CodeView: View {
             .popover(isPresented: $showModelPicker) {
                 modelPickerPopover
             }
+
+            // Opus review toggle
+            Button {
+                agent.opusReviewEnabled.toggle()
+            } label: {
+                Image(systemName: agent.opusReviewEnabled ? "shield.fill" : "shield")
+                    .font(.system(size: 14))
+                    .foregroundColor(agent.opusReviewEnabled ? .accentNavi : .secondary)
+            }
+            .buttonStyle(.plain)
+            #if os(macOS)
+            .help(agent.opusReviewEnabled ? "Opus-granskning aktiv — klicka för att stänga av" : "Aktivera Opus-kodgranskning efter bygget")
+            #endif
 
             // Stop button
             if agent.isRunning {
@@ -121,15 +103,26 @@ struct CodeView: View {
                                 CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
                                     .id("streaming")
                             }
-                            // Spacer for console overlay
-                            if agent.phase == .build {
-                                Color.clear.frame(height: 140).id("bottom-spacer")
+                            // Inline progress card (shown during active pipeline)
+                            if agent.isRunning && agent.phase != .idle && agent.phase != .done {
+                                CodeProgressCard(agent: agent)
+                                    .id("progressCard")
+                                    .transition(.opacity)
                             }
+                            Color.clear.frame(height: 8).id("bottomAnchor")
                         }
                         .padding(.vertical, 8)
                     }
+                    .scrollDismissesKeyboard(.interactively)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        inputBar
+                            .background(Color.chatBackground)
+                    }
                     .onChange(of: agent.streamingText) { _, _ in
                         proxy.scrollTo("streaming", anchor: .bottom)
+                    }
+                    .onChange(of: agent.isRunning) { _, running in
+                        if running { proxy.scrollTo("progressCard", anchor: .bottom) }
                     }
                     .onChange(of: proj.messages.count) { _, _ in
                         if let last = proj.messages.last {
@@ -138,7 +131,12 @@ struct CodeView: View {
                     }
                 }
             } else {
-                emptyState
+                ScrollView { emptyState }
+                    .scrollDismissesKeyboard(.interactively)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        inputBar
+                            .background(Color.chatBackground)
+                    }
             }
         }
     }
@@ -198,21 +196,6 @@ struct CodeView: View {
                 )
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Activity console overlay
-
-    private var activityConsoleOverlay: some View {
-        VStack(spacing: 0) {
-            Divider()
-            CodeActivityConsole(
-                workerStatuses: agent.workerStatuses,
-                quietLog: agent.quietLog
-            )
-            .background(Rectangle().fill(.ultraThinMaterial))
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: agent.phase == .build)
     }
 
     // MARK: - Fallback notice
@@ -319,8 +302,9 @@ struct CodeView: View {
         let text = inputText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty, !agent.isRunning else { return }
         inputText = ""
-        if agent.activeProject == nil || agent.activeProject?.currentPhase == .idle {
-            agent.start(idea: text, model: selectedModel)
+        if agent.activeProject == nil {
+            // No active project — use intent detection to decide what to do
+            agent.handleMessage(text: text, model: selectedModel)
         } else {
             agent.continueChat(text: text, model: selectedModel)
         }

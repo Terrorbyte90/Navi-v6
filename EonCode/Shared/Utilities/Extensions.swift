@@ -153,14 +153,21 @@ extension Color {
         #if os(macOS)
         Color(NSColor.windowBackgroundColor)
         #else
-        Color(UIColor.systemBackground)
+        // Pure white in light mode (Claude iOS style), very dark in dark mode
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+            : .white
+        })
         #endif
     }
     static var sidebarBackground: Color {
         #if os(macOS)
         Color(NSColor.controlBackgroundColor)
         #else
-        Color(UIColor.secondarySystemBackground)
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 0.14, alpha: 1)
+            : UIColor(white: 0.96, alpha: 1)
+        })
         #endif
     }
     static var accentNavi: Color { Color(red: 0.3, green: 0.6, blue: 1.0) }
@@ -169,14 +176,21 @@ extension Color {
         #if os(macOS)
         Color(NSColor.controlColor)
         #else
-        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.185, alpha: 1) : UIColor(white: 0.92, alpha: 1) })
+        // Lighter gray in light mode for cleaner Claude look
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 0.20, alpha: 1)
+            : UIColor(white: 0.94, alpha: 1)
+        })
         #endif
     }
     static var inputBackground: Color {
         #if os(macOS)
         Color(NSColor.controlBackgroundColor)
         #else
-        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.185, alpha: 1) : UIColor(white: 0.93, alpha: 1) })
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 0.18, alpha: 1)
+            : UIColor(white: 0.94, alpha: 1)
+        })
         #endif
     }
     static var inputBorder: Color {

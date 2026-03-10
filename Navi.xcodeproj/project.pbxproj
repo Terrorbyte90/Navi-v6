@@ -24,6 +24,7 @@
 		0C28FBCD03B91011BB832019 /* TaskHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C5A4725973F366A4D028A7 /* TaskHandoff.swift */; };
 		0CCFF3C029AB20589B476477 /* Instruction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 045176D43F23786A48503C8F /* Instruction.swift */; };
 		0D0F70A4BF563B0EF354DA51 /* BrowserAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377C48BE8E59272A9F8CCC22 /* BrowserAgent.swift */; };
+		0DF3964625D60D7A2CD3C019 /* CodeProgressCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3891932E68F705735EFF35ED /* CodeProgressCard.swift */; };
 		0EE5E0EDF5F0EDBC373C9520 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7173C20F146C9FF898DE1E /* SettingsStore.swift */; };
 		0F601222B672AEDFFFAF4491 /* AutonomousAgentRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A709BCBE6621AC584621D06 /* AutonomousAgentRunner.swift */; };
 		107B0EC26C371B6C5FE24AF5 /* BranchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0C42F53C53517B25CB7979 /* BranchManager.swift */; };
@@ -168,6 +169,7 @@
 		A9575147ADA2BDB3CDD853CD /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D1BE98E56B93965B664E62 /* ProjectStore.swift */; };
 		B05AD36C3704779D38F8B719 /* AgentDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F45C3172E1F715CA361E70 /* AgentDefinition.swift */; };
 		B115A47BABBD512352CA004B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A54C6CEAE134162EADD35FA /* SettingsView.swift */; };
+		B2F355C8103BBBD1D9A48BD7 /* CodeProgressCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3891932E68F705735EFF35ED /* CodeProgressCard.swift */; };
 		B40C2F87CCB238A4E74F0447 /* iCloudSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 254640204CF8B114163EA1C1 /* iCloudSyncEngine.swift */; };
 		B548411A764EE2FB78BA1916 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81AB7E8B7FB42687CBD3D91 /* BrowserView.swift */; };
 		B59399D8DAAEBAEABADACB41 /* ExchangeRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433D65180DC56EA603F1EBFB /* ExchangeRate.swift */; };
@@ -201,9 +203,11 @@
 		D227D19F7250C878071D2216 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1275397756D5119B6F0CB4C6 /* ProfileView.swift */; };
 		D40503B0647F9BD53F8BF1C7 /* LocalNetworkServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38D7DA2F19BEE81E09E8551 /* LocalNetworkServer.swift */; };
 		D7238E2AC490A7E3DFF0BD8D /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E145A4DCF8B170F35B55C /* FileNode.swift */; };
+		D7CEADF1D001464D7228191A /* OpusReviewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC2803DD69416ECDA4D031B /* OpusReviewer.swift */; };
 		D891726B165B4F2881F4573C /* AgentActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 948F5C36809C348A022F30BA /* AgentActivityView.swift */; };
 		DC9D66C757886D5B0F2D9DAB /* WebViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FBE4871F30BAC1E28FF834 /* WebViewContainer.swift */; };
 		DD38F4DB48551BBF6BA2CE22 /* WorkerPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A6BF9D04A4EB43B7D27EBB /* WorkerPool.swift */; };
+		DD43C3382056E034C9508147 /* OpusReviewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC2803DD69416ECDA4D031B /* OpusReviewer.swift */; };
 		DD5F356F49401F0597146A77 /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A0E81CC749A52C56AC86712 /* Conversation.swift */; };
 		E00DAFF4EE74268B778B705A /* AgentActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94EE3FC98BE93BC3B33EED93 /* AgentActivityState.swift */; };
 		E18153B47A196DEDB259EF28 /* ModelRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 795B4677DD4BE3CF6FFC1AC9 /* ModelRouter.swift */; };
@@ -270,6 +274,7 @@
 		377C48BE8E59272A9F8CCC22 /* BrowserAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAgent.swift; sourceTree = "<group>"; };
 		37E4EBCD4EBA1343F54341EE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3886939080AC92C8C97CBED2 /* MediaVideoPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaVideoPlayer.swift; sourceTree = "<group>"; };
+		3891932E68F705735EFF35ED /* CodeProgressCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeProgressCard.swift; sourceTree = "<group>"; };
 		3A54C6CEAE134162EADD35FA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		3A7173C20F146C9FF898DE1E /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		3EE35E70A539E90187F695B1 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
@@ -278,6 +283,7 @@
 		434269EF68267911170C2CD5 /* DiffEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffEngine.swift; sourceTree = "<group>"; };
 		487BDC5666192491DD29AC76 /* PeerSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerSyncEngine.swift; sourceTree = "<group>"; };
 		49A6BF9D04A4EB43B7D27EBB /* WorkerPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkerPool.swift; sourceTree = "<group>"; };
+		4BC2803DD69416ECDA4D031B /* OpusReviewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusReviewer.swift; sourceTree = "<group>"; };
 		4CDC27DAA75627B1862F7AD5 /* NaviTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviTheme.swift; sourceTree = "<group>"; };
 		4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeAgent.swift; sourceTree = "<group>"; };
 		4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentView.swift; sourceTree = "<group>"; };
@@ -399,6 +405,7 @@
 			isa = PBXGroup;
 			children = (
 				3677621C3344599F3C65DBB1 /* CodeActivityConsole.swift */,
+				3891932E68F705735EFF35ED /* CodeProgressCard.swift */,
 				5CC0E0DC13B3418C6E7BE099 /* CodeView.swift */,
 				BC33BB35777F343FE6C25B5D /* PipelinePhaseView.swift */,
 			);
@@ -522,6 +529,7 @@
 				34EC1EF699FA1656785D274F /* CodeProject.swift */,
 				36CCC756AC4759371B376BAA /* CodeProjectStore.swift */,
 				795B4677DD4BE3CF6FFC1AC9 /* ModelRouter.swift */,
+				4BC2803DD69416ECDA4D031B /* OpusReviewer.swift */,
 			);
 			path = Code;
 			sourceTree = "<group>";
@@ -982,6 +990,7 @@
 				0B927AEAB1E5407184286255 /* CodeActivityConsole.swift in Sources */,
 				51564F6ECEAF15A183EB7551 /* CodeAgent.swift in Sources */,
 				5D51EA6A5201CCB284E302E1 /* CodeEditorView.swift in Sources */,
+				B2F355C8103BBBD1D9A48BD7 /* CodeProgressCard.swift in Sources */,
 				FC9C841E512757C215142353 /* CodeProject.swift in Sources */,
 				8E6ACF8F485FEAE78588FBDC /* CodeProjectStore.swift in Sources */,
 				6E10F5EA6CF1D243BF3967DD /* CodeView.swift in Sources */,
@@ -1023,6 +1032,7 @@
 				EA96CBA653E94ED559CD73D8 /* NaviOrchestrator.swift in Sources */,
 				4722D94CA50D105B709BB8D0 /* NaviTheme.swift in Sources */,
 				F56FC1CDF4CF49BA48E3651B /* OpenRouterClient.swift in Sources */,
+				D7CEADF1D001464D7228191A /* OpusReviewer.swift in Sources */,
 				C83A966720CFF24D66E15767 /* OrchestratorAgent.swift in Sources */,
 				7AF8861D28C4D2CEF970F39E /* PageExtractor.swift in Sources */,
 				8FBFE0D7CD622423580B0089 /* PeerSyncEngine.swift in Sources */,
@@ -1103,6 +1113,7 @@
 				EED012B5E987F5362A96D24D /* CodeActivityConsole.swift in Sources */,
 				341CB294A84C272832195038 /* CodeAgent.swift in Sources */,
 				5604A70C387F52B83EA0ED36 /* CodeEditorView.swift in Sources */,
+				0DF3964625D60D7A2CD3C019 /* CodeProgressCard.swift in Sources */,
 				E52E9A063C1B0B6A2C8DC2BC /* CodeProject.swift in Sources */,
 				3BEEC421DEF43EC0A4E02182 /* CodeProjectStore.swift in Sources */,
 				6A82CFCE3FEDCAC88942416B /* CodeView.swift in Sources */,
@@ -1146,6 +1157,7 @@
 				F8EEB79C104AE2898C6C35B3 /* NaviTheme.swift in Sources */,
 				6A15F56C701999ADCF6582BA /* OfflineManager.swift in Sources */,
 				94591937335C9C4F94D559AC /* OpenRouterClient.swift in Sources */,
+				DD43C3382056E034C9508147 /* OpusReviewer.swift in Sources */,
 				349661EF9DEB83FA9F05EFCA /* OrchestratorAgent.swift in Sources */,
 				A6D4CAD45B348E387E6D41FA /* PageExtractor.swift in Sources */,
 				472E9F2E97339941B69A9FFE /* PeerSyncEngine.swift in Sources */,

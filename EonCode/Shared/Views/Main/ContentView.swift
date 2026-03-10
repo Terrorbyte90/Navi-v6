@@ -102,6 +102,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.chatBackground)
+            .ignoresSafeArea(.keyboard)
 
             // ── Dim overlay ─────────────────────────────────────────────────
             if showSidebar {
