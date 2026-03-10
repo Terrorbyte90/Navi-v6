@@ -1,24 +1,24 @@
 import SwiftUI
 
 // MARK: - NaviTheme
-// Centralised design tokens. Claude iOS-inspired design: clean, minimal, sophisticated.
-// Single source of truth for colors, typography, spacing, radii, animations.
+// Centralised design tokens. Claude iOS-inspired: warm, minimal, sophisticated.
+// Terra cotta accent, cream backgrounds, clean typography.
 
 enum NaviTheme {
 
-    // MARK: - Claude-inspired Accent Colors
+    // MARK: - Claude iOS Accent Colors
 
-    /// Claude purple — sophisticated AI accent (#D4A373 warm beige, #2D2D2D dark)
-    static let accent      = Color(red: 0.83, green: 0.64, blue: 0.45) // Warm beige/gold
-    static let accentLight = Color(red: 0.90, green: 0.78, blue: 0.62)
-    static let accentBg    = Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.08)
-    static let accentBorder = Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.20)
+    /// Terra cotta — Claude iOS primary accent (#da7756)
+    static let accent      = Color(naviHex: "da7756")
+    static let accentLight = Color(naviHex: "e8a08a")
+    static let accentBg    = Color(naviHex: "da7756").opacity(0.10)
+    static let accentBorder = Color(naviHex: "da7756").opacity(0.25)
 
-    /// Dark mode accent (black/charcoal for dark theme)
-    static let accentDark  = Color(red: 0.95, green: 0.95, blue: 0.95)
-    static let accentDarkBg = Color.white.opacity(0.08)
+    /// Dark mode accent — slightly lighter terra cotta for contrast
+    static let accentDark  = Color(naviHex: "e8a08a")
+    static let accentDarkBg = Color(naviHex: "da7756").opacity(0.12)
 
-    // MARK: - Surfaces (adaptive light/dark) - Claude style
+    // MARK: - Surfaces (Claude iOS style)
 
     static var surface: Color { Color.chatBackground }
     static var surfaceSecondary: Color { Color.sidebarBackground }
@@ -30,7 +30,6 @@ enum NaviTheme {
         #endif
     }
 
-    /// Claude-inspired: subtle surface tints
     static var surfaceElevated: Color {
         Color.primary.opacity(0.04)
     }
@@ -48,38 +47,44 @@ enum NaviTheme {
     static var textPrimary: Color   { .primary }
     static var textSecondary: Color { .secondary }
     static var textMuted: Color     { Color.secondary.opacity(0.55) }
+    static var textTertiary: Color  { Color.secondary.opacity(0.4) }
 
-    /// Claude style: softer text hierarchy
-    static var textTertiary: Color { Color.secondary.opacity(0.4) }
+    // MARK: - Chat bubbles — Claude iOS style
 
-    // MARK: - Chat bubbles - Minimalist Claude style
-
+    /// User bubble: warm gray pill
     static var userBubble: Color  { Color.userBubble }
+    /// Assistant: no bubble background (Claude style)
     static var assistantBubble: Color { .clear }
-
-    /// Claude uses no bubbles for assistant - just clean text
     static var assistantMessageBg: Color { .clear }
 
-    // MARK: - Code blocks
+    // MARK: - Code blocks — always dark
 
-    /// Dark code block background — always dark regardless of app theme
-    static let codeBG     = Color(red: 0.11, green: 0.11, blue: 0.12)
-    static let codeHeader = Color(red: 0.07, green: 0.07, blue: 0.07)
+    static let codeBG     = Color(red: 0.10, green: 0.10, blue: 0.11)
+    static let codeHeader = Color(red: 0.06, green: 0.06, blue: 0.07)
     static let codeBorder = Color.white.opacity(0.06)
 
-    // MARK: - Semantic Colors - Claude palette
+    // MARK: - Semantic Colors
 
-    /// Success - muted green
-    static let success = Color(red: 0.30, green: 0.69, blue: 0.31)
-    static let successBg = Color(red: 0.30, green: 0.69, blue: 0.31).opacity(0.10)
+    static let success   = Color(naviHex: "4CAF50")
+    static let successBg = Color(naviHex: "4CAF50").opacity(0.10)
+    static let warning   = Color(naviHex: "FF9800")
+    static let warningBg = Color(naviHex: "FF9800").opacity(0.10)
+    static let error     = Color(naviHex: "E53935")
+    static let errorBg   = Color(naviHex: "E53935").opacity(0.10)
 
-    /// Warning - muted amber
-    static let warning = Color(red: 1.0, green: 0.76, blue: 0.0)
-    static let warningBg = Color(red: 1.0, green: 0.76, blue: 0.0).opacity(0.10)
+    // MARK: - Glass
 
-    /// Error - muted red
-    static let error = Color(red: 0.91, green: 0.30, blue: 0.24)
-    static let errorBg = Color(red: 0.91, green: 0.30, blue: 0.24).opacity(0.10)
+    /// Adaptive glass tint for iOS 26+ liquid glass effects
+    static var glassTint: Color {
+        #if os(iOS)
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 1, alpha: 0.06)
+            : UIColor(white: 0, alpha: 0.03)
+        })
+        #else
+        Color.white.opacity(0.04)
+        #endif
+    }
 
     // MARK: - Spacing
 
@@ -93,14 +98,13 @@ enum NaviTheme {
         static let xxl: CGFloat = 48
     }
 
-    // Flat aliases for common values
     static let messagePaddingH: CGFloat = 16
     static let messagePaddingV: CGFloat = 8
     static let messageSpacing:  CGFloat = 6
     static let sidebarItemPaddingH: CGFloat = 12
     static let sidebarItemPaddingV: CGFloat = 7
 
-    // MARK: - Corner Radii - Softer, more sophisticated
+    // MARK: - Corner Radii
 
     enum Radius {
         static let xs:     CGFloat = 4
@@ -112,14 +116,13 @@ enum NaviTheme {
         static let pill:   CGFloat = 24
     }
 
-    // Flat aliases
     static let cornerRadiusSmall:  CGFloat = 8
     static let cornerRadiusMedium: CGFloat = 12
     static let cornerRadiusLarge:  CGFloat = 18
 
-    // MARK: - Typography - Clean, readable, Claude-style
+    // MARK: - Typography — Claude iOS: clean system fonts
 
-    static func body(_ size: CGFloat = 15) -> Font {
+    static func body(_ size: CGFloat = 15.5) -> Font {
         .system(size: size, weight: .regular)
     }
     static func bodyRounded(_ size: CGFloat = 15) -> Font {
@@ -135,35 +138,28 @@ enum NaviTheme {
         .system(size: size, weight: weight, design: .monospaced)
     }
     static func heading(_ size: CGFloat = 17, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        .system(size: size, weight: weight)
     }
-
-    /// Display - large titles
     static func display(_ size: CGFloat = 28, weight: Font.Weight = .bold) -> Font {
         .system(size: size, weight: weight)
     }
 
-    // MARK: - Spring Animations - Smooth, subtle
+    // MARK: - Spring Animations
 
     enum Spring {
-        /// Fast, snappy — for small UI elements
         static let quick      = Animation.spring(response: 0.2, dampingFraction: 0.85)
-        /// Responsive — for modals, sheets, sidebar slides
         static let responsive = Animation.spring(response: 0.3, dampingFraction: 0.8)
-        /// Bouncy — for cards, animations
         static let bouncy     = Animation.spring(response: 0.35, dampingFraction: 0.7)
-        /// Smooth — for content fade transitions
         static let smooth     = Animation.easeInOut(duration: 0.2)
-        /// Instant - for immediate feedback
         static let instant    = Animation.linear(duration: 0.1)
     }
 
-    // MARK: - Shadows - Subtle, sophisticated
+    // MARK: - Shadows
 
     enum Shadow {
-        static let small = NaviShadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+        static let small  = NaviShadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         static let medium = NaviShadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
-        static let large = NaviShadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 8)
+        static let large  = NaviShadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 8)
     }
 }
 
@@ -201,7 +197,6 @@ extension View {
 }
 
 // MARK: - Color(naviHex:) init
-// Separate named init to avoid ambiguity with any future Color(hex:) extensions.
 
 extension Color {
     /// Initialize a Color from a hex string such as "#7C5CBF" or "7C5CBF".

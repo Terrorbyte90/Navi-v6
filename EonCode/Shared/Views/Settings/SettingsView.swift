@@ -317,7 +317,7 @@ struct SettingsView: View {
             if !saveMessage.isEmpty {
                 Text(saveMessage)
                     .font(.system(size: 12))
-                    .foregroundColor(.green)
+                    .foregroundColor(NaviTheme.success)
             }
 
             HStack {
@@ -483,7 +483,7 @@ struct SettingsView: View {
             saved = true
         }
 
-        saveMessage = saved ? "✓ Sparade" : "Ange en nyckel"
+        saveMessage = saved ? "Sparade" : "Ange en nyckel"
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             saveMessage = ""
         }
@@ -623,7 +623,7 @@ struct CustomKeyRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(Color.white.opacity(0.05))
+        .background(Color.primary.opacity(0.04))
         .cornerRadius(9)
     }
 }

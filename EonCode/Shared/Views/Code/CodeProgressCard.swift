@@ -2,33 +2,21 @@ import SwiftUI
 
 // MARK: - CodeProgressCard
 // Inline progress card shown in the chat message stream during active pipeline runs.
-// Replaces the old PipelinePhaseView top bar + activityConsoleOverlay.
 
 struct CodeProgressCard: View {
     @ObservedObject var agent: CodeAgent
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            // "N" avatar
-            ZStack {
-                Circle()
-                    .fill(Color.accentNavi.opacity(0.12))
-                    .frame(width: 28, height: 28)
-                Image(systemName: agent.phase.icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.accentNavi)
-            }
+            ThinkingOrb(size: 28, isAnimating: true)
 
             VStack(alignment: .leading, spacing: 8) {
-                // Phase row
                 phaseRow
 
-                // Worker orbs (during build)
                 if agent.phase == .build && !agent.workerStatuses.isEmpty {
                     WorkerOrbsRow(statuses: agent.workerStatuses)
                 }
 
-                // Active file cards
                 let activeCards = recentActiveCards
                 if !activeCards.isEmpty {
                     VStack(spacing: 4) {
@@ -43,7 +31,6 @@ struct CodeProgressCard: View {
                     .animation(.spring(response: 0.4, dampingFraction: 0.75), value: activeCards.map { $0.id })
                 }
 
-                // Quiet log
                 if !agent.quietLog.isEmpty {
                     QuietLogLine(text: agent.quietLog)
                 }
@@ -58,10 +45,9 @@ struct CodeProgressCard: View {
         HStack(spacing: 8) {
             Text(agent.phase.displayName.uppercased())
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundColor(.accentNavi.opacity(0.7))
                 .tracking(0.5)
 
-            // Phase progress dots
             HStack(spacing: 4) {
                 ForEach(PipelinePhase.activePhasesOrdered, id: \.self) { phase in
                     Circle()
@@ -74,10 +60,10 @@ struct CodeProgressCard: View {
 
     private func dotColor(for phase: PipelinePhase) -> Color {
         guard agent.phase != .idle && agent.phase != .done else {
-            return agent.phase == .done ? .green : Color.secondary.opacity(0.3)
+            return agent.phase == .done ? NaviTheme.success : Color.secondary.opacity(0.3)
         }
-        if phase.ordinal < agent.phase.ordinal { return .green }
-        if phase.ordinal == agent.phase.ordinal { return .orange }
+        if phase.ordinal < agent.phase.ordinal { return NaviTheme.success }
+        if phase.ordinal == agent.phase.ordinal { return NaviTheme.warning }
         return Color.secondary.opacity(0.3)
     }
 

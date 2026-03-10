@@ -135,9 +135,9 @@ struct ArtifactView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(red: 0.83, green: 0.64, blue: 0.45))
+                    .foregroundColor(Color.accentNavi)
                     .frame(width: 28, height: 28)
-                    .background(Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.12))
+                    .background(Color.accentNavi.opacity(0.12))
                     .cornerRadius(7)
             }
             .buttonStyle(.plain)
@@ -185,13 +185,13 @@ struct ArtifactView: View {
             .padding(.vertical, 5)
             .background(
                 Capsule()
-                    .fill(isSelected ? Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.15) : Color.primary.opacity(0.06))
+                    .fill(isSelected ? Color.accentNavi.opacity(0.15) : Color.primary.opacity(0.06))
             )
-            .foregroundColor(isSelected ? Color(red: 0.83, green: 0.64, blue: 0.45) : Color.primary.opacity(0.5))
+            .foregroundColor(isSelected ? Color.accentNavi : Color.primary.opacity(0.5))
             .contentShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(isSelected ? Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.3) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.accentNavi.opacity(0.3) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -319,7 +319,7 @@ struct ArtifactView: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.15) : Color.clear)
+                .fill(isSelected ? Color.accentNavi.opacity(0.15) : Color.clear)
         )
         .padding(.horizontal, 6)
     }

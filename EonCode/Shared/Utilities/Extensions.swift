@@ -140,20 +140,19 @@ extension View {
     }
 }
 
-// MARK: - Color (system-adaptive, follows system light/dark mode)
+// MARK: - Color (Claude iOS palette — warm cream/charcoal, terra cotta accent)
 extension Color {
     static var codeBackground: Color {
-        // Always dark regardless of app theme — Claude/VS Code style code blocks
-        Color(red: 0.11, green: 0.11, blue: 0.12)
+        Color(red: 0.10, green: 0.10, blue: 0.11)
     }
     static var chatBackground: Color {
         #if os(macOS)
         Color(NSColor.windowBackgroundColor)
         #else
-        // Pure white in light mode (Claude iOS style), very dark in dark mode
+        // Claude iOS: warm cream #F5F5F0 light, warm charcoal #2b2a27 dark
         Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
-            : .white
+            ? UIColor(red: 0.17, green: 0.16, blue: 0.15, alpha: 1)   // #2b2a27
+            : UIColor(red: 0.96, green: 0.96, blue: 0.94, alpha: 1)   // #F5F5F0
         })
         #endif
     }
@@ -162,22 +161,22 @@ extension Color {
         Color(NSColor.controlBackgroundColor)
         #else
         Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(white: 0.14, alpha: 1)
-            : UIColor(white: 0.96, alpha: 1)
+            ? UIColor(red: 0.13, green: 0.12, blue: 0.12, alpha: 1)
+            : UIColor(red: 0.93, green: 0.92, blue: 0.90, alpha: 1)
         })
         #endif
     }
-    // Warm beige/gold — Claude-inspired primary accent
-    static var accentNavi: Color { Color(red: 0.83, green: 0.64, blue: 0.45) }
+    /// Terra cotta accent — Claude iOS (#da7756)
+    static var accentNavi: Color { Color(naviHex: "da7756") }
     static var assistantBubble: Color { Color.clear }
     static var userBubble: Color {
         #if os(macOS)
         Color(NSColor.controlColor)
         #else
-        // Subtle warm-tinted gray — matches the new beige/gold theme
+        // Claude iOS user bubble: #DDD9CE light, #393937 dark
         Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.18, green: 0.17, blue: 0.16, alpha: 1)   // dark warm-tinted
-            : UIColor(red: 0.94, green: 0.93, blue: 0.92, alpha: 1)  // light warm-gray
+            ? UIColor(red: 0.22, green: 0.22, blue: 0.22, alpha: 1)   // #393937
+            : UIColor(red: 0.87, green: 0.85, blue: 0.81, alpha: 1)   // #DDD9CE
         })
         #endif
     }
@@ -186,8 +185,8 @@ extension Color {
         Color(NSColor.controlBackgroundColor)
         #else
         Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(white: 0.18, alpha: 1)
-            : UIColor(white: 0.94, alpha: 1)
+            ? UIColor(red: 0.15, green: 0.15, blue: 0.14, alpha: 1)
+            : UIColor(red: 0.94, green: 0.93, blue: 0.91, alpha: 1)
         })
         #endif
     }
@@ -202,7 +201,10 @@ extension Color {
         #if os(macOS)
         Color(NSColor.selectedContentBackgroundColor).opacity(0.08)
         #else
-        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.16, alpha: 1) : UIColor(white: 0.88, alpha: 1) })
+        Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 0.16, alpha: 1)
+            : UIColor(red: 0.91, green: 0.90, blue: 0.87, alpha: 1)
+        })
         #endif
     }
     static var dividerColor: Color {

@@ -110,7 +110,7 @@ struct GlassTextField: View {
                 .fill(Color.inputBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.inputBorder, lineWidth: 0.5)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
                 )
         )
     }
@@ -196,7 +196,7 @@ struct SyntaxHighlighter {
         }
     }
     .padding()
-    .background(Color.black)
+    .background(Color.chatBackground)
 }
 
 #Preview("GlassButton") {
@@ -206,7 +206,7 @@ struct SyntaxHighlighter {
         GlassButton("Destruktiv", icon: "trash", isDestructive: true) {}
     }
     .padding()
-    .background(Color.black)
+    .background(Color.chatBackground)
 }
 
 #Preview("GlassTextField") {
@@ -215,7 +215,7 @@ struct SyntaxHighlighter {
         GlassTextField(placeholder: "sk-ant-…", text: .constant("sk-ant-abc123"), isSecure: false)
     }
     .padding()
-    .background(Color.black)
+    .background(Color.chatBackground)
 }
 
 // MARK: - Large Text View (chunked rendering)

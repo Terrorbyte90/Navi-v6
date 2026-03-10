@@ -63,14 +63,7 @@ struct SidebarView: View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
                 // Clean minimalist logo
-                ZStack {
-                    Circle()
-                        .fill(Color.primary.opacity(0.06))
-                        .frame(width: 28, height: 28)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.primary.opacity(0.6))
-                }
+                ThinkingOrb(size: 28, isAnimating: false)
                 Text("Navi")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color.primary)

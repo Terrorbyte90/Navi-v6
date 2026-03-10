@@ -9,6 +9,7 @@ struct VoiceModeOverlay: View {
 
     var body: some View {
         ZStack {
+            // Dark glass background
             Color.black.opacity(0.92).ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -16,7 +17,7 @@ struct VoiceModeOverlay: View {
                 Spacer()
                 transcriptArea
                 Spacer()
-                pulsingCircle
+                glassOrb
                 Spacer()
                 statusLabel
                     .padding(.bottom, 60)
@@ -37,11 +38,14 @@ struct VoiceModeOverlay: View {
                 isPresented = false
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 40, height: 40)
-                    .contentShape(Circle())
-                    .background(Color.white.opacity(0.1), in: Circle())
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .overlay(Circle().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5))
+                    )
             }
             .buttonStyle(.plain)
             .padding(.trailing, 20)
@@ -74,42 +78,73 @@ struct VoiceModeOverlay: View {
         .animation(.easeInOut(duration: 0.3), value: vm.assistantTranscript)
     }
 
-    private var pulsingCircle: some View {
+    // MARK: - Glass orb (replaces flat colored circles)
+
+    private var glassOrb: some View {
         let baseSize: CGFloat = 120
         let levelBoost = vm.audioLevel * 40
 
         return ZStack {
+            // Outer glow ring
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [circleColor.opacity(0.15), circleColor.opacity(0.02)],
+                        colors: [orbColor.opacity(0.12), orbColor.opacity(0.01)],
                         center: .center, startRadius: 40, endRadius: baseSize
                     )
                 )
                 .frame(width: baseSize + 80 + levelBoost, height: baseSize + 80 + levelBoost)
                 .scaleEffect(outerPulse ? 1.12 : 0.95)
 
+            // Middle glass layer
             Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [circleColor.opacity(0.3), circleColor.opacity(0.08)],
-                        center: .center, startRadius: 20, endRadius: 60
-                    )
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [orbColor.opacity(0.2), orbColor.opacity(0.05)],
+                                center: .center, startRadius: 20, endRadius: 60
+                            )
+                        )
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.3), .white.opacity(0.05)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.5
+                        )
                 )
                 .frame(width: baseSize + 30 + levelBoost * 0.5, height: baseSize + 30 + levelBoost * 0.5)
                 .scaleEffect(innerPulse ? 1.08 : 0.96)
 
+            // Inner glass orb
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: gradientColors,
+                        colors: orbGradient,
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     )
                 )
+                .overlay(
+                    // Glass highlight reflection
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.35), .clear],
+                                startPoint: .topLeading, endPoint: .center
+                            )
+                        )
+                        .frame(width: baseSize * 0.6, height: baseSize * 0.6)
+                        .offset(x: -baseSize * 0.08, y: -baseSize * 0.08)
+                )
                 .frame(width: baseSize, height: baseSize)
-                .shadow(color: circleColor.opacity(0.5), radius: 20)
+                .shadow(color: orbColor.opacity(0.4), radius: 20)
 
-            circleIcon
+            orbIcon
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
@@ -123,7 +158,7 @@ struct VoiceModeOverlay: View {
     }
 
     @ViewBuilder
-    private var circleIcon: some View {
+    private var orbIcon: some View {
         if vm.isListening {
             Image(systemName: "waveform")
                 .font(.system(size: 36, weight: .medium))
@@ -143,31 +178,31 @@ struct VoiceModeOverlay: View {
         }
     }
 
-    private var circleColor: Color {
-        if vm.isListening { return Color(red: 0.3, green: 0.7, blue: 0.5) }
-        if vm.isProcessing { return Color(red: 0.4, green: 0.5, blue: 0.8) }
-        if vm.isSpeaking { return Color(red: 0.6, green: 0.4, blue: 0.8) }
-        return Color(red: 0.45, green: 0.65, blue: 0.6)
+    private var orbColor: Color {
+        if vm.isListening  { return Color(naviHex: "4CAF50") }  // Green
+        if vm.isProcessing { return Color.accentNavi }           // Terra cotta
+        if vm.isSpeaking   { return Color(naviHex: "7C5CBF") }  // Purple
+        return Color.accentNavi.opacity(0.7)
     }
 
-    private var gradientColors: [Color] {
+    private var orbGradient: [Color] {
         if vm.isListening {
-            return [Color(red: 0.3, green: 0.75, blue: 0.55), Color(red: 0.2, green: 0.55, blue: 0.45)]
+            return [Color(naviHex: "4CAF50").opacity(0.7), Color(naviHex: "388E3C").opacity(0.5)]
         }
         if vm.isProcessing {
-            return [Color(red: 0.4, green: 0.5, blue: 0.85), Color(red: 0.3, green: 0.4, blue: 0.7)]
+            return [Color.accentNavi.opacity(0.7), Color(naviHex: "c85a3a").opacity(0.5)]
         }
         if vm.isSpeaking {
-            return [Color(red: 0.65, green: 0.4, blue: 0.85), Color(red: 0.5, green: 0.3, blue: 0.7)]
+            return [Color(naviHex: "7C5CBF").opacity(0.7), Color(naviHex: "5E35B1").opacity(0.5)]
         }
-        return [Color(red: 0.45, green: 0.67, blue: 0.61), Color(red: 0.3, green: 0.55, blue: 0.5)]
+        return [Color.accentNavi.opacity(0.5), Color(naviHex: "c85a3a").opacity(0.3)]
     }
 
     private var statusLabel: some View {
         Group {
             if let error = vm.errorMessage {
                 Text(error)
-                    .foregroundColor(.red.opacity(0.8))
+                    .foregroundColor(NaviTheme.error.opacity(0.8))
             } else if vm.isListening {
                 Text("Lyssnar…")
                     .foregroundColor(.white.opacity(0.5))

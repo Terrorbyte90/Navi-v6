@@ -63,22 +63,14 @@ struct ContentView: View {
     @ViewBuilder
     var macDetailView: some View {
         switch macSection {
-        case .pureChat:
-            PureChatView()
-        case .code:
-            CodeView()
-        case .artifacts:
-            ArtifactView()
-        case .github:
-            GitHubView()
-        case .agents:
-            AgentView()
-        case .media:
-            MediaView()
-        case .profile:
-            ProfileView()
-        case .voice:
-            VoiceView()
+        case .pureChat:  PureChatView()
+        case .code:      CodeView()
+        case .artifacts: ArtifactView()
+        case .github:    GitHubView()
+        case .agents:    AgentView()
+        case .media:     MediaView()
+        case .profile:   ProfileView()
+        case .voice:     VoiceView()
         }
     }
     #endif
@@ -87,24 +79,18 @@ struct ContentView: View {
 
     #if os(iOS)
     @State private var showSidebar = false
-    // NOTE: chatMgr is NOT here — it was causing ContentView to re-render
-    // on every streaming token (every 60ms). It now lives in ChatNavTitle
-    // and ChatNewButton which are isolated child structs.
     @StateObject private var browserAgent = BrowserAgent.shared
 
     var iOSLayout: some View {
         ZStack(alignment: .leading) {
-            // ── Main content ────────────────────────────────────────────────
             VStack(spacing: 0) {
                 iOSTopBar
-                Divider().opacity(0.12)
                 iOSMainContent
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.chatBackground)
             .ignoresSafeArea(.keyboard)
 
-            // ── Dim overlay ─────────────────────────────────────────────────
             if showSidebar {
                 Color.black.opacity(0.45)
                     .ignoresSafeArea()
@@ -113,7 +99,6 @@ struct ContentView: View {
                     .zIndex(10)
             }
 
-            // ── Sidebar panel (conditionally mounted to avoid 8 @StateObject overhead) ──
             if showSidebar {
                 ChatHistorySidebar(
                     showSidebar: $showSidebar,
@@ -125,7 +110,7 @@ struct ContentView: View {
                 .zIndex(11)
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSidebar)
+        .animation(NaviTheme.Spring.responsive, value: showSidebar)
         .sheet(isPresented: $showNewProject) { NewProjectView() }
         .onAppear {
             updateViewContext()
@@ -133,7 +118,7 @@ struct ContentView: View {
             NaviOrchestrator.shared.setActiveProject(activeProject)
         }
         .onChange(of: selectedTab) { _, newTab in
-            dismissKeyboard()   // Always dismiss keyboard when switching tabs
+            dismissKeyboard()
             updateViewContext()
             NaviOrchestrator.shared.setActiveView(appSectionForTab(newTab))
         }
@@ -141,7 +126,6 @@ struct ContentView: View {
             NaviOrchestrator.shared.setActiveProject(newProject)
         }
         .onReceive(NotificationCenter.default.publisher(for: .didOpenGitHubProject)) { _ in
-            // Auto-switch to project tab when a GitHub repo is opened as project
             withAnimation(.easeInOut(duration: 0.25)) {
                 selectedTab = .github
                 showSidebar = false
@@ -153,144 +137,74 @@ struct ContentView: View {
         let viewName: String
         let viewPurpose: String
         switch selectedTab {
-        case .chat:
-            viewName = "Chatt"
-            viewPurpose = "Fri konversation utan projektkoppling."
-        case .code:
-            viewName = "Code"
-            viewPurpose = "Kodning med AI-agenter: spec, research, bygg och push."
-        case .artifacts:
-            viewName = "Artefakter"
-            viewPurpose = "Hantera genererade filer och resurser."
-        case .github:
-            viewName = "GitHub"
-            viewPurpose = "Hantera repos, PRs och issues."
-        case .agents:
-            viewName = "Agenter"
-            viewPurpose = "Autonoma agenter som arbetar mot långsiktiga mål."
-        case .media:
-            viewName = "Media"
-            viewPurpose = "Generera bilder och video via xAI."
-        case .profile:
-            viewName = "Profil"
-            viewPurpose = "AI-syntetiserad användarprofil baserad på minnen."
-        case .voice:
-            viewName = "Röst"
-            viewPurpose = "Text-till-tal, ljudgenerering och röstdesign via ElevenLabs."
+        case .chat:      viewName = "Chatt"; viewPurpose = "Fri konversation utan projektkoppling."
+        case .code:      viewName = "Code"; viewPurpose = "Kodning med AI-agenter: spec, research, bygg och push."
+        case .artifacts: viewName = "Artefakter"; viewPurpose = "Hantera genererade filer och resurser."
+        case .github:    viewName = "GitHub"; viewPurpose = "Hantera repos, PRs och issues."
+        case .agents:    viewName = "Agenter"; viewPurpose = "Autonoma agenter som arbetar mot långsiktiga mål."
+        case .media:     viewName = "Media"; viewPurpose = "Generera bilder och video via xAI."
+        case .profile:   viewName = "Profil"; viewPurpose = "AI-syntetiserad användarprofil baserad på minnen."
+        case .voice:     viewName = "Röst"; viewPurpose = "Text-till-tal, ljudgenerering och röstdesign via ElevenLabs."
         }
         MessageBuilder.currentViewContext = "\(viewName) — \(viewPurpose)"
     }
 
-    // MARK: - Top bar
+    // MARK: - Top bar — Claude iOS: clean, minimal
 
     var iOSTopBar: some View {
         HStack(spacing: 0) {
-            // Hamburger — sidebar toggle
             Button { openSidebar() } label: {
-                Image(systemName: "sidebar.left")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(Color.secondary)
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.primary.opacity(0.7))
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
 
             Spacer()
 
-            // Center: "Navi  ModelName ⌄" — ChatGPT faithful
             iOSCenterTitle
 
             Spacer()
 
-            // Trailing action
             iOSTrailingButton
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .padding(.horizontal, 4)
-        .frame(height: 52)
+        .frame(height: 48)
         .background(Color.chatBackground)
     }
-
-    // MARK: - Center title (reactive, ChatGPT-style)
 
     @ViewBuilder
     var iOSCenterTitle: some View {
         switch selectedTab {
         case .chat:
             ChatNavTitle()
-
-        case .code:
+        default:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
-                Text("Code")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
-            }
-
-        case .artifacts:
-            HStack(spacing: 5) {
-                Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
-                Text("Artefakter")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
-            }
-
-        case .github:
-            HStack(spacing: 5) {
-                Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
-                Text("GitHub")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
-            }
-
-        case .agents:
-            HStack(spacing: 5) {
-                Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
-                Text("Agenter")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
-            }
-
-        case .media:
-            HStack(spacing: 5) {
-                Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
-                Text("Media")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
-            }
-
-        case .profile:
-            HStack(spacing: 5) {
-                Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
-                Text("Profil")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
-            }
-
-        case .voice:
-            HStack(spacing: 5) {
-                Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
-                Text("Röst")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.accentNavi)
+                Text(tabLabel(selectedTab))
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(.secondary)
             }
         }
     }
-    // MARK: - Trailing button
+
+    private func tabLabel(_ tab: AppTab) -> String {
+        switch tab {
+        case .chat:      return "Chatt"
+        case .code:      return "Code"
+        case .artifacts: return "Artefakter"
+        case .github:    return "GitHub"
+        case .agents:    return "Agenter"
+        case .media:     return "Media"
+        case .profile:   return "Profil"
+        case .voice:     return "Röst"
+        }
+    }
 
     @ViewBuilder
     var iOSTrailingButton: some View {
@@ -298,93 +212,27 @@ struct ContentView: View {
         case .chat:
             Button { _ = ChatManager.shared.newConversation() } label: {
                 Image(systemName: "square.and.pencil")
-                    .font(.system(size: 17))
-                    .foregroundColor(Color.secondary)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.primary.opacity(0.6))
             }
-
         default:
             Color.clear.frame(width: 1, height: 1)
         }
     }
-    // MARK: - Main content
 
     @ViewBuilder
     var iOSMainContent: some View {
         switch selectedTab {
-        case .chat:
-            PureChatView()
-        case .code:
-            CodeView()
-        case .artifacts:
-            ArtifactView()
-        case .github:
-            GitHubView()
-        case .agents:
-            AgentView()
-        case .media:
-            MediaView()
-        case .profile:
-            ProfileView()
-        case .voice:
-            VoiceView()
+        case .chat:      PureChatView()
+        case .code:      CodeView()
+        case .artifacts: ArtifactView()
+        case .github:    GitHubView()
+        case .agents:    AgentView()
+        case .media:     MediaView()
+        case .profile:   ProfileView()
+        case .voice:     VoiceView()
         }
     }
-
-    // MARK: - Welcome
-
-    var iOSWelcome: some View {
-        VStack(spacing: 32) {
-            Spacer()
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [Color.accentNavi.opacity(0.12), Color.accentNavi.opacity(0.02)],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 48
-                        )
-                    )
-                    .frame(width: 80, height: 80)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 36, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.accentNavi, .accentNavi.opacity(0.65)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            VStack(spacing: 8) {
-                Text("Navi")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                Text("Välj ett projekt i sidomenyn")
-                    .font(.system(size: 15))
-                    .foregroundColor(.secondary.opacity(0.7))
-            }
-            Button { openSidebar() } label: {
-                Label("Öppna sidomenyn", systemImage: "sidebar.left")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.accentNavi)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 13)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.accentNavi.opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .strokeBorder(Color.accentNavi.opacity(0.2), lineWidth: 0.5)
-                            )
-                    )
-            }
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.chatBackground)
-    }
-
-    // MARK: - Tab to section mapping
 
     private func appSectionForTab(_ tab: AppTab) -> AppSection {
         switch tab {
@@ -399,26 +247,18 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Sidebar helpers
-
     private func openSidebar() {
         dismissKeyboard()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            showSidebar = true
-        }
+        withAnimation(NaviTheme.Spring.responsive) { showSidebar = true }
     }
 
     private func closeSidebar() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            showSidebar = false
-        }
+        withAnimation(NaviTheme.Spring.responsive) { showSidebar = false }
     }
     #endif
 }
 
-// MARK: - Isolated chat navigation title
-// Owns its own @StateObject so streaming (streamingText every 60ms)
-// only re-renders this tiny view, NOT all of ContentView.
+// MARK: - Isolated chat nav title (prevents streaming redraws of ContentView)
 
 #if os(iOS)
 private struct ChatNavTitle: View {
@@ -426,35 +266,54 @@ private struct ChatNavTitle: View {
 
     var body: some View {
         Menu {
-            ForEach(ClaudeModel.allCases) { model in
-                Button {
-                    if let conv = chatMgr.activeConversation {
-                        chatMgr.updateModel(model, for: conv.id)
-                    }
-                } label: {
-                    HStack {
-                        Text(model.displayName)
-                        if model == chatMgr.activeConversation?.model {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
+            Section("Anthropic") {
+                ForEach(ClaudeModel.anthropicModels) { model in modelButton(model) }
+            }
+            Section("xAI / Grok") {
+                ForEach(ClaudeModel.xaiModels) { model in modelButton(model) }
+            }
+            Section("OpenRouter") {
+                ForEach(ClaudeModel.openRouterModels) { model in modelButton(model) }
             }
         } label: {
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.accentNavi)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.accentNavi)
                 Text(chatMgr.activeConversation?.model.displayName ?? "Claude")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color.secondary)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(.secondary)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color.accentNavi.opacity(0.75))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.5))
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func modelButton(_ model: ClaudeModel) -> some View {
+        Button {
+            if let conv = chatMgr.activeConversation {
+                chatMgr.updateModel(model, for: conv.id)
+            } else {
+                _ = chatMgr.newConversation(model: model)
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(model.displayName)
+                    Text(model.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                if model == chatMgr.activeConversation?.model {
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
     }
 }
 #endif
@@ -480,14 +339,9 @@ struct MacMainView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Top bar ─────────────────────────────────────────────────────
             macProjectTopBar
-
             Divider().opacity(0.12)
-
-            // ── Content ──────────────────────────────────────────────────────
             HSplitView {
-                // Left: file tree + editor / agent status / versions
                 VStack(spacing: 0) {
                     switch macEditorTab {
                     case .editor:
@@ -504,7 +358,6 @@ struct MacMainView: View {
                 }
                 .frame(minWidth: 380)
 
-                // Right: chat
                 ChatView(agent: agent)
                     .frame(minWidth: 300, maxWidth: 480)
             }
@@ -514,19 +367,13 @@ struct MacMainView: View {
 
     var macProjectTopBar: some View {
         HStack(spacing: 12) {
-            // Project color dot + name
             HStack(spacing: 7) {
-                Circle()
-                    .fill(project.color.color)
-                    .frame(width: 9, height: 9)
+                Circle().fill(project.color.color).frame(width: 9, height: 9)
                 Text(project.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.primary)
             }
-
             Spacer()
-
-            // Editor / Agent / Versions tabs
             HStack(spacing: 2) {
                 MacTabPill(title: "Filer", icon: "folder", tab: .editor, selected: $macEditorTab)
                 MacTabPill(title: "Agent", icon: "gearshape.2", tab: .agents, selected: $macEditorTab)
@@ -536,14 +383,11 @@ struct MacMainView: View {
             .background(Color.white.opacity(0.06))
             .cornerRadius(9)
 
-            // Running indicator
             if agent.isRunning {
                 HStack(spacing: 5) {
                     ProgressView().scaleEffect(0.6)
                     Text(agent.currentStatus.prefix(30))
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                        .font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
                 }
                 .frame(maxWidth: 200)
             }
@@ -571,11 +415,9 @@ struct MacMainView: View {
         } else {
             VStack(spacing: 10) {
                 Image(systemName: "doc.text")
-                    .font(.system(size: 40))
-                    .foregroundColor(.secondary.opacity(0.2))
+                    .font(.system(size: 40)).foregroundColor(.secondary.opacity(0.2))
                 Text("Välj en fil att redigera")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary.opacity(0.4))
+                    .font(.system(size: 13)).foregroundColor(.secondary.opacity(0.4))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -583,42 +425,28 @@ struct MacMainView: View {
 }
 
 struct MacTabPill: View {
-    let title: String
-    let icon: String
-    let tab: MacEditorTab
+    let title: String; let icon: String; let tab: MacEditorTab
     @Binding var selected: MacEditorTab
-
     var isSelected: Bool { selected == tab }
 
     var body: some View {
         Button { selected = tab } label: {
             HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                Image(systemName: icon).font(.system(size: 11))
+                Text(title).font(.system(size: 12, weight: .medium))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(isSelected ? Color.white.opacity(0.08) : Color.clear)
-            )
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? Color.white.opacity(0.08) : Color.clear))
             .foregroundColor(isSelected ? .white : .secondary)
         }
         .buttonStyle(.plain)
     }
 }
 
-// Keep old TabButton for any remaining usages
 struct TabButton: View {
-    let title: String
-    let icon: String
-    let tab: MacEditorTab
+    let title: String; let icon: String; let tab: MacEditorTab
     @Binding var selected: MacEditorTab
-
     var isSelected: Bool { selected == tab }
-
     var body: some View {
         MacTabPill(title: title, icon: icon, tab: tab, selected: $selected)
     }
@@ -637,7 +465,6 @@ struct FileTreeAndEditorView: View {
         HSplitOrStack {
             FileTreeView(project: project, selectedNode: $selectedNode)
                 .frame(maxWidth: 260)
-
             if let node = selectedNode, !node.isDirectory {
                 CodeEditorView(
                     content: $fileContent,
@@ -646,16 +473,11 @@ struct FileTreeAndEditorView: View {
                         try? newContent.write(toFile: node.path, atomically: true, encoding: .utf8)
                     }
                 )
-                .onAppear {
-                    fileContent = (try? String(contentsOfFile: node.path)) ?? ""
-                }
+                .onAppear { fileContent = (try? String(contentsOfFile: node.path)) ?? "" }
             } else {
                 VStack {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary.opacity(0.3))
-                    Text("Välj en fil")
-                        .foregroundColor(.secondary)
+                    Image(systemName: "doc.text").font(.system(size: 48)).foregroundColor(.secondary.opacity(0.3))
+                    Text("Välj en fil").foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -664,17 +486,12 @@ struct FileTreeAndEditorView: View {
     }
 }
 
-// Adaptive layout: split on iPad, stack on iPhone
 struct HSplitOrStack<Content: View>: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @ViewBuilder let content: () -> Content
-
     var body: some View {
-        if sizeClass == .regular {
-            HStack(spacing: 0) { content() }
-        } else {
-            content()
-        }
+        if sizeClass == .regular { HStack(spacing: 0) { content() } }
+        else { content() }
     }
 }
 #endif
@@ -688,44 +505,20 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-
             VStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [Color.accentNavi.opacity(0.12), Color.accentNavi.opacity(0.02)],
-                                center: .center,
-                                startRadius: 0,
-                                endRadius: 48
-                            )
-                        )
-                        .frame(width: 80, height: 80)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 36, weight: .medium))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.accentNavi, .accentNavi.opacity(0.65)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
+                ThinkingOrb(size: 72, isAnimating: false)
                 Text("Navi")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold))
                 Text("AI-driven kodningsagent")
-                    .font(.system(size: 16))
+                    .font(.system(size: 15))
                     .foregroundColor(.secondary.opacity(0.7))
             }
 
             if store.projects.isEmpty {
                 VStack(spacing: 16) {
-                    GlassButton("Skapa nytt projekt", icon: "plus", isPrimary: true) {
-                        showNewProject = true
-                    }
+                    GlassButton("Skapa nytt projekt", icon: "plus", isPrimary: true) { showNewProject = true }
                     Text("Eller öppna ett befintligt projekt från sidopanelen")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary.opacity(0.6))
+                        .font(.system(size: 13)).foregroundColor(.secondary.opacity(0.6))
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
@@ -733,37 +526,24 @@ struct WelcomeView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.secondary)
                         .padding(.leading, 4)
-
                     ForEach(store.projects.prefix(5)) { project in
-                        Button {
-                            store.activeProject = project
-                        } label: {
+                        Button { store.activeProject = project } label: {
                             HStack {
-                                Circle()
-                                    .fill(project.color.color)
-                                    .frame(width: 10, height: 10)
-                                Text(project.name)
-                                    .font(.system(size: 14))
+                                Circle().fill(project.color.color).frame(width: 10, height: 10)
+                                Text(project.name).font(.system(size: 14))
                                 Spacer()
-                                Text(project.modifiedAt.relativeString)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
+                                Text(project.modifiedAt.relativeString).font(.system(size: 11)).foregroundColor(.secondary)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.surfaceHover))
                         }
                         .buttonStyle(.plain)
                     }
-
-                    GlassButton("Nytt projekt", icon: "plus") {
-                        showNewProject = true
-                    }
-                    .padding(.top, 4)
+                    GlassButton("Nytt projekt", icon: "plus") { showNewProject = true }
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: 400)
             }
-
             Spacer()
         }
         .padding()
@@ -777,56 +557,35 @@ struct WelcomeView: View {
 struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var store = ProjectStore.shared
-
     @State private var name = ""
     @State private var projectType = "swift"
     @State private var useICloud = true
     @State private var isCreating = false
-
     let projectTypes = ["swift", "python", "node", "generic"]
 
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
                 GlassTextField(placeholder: "Projektnamn", text: $name)
-
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Projekttyp")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
+                    Text("Projekttyp").font(.system(size: 13, weight: .semibold)).foregroundColor(.secondary)
                     Picker("Typ", selection: $projectType) {
-                        ForEach(projectTypes, id: \.self) { type in
-                            Text(type.capitalized).tag(type)
-                        }
+                        ForEach(projectTypes, id: \.self) { Text($0.capitalized).tag($0) }
                     }
                     .pickerStyle(.segmented)
                 }
-
-                Toggle("Spara i iCloud Drive", isOn: $useICloud)
-                    .toggleStyle(.switch)
-
+                Toggle("Spara i iCloud Drive", isOn: $useICloud).toggleStyle(.switch)
                 Spacer()
-
-                GlassButton("Skapa projekt", icon: "plus", isPrimary: true) {
-                    Task { await createProject() }
-                }
-                .disabled(name.isBlank || isCreating)
+                GlassButton("Skapa projekt", icon: "plus", isPrimary: true) { Task { await createProject() } }
+                    .disabled(name.isBlank || isCreating)
             }
             .padding()
             .navigationTitle("Nytt projekt")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Avbryt") { dismiss() }
-                }
-            }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } } }
             #else
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Avbryt") { dismiss() }
-                }
-            }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } } }
             #endif
         }
         .background(Color.chatBackground)
@@ -835,7 +594,6 @@ struct NewProjectView: View {
     private func createProject() async {
         isCreating = true
         defer { isCreating = false }
-
         let baseURL: URL
         if useICloud, let icloudRoot = iCloudSyncEngine.shared.projectsRoot {
             baseURL = icloudRoot
@@ -846,9 +604,7 @@ struct NewProjectView: View {
             baseURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("Navi/Projects")
             #endif
         }
-
         let project = await store.create(name: name, at: baseURL.appendingPathComponent(name))
-
         #if os(macOS)
         if let url = project.resolvedURL {
             try? await FileSystemAgent.shared.createNewProject(
@@ -858,23 +614,18 @@ struct NewProjectView: View {
             )
         }
         #endif
-
         store.activeProject = project
         dismiss()
     }
 }
 
 // MARK: - ProjectVersionsPanel
-// Simple read-only timeline of local version snapshots for the active project.
 
 struct ProjectVersionsPanel: View {
     let project: NaviProject
     @StateObject private var store = VersionStore.shared
     @State private var selectedVersion: ProjectVersion?
-
-    private var versions: [ProjectVersion] {
-        store.versionsForProject(project.id).reversed()
-    }
+    private var versions: [ProjectVersion] { store.versionsForProject(project.id).reversed() }
 
     var body: some View {
         #if os(macOS)
@@ -888,9 +639,7 @@ struct ProjectVersionsPanel: View {
             versionList
                 .navigationTitle("Versioner")
                 .navigationBarTitleDisplayMode(.inline)
-                .navigationDestination(for: ProjectVersion.self) { v in
-                    VersionDetailPane(version: v, project: project)
-                }
+                .navigationDestination(for: ProjectVersion.self) { v in VersionDetailPane(version: v, project: project) }
         }
         .onAppear { Task { await store.loadVersions(for: project) } }
         #endif
@@ -899,45 +648,28 @@ struct ProjectVersionsPanel: View {
     var versionList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 12)).foregroundColor(.secondary)
-                Text("Versionshistorik")
-                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: "clock.arrow.circlepath").font(.system(size: 12)).foregroundColor(.secondary)
+                Text("Versionshistorik").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Text("\(versions.count) snapshots")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary.opacity(0.5))
+                Text("\(versions.count) snapshots").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.5))
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
-
             Divider().opacity(0.1)
-
             if versions.isEmpty {
                 VStack(spacing: 10) {
-                    Image(systemName: "clock.badge.questionmark")
-                        .font(.system(size: 32)).foregroundColor(.secondary.opacity(0.2))
-                    Text("Inga versioner sparade")
-                        .font(.system(size: 13)).foregroundColor(.secondary.opacity(0.4))
-                    Text("Versioner skapas automatiskt av agenten.")
-                        .font(.system(size: 11)).foregroundColor(.secondary.opacity(0.3))
-                        .multilineTextAlignment(.center)
+                    Image(systemName: "clock.badge.questionmark").font(.system(size: 32)).foregroundColor(.secondary.opacity(0.2))
+                    Text("Inga versioner sparade").font(.system(size: 13)).foregroundColor(.secondary.opacity(0.4))
+                    Text("Versioner skapas automatiskt av agenten.").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.3)).multilineTextAlignment(.center)
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(versions) { version in
                             #if os(macOS)
-                            VersionRow(
-                                version: version,
-                                isSelected: selectedVersion?.id == version.id
-                            ) { selectedVersion = version }
+                            VersionRow(version: version, isSelected: selectedVersion?.id == version.id) { selectedVersion = version }
                             #else
-                            NavigationLink(value: version) {
-                                VersionRow(version: version, isSelected: false) {}
-                            }
-                            .buttonStyle(.plain)
+                            NavigationLink(value: version) { VersionRow(version: version, isSelected: false) {} }.buttonStyle(.plain)
                             #endif
                         }
                     }
@@ -948,58 +680,33 @@ struct ProjectVersionsPanel: View {
 
     @ViewBuilder
     var versionDetail: some View {
-        if let v = selectedVersion {
-            VersionDetailPane(version: v, project: project)
-        } else {
+        if let v = selectedVersion { VersionDetailPane(version: v, project: project) }
+        else {
             VStack(spacing: 10) {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 28)).foregroundColor(.secondary.opacity(0.15))
-                Text("Välj en version")
-                    .font(.system(size: 13)).foregroundColor(.secondary.opacity(0.3))
+                Image(systemName: "arrow.left").font(.system(size: 28)).foregroundColor(.secondary.opacity(0.15))
+                Text("Välj en version").font(.system(size: 13)).foregroundColor(.secondary.opacity(0.3))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
 
-// MARK: - VersionRow
-
 struct VersionRow: View {
-    let version: ProjectVersion
-    let isSelected: Bool
-    let onTap: () -> Void
-
+    let version: ProjectVersion; let isSelected: Bool; let onTap: () -> Void
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
-                // Auto vs manual indicator
                 Image(systemName: version.isAutoSnapshot ? "clock" : "bookmark.fill")
                     .font(.system(size: 11))
                     .foregroundColor(version.isAutoSnapshot ? .secondary.opacity(0.4) : .accentNavi)
                     .frame(width: 16)
-
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(version.displayName)
-                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-
+                    Text(version.displayName).font(.system(size: 12, weight: isSelected ? .semibold : .regular)).foregroundColor(.primary).lineLimit(1)
                     HStack(spacing: 5) {
-                        if !version.filesChanged.isEmpty {
-                            Text("\(version.filesChanged.count) filer")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary.opacity(0.5))
-                        }
-                        if !version.author.isEmpty {
-                            Text("·").foregroundColor(.secondary.opacity(0.2))
-                            Text(version.author)
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary.opacity(0.4))
-                                .lineLimit(1)
-                        }
+                        if !version.filesChanged.isEmpty { Text("\(version.filesChanged.count) filer").font(.system(size: 10)).foregroundColor(.secondary.opacity(0.5)) }
+                        if !version.author.isEmpty { Text("·").foregroundColor(.secondary.opacity(0.2)); Text(version.author).font(.system(size: 10)).foregroundColor(.secondary.opacity(0.4)).lineLimit(1) }
                     }
                 }
-
                 Spacer()
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1009,75 +716,44 @@ struct VersionRow: View {
     }
 }
 
-// MARK: - VersionDetailPane
-
 struct VersionDetailPane: View {
-    let version: ProjectVersion
-    let project: NaviProject
+    let version: ProjectVersion; let project: NaviProject
     @StateObject private var store = VersionStore.shared
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Header
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        Image(systemName: version.isAutoSnapshot ? "clock" : "bookmark.fill")
-                            .foregroundColor(version.isAutoSnapshot ? .secondary : .accentNavi)
-                        Text(version.displayName)
-                            .font(.system(size: 15, weight: .semibold))
+                        Image(systemName: version.isAutoSnapshot ? "clock" : "bookmark.fill").foregroundColor(version.isAutoSnapshot ? .secondary : .accentNavi)
+                        Text(version.displayName).font(.system(size: 15, weight: .semibold))
                         Spacer()
                     }
-
-                    if !version.description.isEmpty {
-                        Text(version.description)
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-
+                    if !version.description.isEmpty { Text(version.description).font(.system(size: 13)).foregroundColor(.secondary) }
                     HStack(spacing: 12) {
-                        Label(version.createdAt.formatted(date: .abbreviated, time: .shortened),
-                              systemImage: "calendar")
+                        Label(version.createdAt.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar")
                         Label(version.branch, systemImage: "arrow.triangle.branch")
-                        if !version.author.isEmpty {
-                            Label(version.author, systemImage: "desktopcomputer")
-                        }
+                        if !version.author.isEmpty { Label(version.author, systemImage: "desktopcomputer") }
                     }
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary.opacity(0.6))
+                    .font(.system(size: 11)).foregroundColor(.secondary.opacity(0.6))
                 }
-                .padding(14)
-                .background(Color.white.opacity(0.04))
-                .cornerRadius(10)
+                .padding(14).background(Color.surfaceHover.opacity(0.5)).cornerRadius(10)
 
-                // Changed files
                 if !version.filesChanged.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Ändrade filer (\(version.filesChanged.count))")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.secondary)
-
+                        Text("Ändrade filer (\(version.filesChanged.count))").font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(version.filesChanged.sorted(), id: \.self) { file in
                                 HStack(spacing: 6) {
-                                    Image(systemName: fileIcon(file))
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary.opacity(0.5))
-                                    Text(file)
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundColor(.primary.opacity(0.8))
-                                        .lineLimit(1)
+                                    Image(systemName: fileIcon(file)).font(.system(size: 10)).foregroundColor(.secondary.opacity(0.5))
+                                    Text(file).font(.system(size: 11, design: .monospaced)).foregroundColor(.primary.opacity(0.8)).lineLimit(1)
                                     Spacer()
                                 }
                                 .padding(.vertical, 3)
                             }
                         }
-                        .padding(10)
-                        .background(Color.codeBackground)
-                        .cornerRadius(8)
+                        .padding(10).background(Color.codeBackground).cornerRadius(8)
                     }
                 }
-
                 Spacer()
             }
             .padding(14)
@@ -1096,20 +772,50 @@ struct VersionDetailPane: View {
     }
 }
 
-// MARK: - Previews
+// MARK: - ThinkingOrb — glass breathing orb (replaces sparkle/star)
 
-#Preview("WelcomeView – inga projekt") {
-    WelcomeView(showNewProject: .constant(false))
-}
+struct ThinkingOrb: View {
+    var size: CGFloat = 28
+    var isAnimating: Bool = true
+    @State private var phase: CGFloat = 0
 
-#Preview("WelcomeView – med projekt") {
-    let store = ProjectStore.shared
-    let p1 = NaviProject(name: "Navi v2", rootPath: "/tmp/eon", color: .blue)
-    let p2 = NaviProject(name: "Lunaflix iOS", rootPath: "/tmp/luna", color: .purple)
-    store.projects = [p1, p2]
-    return WelcomeView(showNewProject: .constant(false))
-}
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.accentNavi.opacity(0.15), Color.accentNavi.opacity(0.02)],
+                        center: .center, startRadius: size * 0.1, endRadius: size * 0.6
+                    )
+                )
+                .frame(width: size * 1.4, height: size * 1.4)
+                .scaleEffect(isAnimating ? 1.0 + 0.08 * sin(phase) : 1.0)
 
-#Preview("NewProjectView") {
-    NewProjectView()
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.accentNavi.opacity(0.6),
+                            Color.accentNavi.opacity(0.3),
+                            Color(naviHex: "e8a08a").opacity(0.5)
+                        ],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size, height: size)
+                .overlay(
+                    Circle()
+                        .fill(LinearGradient(colors: [.white.opacity(0.4), .clear], startPoint: .topLeading, endPoint: .center))
+                        .frame(width: size * 0.7, height: size * 0.7)
+                        .offset(x: -size * 0.08, y: -size * 0.08)
+                )
+                .shadow(color: Color.accentNavi.opacity(0.3), radius: size * 0.2)
+        }
+        .onAppear {
+            guard isAnimating else { return }
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                phase = .pi * 2
+            }
+        }
+    }
 }

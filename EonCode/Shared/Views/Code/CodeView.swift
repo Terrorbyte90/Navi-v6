@@ -1,74 +1,91 @@
 import SwiftUI
 
 // MARK: - CodeView
-// Main Code view: pipeline-based project creation with live agent feedback.
+// Code generation with pipeline agent. Model selection now properly syncs.
 
 struct CodeView: View {
     @StateObject private var agent = CodeAgent.shared
+    @StateObject private var settings = SettingsStore.shared
     @State private var inputText = ""
-    @State private var selectedModel: ClaudeModel = .sonnet46
     @State private var showModelPicker = false
     @FocusState private var inputFocused: Bool
 
+    /// The model to use — defaults to the user's chosen default model,
+    /// updated when the user picks a different model in the popover.
+    @State private var selectedModel: ClaudeModel = .sonnet46
+
     var body: some View {
         VStack(spacing: 0) {
-            // Top bar
             topBar
+            Divider().opacity(0.08)
 
-            Divider()
-
-            // Qwen fallback notice
             if agent.usedFallback {
                 fallbackNotice
             }
 
-            // Message area (inline progress card + input bar via safeAreaInset)
             messagesArea
         }
         .background(Color.chatBackground)
-        .onAppear { selectedModel = SettingsStore.shared.defaultModel }
+        .onAppear {
+            // FIX: Use the user's default model instead of hardcoded .sonnet46
+            selectedModel = settings.defaultModel
+        }
     }
 
-    // MARK: - Top bar
+    // MARK: - Top bar — Claude style
 
     private var topBar: some View {
         HStack(spacing: 12) {
             Text("Kod")
                 .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.primary)
 
             Spacer()
 
-            // Model picker
-            Button {
-                showModelPicker = true
+            // Model picker — shows current model, grouped by provider
+            Menu {
+                Section("Anthropic") {
+                    ForEach(ClaudeModel.anthropicModels) { model in
+                        modelButton(model)
+                    }
+                }
+                Section("xAI / Grok") {
+                    ForEach(ClaudeModel.xaiModels) { model in
+                        modelButton(model)
+                    }
+                }
+                Section("OpenRouter") {
+                    ForEach(ClaudeModel.openRouterModels) { model in
+                        modelButton(model)
+                    }
+                }
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Text(selectedModel.displayName)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10))
+                        .font(.system(size: 9))
                 }
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(Color.sidebarBackground))
+                .background(
+                    Capsule().fill(Color.surfaceHover)
+                )
             }
             .buttonStyle(.plain)
-            .popover(isPresented: $showModelPicker) {
-                modelPickerPopover
-            }
 
             // Opus review toggle
             Button {
                 agent.opusReviewEnabled.toggle()
             } label: {
-                Image(systemName: agent.opusReviewEnabled ? "shield.fill" : "shield")
+                Image(systemName: agent.opusReviewEnabled ? "shield.checkmark.fill" : "shield")
                     .font(.system(size: 14))
-                    .foregroundColor(agent.opusReviewEnabled ? .accentNavi : .secondary)
+                    .foregroundColor(agent.opusReviewEnabled ? .accentNavi : .secondary.opacity(0.5))
             }
             .buttonStyle(.plain)
             #if os(macOS)
-            .help(agent.opusReviewEnabled ? "Opus-granskning aktiv — klicka för att stänga av" : "Aktivera Opus-kodgranskning efter bygget")
+            .help(agent.opusReviewEnabled ? "Opus-granskning aktiv" : "Aktivera Opus-kodgranskning")
             #endif
 
             // Stop button
@@ -76,7 +93,7 @@ struct CodeView: View {
                 Button { agent.stop() } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 14))
-                        .foregroundColor(.red)
+                        .foregroundColor(NaviTheme.error)
                 }
                 .buttonStyle(.plain)
             }
@@ -84,7 +101,30 @@ struct CodeView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .frame(minHeight: 44)
-        .animation(.easeInOut(duration: 0.2), value: agent.isRunning)
+        .animation(NaviTheme.Spring.smooth, value: agent.isRunning)
+    }
+
+    @ViewBuilder
+    private func modelButton(_ model: ClaudeModel) -> some View {
+        Button {
+            selectedModel = model
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.displayName)
+                        .font(.system(size: 14, weight: .medium))
+                    Text(model.description)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                if selectedModel == model {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.accentNavi)
+                }
+            }
+        }
     }
 
     // MARK: - Messages area
@@ -103,7 +143,6 @@ struct CodeView: View {
                                 CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
                                     .id("streaming")
                             }
-                            // Inline progress card (shown during active pipeline)
                             if agent.isRunning && agent.phase != .idle && agent.phase != .done {
                                 CodeProgressCard(agent: agent)
                                     .id("progressCard")
@@ -115,8 +154,7 @@ struct CodeView: View {
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
-                        inputBar
-                            .background(Color.chatBackground)
+                        inputBar.background(Color.chatBackground)
                     }
                     .onChange(of: agent.streamingText) { _, _ in
                         proxy.scrollTo("streaming", anchor: .bottom)
@@ -134,8 +172,7 @@ struct CodeView: View {
                 ScrollView { emptyState }
                     .scrollDismissesKeyboard(.interactively)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
-                        inputBar
-                            .background(Color.chatBackground)
+                        inputBar.background(Color.chatBackground)
                     }
             }
         }
@@ -146,22 +183,11 @@ struct CodeView: View {
     private var emptyState: some View {
         VStack(spacing: 20) {
             Spacer()
-            ZStack {
-                Circle()
-                    .fill(Color.accentNavi.opacity(0.10))
-                    .frame(width: 72, height: 72)
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 30, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.accentNavi, .accentNavi.opacity(0.5)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-            }
+            ThinkingOrb(size: 64, isAnimating: false)
+
             VStack(spacing: 8) {
                 Text("Kod")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold))
                 Text("Beskriv ett projekt. Navi bygger det åt dig.")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
@@ -186,13 +212,14 @@ struct CodeView: View {
             Text(text)
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.sidebarBackground)
+                        .fill(Color.surfaceHover.opacity(0.6))
                         .overlay(RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.secondary.opacity(0.15), lineWidth: 1))
+                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
                 )
         }
         .buttonStyle(.plain)
@@ -207,14 +234,14 @@ struct CodeView: View {
             Text("Qwen3-Coder timeout — \(agent.actualModel.displayName) används")
                 .font(.system(size: 12))
         }
-        .foregroundColor(.orange)
+        .foregroundColor(NaviTheme.warning)
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.08))
+        .background(NaviTheme.warningBg)
     }
 
-    // MARK: - Input bar
+    // MARK: - Input bar — Claude style
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 10) {
@@ -230,19 +257,32 @@ struct CodeView: View {
             .focused($inputFocused)
             .onSubmit { sendMessage() }
             .submitLabel(.send)
+            .padding(.vertical, 10)
+            .padding(.leading, 12)
 
             Button { sendMessage() } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(
-                        sendDisabled
-                            ? AnyShapeStyle(Color.secondary.opacity(0.3))
-                            : AnyShapeStyle(Color.accentNavi)
-                    )
+                ZStack {
+                    Circle()
+                        .fill(sendDisabled ? Color.secondary.opacity(0.2) : Color.accentNavi)
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(sendDisabled ? .secondary.opacity(0.5) : .white)
+                }
             }
             .buttonStyle(.plain)
             .disabled(sendDisabled)
+            .padding(.trailing, 8)
         }
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.inputBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                )
+        )
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
@@ -251,59 +291,15 @@ struct CodeView: View {
         inputText.trimmingCharacters(in: .whitespaces).isEmpty || agent.isRunning
     }
 
-    // MARK: - Model picker popover
-
-    private var modelPickerPopover: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Modell")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 6)
-
-            ForEach(ClaudeModel.allCases) { model in
-                Button {
-                    selectedModel = model
-                    showModelPicker = false
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(model.displayName)
-                                .font(.system(size: 14, weight: .medium))
-                            Text(model.description)
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        if selectedModel == model {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.accentNavi)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if model != ClaudeModel.allCases.last {
-                    Divider().padding(.horizontal, 16)
-                }
-            }
-        }
-        .frame(width: 280)
-        .padding(.bottom, 8)
-    }
-
-    // MARK: - Send
+    // MARK: - Send — passes selected model to agent
 
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty, !agent.isRunning else { return }
         inputText = ""
+        dismissKeyboard()
+
         if agent.activeProject == nil {
-            // No active project — use intent detection to decide what to do
             agent.handleMessage(text: text, model: selectedModel)
         } else {
             agent.continueChat(text: text, model: selectedModel)
@@ -332,7 +328,7 @@ struct CodeMessageRow: View {
         HStack {
             Spacer(minLength: 60)
             Text(message.content)
-                .font(.system(size: 15))
+                .font(.system(size: 15.5))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
@@ -344,14 +340,7 @@ struct CodeMessageRow: View {
 
     private var assistantRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentNavi.opacity(0.12))
-                    .frame(width: 28, height: 28)
-                Text("N")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.accentNavi)
-            }
+            ThinkingOrb(size: 24, isAnimating: false)
             MarkdownTextView(text: message.content)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -366,18 +355,12 @@ struct CodeStreamingRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentNavi.opacity(0.12))
-                    .frame(width: 28, height: 28)
-                Image(systemName: phase.icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.accentNavi)
-            }
+            ThinkingOrb(size: 24, isAnimating: true)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(phase.displayName.uppercased())
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.accentNavi.opacity(0.7))
                     .tracking(0.5)
 
                 if text.isEmpty {

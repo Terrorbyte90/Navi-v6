@@ -2,7 +2,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - iOS Sidebar (ChatGPT-style, context-aware history)
+// MARK: - iOS Sidebar (Claude iOS-style, context-aware history)
 
 struct ChatHistorySidebar: View {
     @Binding var showSidebar: Bool
@@ -24,49 +24,42 @@ struct ChatHistorySidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            Divider().opacity(0.1)
+            Divider().opacity(0.08)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     navShortcuts
-                    Divider().opacity(0.08).padding(.vertical, 8)
+                    Divider().opacity(0.06).padding(.vertical, 8)
                     contextualHistory
                 }
                 .padding(.bottom, 16)
             }
 
             Spacer(minLength: 0)
-            Divider().opacity(0.1)
+            Divider().opacity(0.08)
             bottomBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.sidebarBackground)
-        .ignoresSafeArea(edges: .vertical)   // let topBar/bottomBar handle safe area manually
+        .ignoresSafeArea(edges: .vertical)
         .sheet(isPresented: $showSettings) { SettingsView() }
     }
 
-    // MARK: - Top bar (Mockup11 / ChatGPT-style)
+    // MARK: - Top bar
 
     var topBar: some View {
         VStack(spacing: 0) {
-            // App name row + new item
             HStack {
-                HStack(spacing: 7) {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(colors: [Color(red: 0.83, green: 0.64, blue: 0.45), Color(red: 0.70, green: 0.50, blue: 0.30)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 22, height: 22)
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
+                HStack(spacing: 8) {
+                    ThinkingOrb(size: 22, isAnimating: false)
                     Text("Navi")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color.primary)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
                 }
                 Spacer()
-                // New item button — context-aware
-                Button {                    switch selectedTab {
+                // New conversation button
+                Button {
+                    switch selectedTab {
                     case .chat:
                         _ = chatManager.newConversation()
                         showSidebar = false
@@ -74,10 +67,10 @@ struct ChatHistorySidebar: View {
                         break
                     }
                 } label: {
-                    Image(systemName: newItemIcon)
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.secondary)
-                        .frame(width: 36, height: 36)
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .frame(width: 34, height: 34)
                 }
                 .buttonStyle(.plain)
                 .opacity(selectedTab == .chat ? 1 : 0)
@@ -90,14 +83,14 @@ struct ChatHistorySidebar: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13))
-                    .foregroundColor(Color.secondary.opacity(0.6))
+                    .foregroundColor(.secondary.opacity(0.5))
                 TextField("Sök", text: $searchText)
                     .font(.system(size: 14))
-                    .foregroundColor(Color.primary)
+                    .foregroundColor(.primary)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(Color.secondary.opacity(0.6))
+                            .foregroundColor(.secondary.opacity(0.5))
                             .font(.system(size: 13))
                     }
                     .buttonStyle(.plain)
@@ -105,14 +98,10 @@ struct ChatHistorySidebar: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.surfaceHover, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.surfaceHover, in: RoundedRectangle(cornerRadius: 10))
             .padding(.horizontal, 10)
             .padding(.bottom, 8)
         }
-    }
-
-    private var newItemIcon: String {
-        return "square.and.pencil"
     }
 
     // MARK: - Nav shortcuts
@@ -235,12 +224,10 @@ struct ChatHistorySidebar: View {
                 emptyHistoryHint(icon: "bubble.left.and.bubble.right", text: "Inga chattar ännu")
             }
         } else if !searchText.isEmpty {
-            // Flat list when searching
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(filteredChats) { conv in chatRow(conv) }
             }
         } else {
-            // Date-grouped list
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(groupedChats, id: \.0.rawValue) { bucket, convs in
                     sectionHeader(bucket.rawValue)
@@ -252,6 +239,7 @@ struct ChatHistorySidebar: View {
 
     @ViewBuilder
     private func chatRow(_ conv: ChatConversation) -> some View {
+        let isActive = chatManager.activeConversation?.id == conv.id
         Button {
             chatManager.activeConversation = conv
             selectedTab = .chat
@@ -260,8 +248,8 @@ struct ChatHistorySidebar: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(conv.title)
-                        .font(.system(size: 14, weight: chatManager.activeConversation?.id == conv.id ? .semibold : .regular))
-                        .foregroundColor(Color.primary.opacity(chatManager.activeConversation?.id == conv.id ? 1.0 : 0.85))
+                        .font(.system(size: 14, weight: isActive ? .semibold : .regular))
+                        .foregroundColor(.primary.opacity(isActive ? 1.0 : 0.85))
                         .lineLimit(1)
                     HStack(spacing: 4) {
                         Text(conv.updatedAt.relativeString)
@@ -281,14 +269,15 @@ struct ChatHistorySidebar: View {
             .padding(.vertical, 8)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(chatManager.activeConversation?.id == conv.id ? Color.surfaceHover : Color.clear)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isActive ? Color.surfaceHover : Color.clear)
             )
             .overlay(
-                chatManager.activeConversation?.id == conv.id
+                isActive
                     ? Rectangle()
                         .fill(Color.accentNavi)
-                        .frame(width: 2)
+                        .frame(width: 2.5)
+                        .clipShape(RoundedRectangle(cornerRadius: 1.5))
                         .frame(maxHeight: .infinity, alignment: .leading)
                     : nil,
                 alignment: .leading
@@ -308,7 +297,7 @@ struct ChatHistorySidebar: View {
             } label: { Label("Radera", systemImage: "trash") }
         }
     }
-    // MARK: - Browser history
+
     // MARK: - Agents history
 
     @ViewBuilder
@@ -368,10 +357,10 @@ struct ChatHistorySidebar: View {
 
     private func agentHistoryColor(_ agent: AgentDefinition) -> Color {
         switch agent.status {
-        case .running:   return .green
-        case .paused:    return .orange
-        case .completed: return .blue
-        case .failed:    return .red
+        case .running:   return NaviTheme.success
+        case .paused:    return NaviTheme.warning
+        case .completed: return Color(naviHex: "5B8DEF")
+        case .failed:    return NaviTheme.error
         case .idle:      return .secondary
         }
     }
@@ -396,7 +385,7 @@ struct ChatHistorySidebar: View {
                             HStack(spacing: 10) {
                                 Image(systemName: gen.type.icon)
                                     .font(.system(size: 13))
-                                    .foregroundColor(.orange)
+                                    .foregroundColor(NaviTheme.warning)
                                     .frame(width: 18)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(gen.displayTitle)
@@ -405,7 +394,7 @@ struct ChatHistorySidebar: View {
                                         .lineLimit(1)
                                     Text(gen.status.displayName)
                                         .font(.system(size: 11))
-                                        .foregroundColor(.orange)
+                                        .foregroundColor(NaviTheme.warning)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 ProgressView().scaleEffect(0.6)
@@ -508,7 +497,7 @@ struct ChatHistorySidebar: View {
         }
     }
 
-    // MARK: - Artifact history (recent artifacts)
+    // MARK: - Artifact history
 
     var filteredArtifacts: [Artifact] {
         let all = searchText.isEmpty
@@ -557,29 +546,14 @@ struct ChatHistorySidebar: View {
     // MARK: - Shared helpers
 
     @ViewBuilder
-    private func historyRowContent(title: String, subtitle: String, isActive: Bool) -> some View {
-        Text(title)
-            .font(.system(size: 14))
-            .foregroundColor(isActive ? Color.primary : Color.secondary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isActive ? Color.surfaceHover : Color.clear)
-            )
-    }
-
-    @ViewBuilder
     private func emptyHistoryHint(icon: String, text: String) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 22))
-                .foregroundColor(Color.secondary.opacity(0.6).opacity(0.3))
+                .foregroundColor(.secondary.opacity(0.25))
             Text(text)
                 .font(.system(size: 12))
-                .foregroundColor(Color.secondary.opacity(0.6).opacity(0.5))
+                .foregroundColor(.secondary.opacity(0.4))
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
@@ -592,19 +566,19 @@ struct ChatHistorySidebar: View {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 14))
-                    .foregroundColor(isActive ? Color.primary : Color.secondary)
+                    .foregroundColor(isActive ? .accentNavi : .secondary)
                     .frame(width: 20)
                 Text(label)
                     .font(.system(size: 14, weight: isActive ? .semibold : .regular))
-                    .foregroundColor(isActive ? Color.primary : Color.secondary)
+                    .foregroundColor(isActive ? .primary : .secondary)
                 Spacer()
                 if let badge {
                     Text(badge)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(Color.secondary.opacity(0.6))
+                        .foregroundColor(.secondary.opacity(0.6))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 1)
-                        .background(Color.white.opacity(0.07))
+                        .background(Color.primary.opacity(0.06))
                         .cornerRadius(8)
                 }
             }
@@ -612,7 +586,7 @@ struct ChatHistorySidebar: View {
             .padding(.vertical, 8)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .fill(isActive ? Color.surfaceHover : Color.clear)
             )
         }
@@ -623,51 +597,45 @@ struct ChatHistorySidebar: View {
     private func sectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
             .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(Color.secondary.opacity(0.6))
+            .foregroundColor(.secondary.opacity(0.5))
+            .tracking(0.3)
             .padding(.horizontal, 10)
             .padding(.top, 12)
             .padding(.bottom, 3)
     }
 
-    // MARK: - Bottom bar (Mockup11 / ChatGPT-style user row)
+    // MARK: - Bottom bar
 
     var bottomBar: some View {
         VStack(spacing: 0) {
-            Divider().opacity(0.08)
+            Divider().opacity(0.06)
             HStack(spacing: 10) {
-                // Avatar
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(colors: [.purple, .blue], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 28, height: 28)
-                    Text("E")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-                }
+                // ThinkingOrb avatar
+                ThinkingOrb(size: 28, isAnimating: false)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Navi")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Color.primary)
+                        .foregroundColor(.primary)
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(statusBroadcaster.remoteMacIsOnline ? Color.green : Color.secondary.opacity(0.6))
+                            .fill(statusBroadcaster.remoteMacIsOnline ? NaviTheme.success : .secondary.opacity(0.4))
                             .frame(width: 5, height: 5)
                         Text(statusBroadcaster.remoteMacIsOnline
                              ? "Mac ansluten (\(statusBroadcaster.connectionMethod.rawValue))"
                              : "Offline")
                             .font(.system(size: 10))
-                            .foregroundColor(Color.secondary.opacity(0.6))
+                            .foregroundColor(.secondary.opacity(0.5))
                     }
                 }
 
                 Spacer()
 
                 Button { showSettings = true } label: {
-                    Image(systemName: "ellipsis")
+                    Image(systemName: "gearshape")
                         .font(.system(size: 14))
-                        .foregroundColor(Color.secondary.opacity(0.6))
-                        .frame(width: 36, height: 36)
+                        .foregroundColor(.secondary.opacity(0.5))
+                        .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -678,7 +646,6 @@ struct ChatHistorySidebar: View {
         }
     }
 
-    // MARK: - Open project from URL
     // MARK: - Safe area helpers
 
     private var topSafeArea: CGFloat {
