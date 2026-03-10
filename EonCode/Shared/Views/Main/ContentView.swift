@@ -222,8 +222,8 @@ struct ContentView: View {
         case .code:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text("Code")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
@@ -232,8 +232,8 @@ struct ContentView: View {
         case .artifacts:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text("Artefakter")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
@@ -242,8 +242,8 @@ struct ContentView: View {
         case .github:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text("GitHub")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
@@ -252,8 +252,8 @@ struct ContentView: View {
         case .agents:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text("Agenter")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
@@ -262,8 +262,8 @@ struct ContentView: View {
         case .media:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text("Media")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
@@ -272,8 +272,8 @@ struct ContentView: View {
         case .profile:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text("Profil")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
@@ -282,8 +282,8 @@ struct ContentView: View {
         case .voice:
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text("Röst")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
@@ -443,14 +443,14 @@ private struct ChatNavTitle: View {
         } label: {
             HStack(spacing: 5) {
                 Text("Navi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.primary)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.accentNavi)
                 Text(chatMgr.activeConversation?.model.displayName ?? "Claude")
                     .font(.system(size: 15))
                     .foregroundColor(Color.secondary)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color.secondary.opacity(0.6))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color.accentNavi.opacity(0.75))
             }
             .contentShape(Rectangle())
         }

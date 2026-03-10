@@ -247,14 +247,14 @@ struct PureChatView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text("Navi")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Color.primary)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundColor(Color.accentNavi)
                         Text(conv.model.displayName)
                             .font(.system(size: 14))
                             .foregroundColor(Color.secondary)
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Color.secondary.opacity(0.6))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color.accentNavi.opacity(0.75))
                     }
                     .padding(.horizontal, 4)
                 }
@@ -262,8 +262,8 @@ struct PureChatView: View {
             } else {
                 HStack(spacing: 5) {
                     Text("Navi")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.primary)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.accentNavi)
                     Text("Chatt")
                         .font(.system(size: 14))
                         .foregroundColor(Color.secondary)
@@ -401,9 +401,9 @@ struct PureChatBubble: View {
                         .font(.system(size: 15.5))
                         .foregroundColor(textPrimary)
                         .lineSpacing(4)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 18).fill(userBubbleColor))
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 11)
+                        .background(RoundedRectangle(cornerRadius: 20).fill(userBubbleColor))
                         .textSelection(.enabled)
                 }
             }
@@ -833,10 +833,10 @@ private struct PureChatInputBar: View {
                     Button(action: onSend) {
                         ZStack {
                             Circle()
-                                .fill(Color.primary)
+                                .fill(Color.accentNavi)
                                 .frame(width: 30, height: 30)
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.chatBackground)
+                                .fill(Color.white)
                                 .frame(width: 10, height: 10)
                         }
                     }
@@ -845,11 +845,11 @@ private struct PureChatInputBar: View {
                     Button { showVoiceMode = true } label: {
                         ZStack {
                             Circle()
-                                .fill(Color.secondary.opacity(0.15))
+                                .fill(Color.accentNavi.opacity(0.12))
                                 .frame(width: 30, height: 30)
                             Image(systemName: "waveform")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color.secondary.opacity(0.7))
+                                .foregroundColor(Color.accentNavi.opacity(0.7))
                         }
                     }
                     .buttonStyle(.plain)
@@ -857,11 +857,11 @@ private struct PureChatInputBar: View {
                     Button(action: onSend) {
                         ZStack {
                             Circle()
-                                .fill(Color.primary)
+                                .fill(Color.accentNavi)
                                 .frame(width: 30, height: 30)
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Color.chatBackground)
+                                .foregroundColor(.white)
                         }
                     }
                     .buttonStyle(.plain)
@@ -871,10 +871,14 @@ private struct PureChatInputBar: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 22)
+                    #if os(iOS)
+                    .fill(.regularMaterial)
+                    #else
                     .fill(Color.userBubble)
+                    #endif
                     .overlay(
                         RoundedRectangle(cornerRadius: 22)
-                            .strokeBorder(Color.inputBorder, lineWidth: 0.5)
+                            .strokeBorder(Color.accentNavi.opacity(0.18), lineWidth: 0.75)
                     )
             )
 

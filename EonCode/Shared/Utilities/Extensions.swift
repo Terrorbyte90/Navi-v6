@@ -143,11 +143,8 @@ extension View {
 // MARK: - Color (system-adaptive, follows system light/dark mode)
 extension Color {
     static var codeBackground: Color {
-        #if os(macOS)
-        Color(NSColor.textBackgroundColor)
-        #else
-        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.10, alpha: 1) : UIColor(white: 0.95, alpha: 1) })
-        #endif
+        // Always dark regardless of app theme — Claude/VS Code style code blocks
+        Color(red: 0.11, green: 0.11, blue: 0.12)
     }
     static var chatBackground: Color {
         #if os(macOS)
@@ -170,16 +167,17 @@ extension Color {
         })
         #endif
     }
-    static var accentNavi: Color { Color(red: 0.3, green: 0.6, blue: 1.0) }
+    // Deep purple — Claude-inspired primary accent (#7C5CBF)
+    static var accentNavi: Color { Color(red: 0.486, green: 0.361, blue: 0.749) }
     static var assistantBubble: Color { Color.clear }
     static var userBubble: Color {
         #if os(macOS)
         Color(NSColor.controlColor)
         #else
-        // Lighter gray in light mode for cleaner Claude look
+        // Subtle purple-tinted gray — adds brand personality while staying readable
         Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(white: 0.20, alpha: 1)
-            : UIColor(white: 0.94, alpha: 1)
+            ? UIColor(red: 0.21, green: 0.195, blue: 0.235, alpha: 1)   // dark purple-tinted
+            : UIColor(red: 0.925, green: 0.915, blue: 0.955, alpha: 1)  // light lavender-gray
         })
         #endif
     }
