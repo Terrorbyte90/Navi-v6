@@ -31,7 +31,7 @@ struct ChatView: View {
                         }
 
                         if agent.isRunning && !agent.streamingText.isEmpty {
-                            StreamingBubble(
+                            AgentStreamingBubble(
                                 text: agent.streamingText,
                                 statusMessage: agent.currentStatus,
                                 activeFiles: agent.activeFileNames,
@@ -592,7 +592,7 @@ final class StreamingBuffer: ObservableObject {
 
 // MARK: - Streaming bubble (smooth, markdown-aware)
 
-struct StreamingBubble: View {
+struct AgentStreamingBubble: View {
     let text: String
     var statusMessage: String = ""
     var activeFiles: [String] = []
@@ -975,9 +975,9 @@ struct AgentTodoCard: View {
     }
 }
 
-// MARK: - Typing indicator
+// MARK: - Typing indicator (agent)
 
-struct TypingIndicator: View {
+struct AgentTypingIndicator: View {
     @State private var animating = false
 
     var body: some View {
