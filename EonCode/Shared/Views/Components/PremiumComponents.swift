@@ -81,16 +81,16 @@ struct PremiumCard<Content: View>: View {
             .padding(padding)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(hasGradient ?
-                        LinearGradient(
+                    .fill(hasGradient
+                        ? AnyShapeStyle(LinearGradient(
                             colors: [
                                 Color.primary.opacity(0.05),
                                 Color.primary.opacity(0.02)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
-                        ) :
-                        Color.primary.opacity(0.04))
+                          ))
+                        : AnyShapeStyle(Color.primary.opacity(0.04)))
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius)
                             .strokeBorder(
@@ -158,28 +158,28 @@ struct PremiumButton: View {
         }
     }
 
-    private var backgroundGradient: some ShapeStyle {
+    private var backgroundGradient: AnyShapeStyle {
         switch style {
         case .primary:
-            return LinearGradient(
+            return AnyShapeStyle(LinearGradient(
                 colors: [Color.accentNavi, Color(naviHex: "c85a3a")],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            )
+            ))
         case .secondary:
-            return LinearGradient(
+            return AnyShapeStyle(LinearGradient(
                 colors: [Color.primary.opacity(0.1), Color.primary.opacity(0.05)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            )
+            ))
         case .ghost:
-            return Color.clear
+            return AnyShapeStyle(Color.clear)
         case .destructive:
-            return LinearGradient(
+            return AnyShapeStyle(LinearGradient(
                 colors: [NaviTheme.error.opacity(0.8), NaviTheme.error.opacity(0.6)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            )
+            ))
         }
     }
 
@@ -235,16 +235,16 @@ struct FloatingActionButton: View {
         .buttonStyle(.plain)
     }
 
-    private var backgroundGradient: some ShapeStyle {
+    private var backgroundGradient: AnyShapeStyle {
         switch style {
         case .primary:
-            return LinearGradient(
+            return AnyShapeStyle(LinearGradient(
                 colors: [Color.accentNavi, Color(naviHex: "c85a3a")],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            )
+            ))
         default:
-            return Color.primary.opacity(0.08)
+            return AnyShapeStyle(Color.primary.opacity(0.08))
         }
     }
 
@@ -302,13 +302,13 @@ struct ModernTextField: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .strokeBorder(
-                            isFocused ?
-                            LinearGradient(
+                            isFocused
+                            ? AnyShapeStyle(LinearGradient(
                                 colors: [Color.accentNavi, Color(naviHex: "c85a3a")],
                                 startPoint: .leading,
                                 endPoint: .trailing
-                            ) :
-                            Color.primary.opacity(0.08),
+                              ))
+                            : AnyShapeStyle(Color.primary.opacity(0.08)),
                             lineWidth: isFocused ? 1.5 : 0.5
                         )
                 )
@@ -545,13 +545,13 @@ struct AnimatedIconButton: View {
         }) {
             ZStack {
                 Circle()
-                    .fill(style == .primary ?
-                          LinearGradient(
-                            colors: [Color.accentNavi, Color(naviHex: "c85a3a")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                          ) :
-                          Color.primary.opacity(isHovered ? 0.08 : 0.04))
+                    .fill(style == .primary
+                          ? AnyShapeStyle(LinearGradient(
+                              colors: [Color.accentNavi, Color(naviHex: "c85a3a")],
+                              startPoint: .topLeading,
+                              endPoint: .bottomTrailing
+                            ))
+                          : AnyShapeStyle(Color.primary.opacity(isHovered ? 0.08 : 0.04)))
                     .frame(width: size, height: size)
 
                 Image(systemName: icon)
@@ -656,9 +656,9 @@ struct SkeletonLoader: View {
 #Preview("Premium Buttons") {
     VStack(spacing: 16) {
         PremiumButton(title: "Kom igång", icon: "arrow.right", action: {})
-        PremiumButton(title: "Läs mer", icon: "book", style: .secondary, action: {})
-        PremiumButton(title: "Avbryt", style: .ghost, action: {})
-        PremiumButton(title: "Ta bort", icon: "trash", style: .destructive, action: {})
+        PremiumButton(title: "Läs mer", icon: "book", action: {}, style: .secondary)
+        PremiumButton(title: "Avbryt", icon: nil, action: {}, style: .ghost)
+        PremiumButton(title: "Ta bort", icon: "trash", action: {}, style: .destructive)
     }
     .padding()
 }
