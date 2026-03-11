@@ -37,6 +37,7 @@ struct BrainAskResponse: Decodable {
     let model: String?
     let cost: Double?
     let sessionId: String?
+    let toolCalls: [String]?
 }
 
 struct BrainCostsResponse: Decodable {
@@ -91,16 +92,19 @@ struct BrainMessage: Identifiable {
     let tokens: Int?
     let cost: Double?
     let timestamp: Date
+    /// Tool calls executed by the model before producing this response
+    let toolCalls: [String]?
 
     enum BrainRole { case user, assistant }
 
     init(role: BrainRole, content: String, model: String? = nil,
-         tokens: Int? = nil, cost: Double? = nil) {
+         tokens: Int? = nil, cost: Double? = nil, toolCalls: [String]? = nil) {
         self.role      = role
         self.content   = content
         self.model     = model
         self.tokens    = tokens
         self.cost      = cost
+        self.toolCalls = toolCalls
         self.timestamp = Date()
     }
 }
@@ -279,7 +283,8 @@ final class NaviBrainService: ObservableObject {
         do {
             let r = try await postAsk(prompt: prompt, endpoint: "/ask")
             minimaxMessages.append(BrainMessage(role: .assistant, content: r.response,
-                                                model: r.model, tokens: r.tokens))
+                                                model: r.model, tokens: r.tokens,
+                                                toolCalls: r.toolCalls))
         } catch {
             minimaxMessages.append(BrainMessage(role: .assistant,
                                                 content: "Fel: \(error.localizedDescription)"))
@@ -302,7 +307,8 @@ final class NaviBrainService: ObservableObject {
         do {
             let r = try await postAsk(prompt: prompt, endpoint: "/qwen/ask")
             qwenMessages.append(BrainMessage(role: .assistant, content: r.response,
-                                             model: r.model, tokens: r.tokens))
+                                             model: r.model, tokens: r.tokens,
+                                             toolCalls: r.toolCalls))
         } catch {
             qwenMessages.append(BrainMessage(role: .assistant,
                                              content: "Fel: \(error.localizedDescription)"))
@@ -326,7 +332,8 @@ final class NaviBrainService: ObservableObject {
             let r = try await postAsk(prompt: prompt, endpoint: "/opus/ask",
                                       extraHeaders: ["x-anthropic-key": anthropicKey])
             opusMessages.append(BrainMessage(role: .assistant, content: r.response,
-                                             model: r.model, tokens: r.tokens, cost: r.cost))
+                                             model: r.model, tokens: r.tokens, cost: r.cost,
+                                             toolCalls: r.toolCalls))
             // Update running cost
             if let c = r.cost { opusCostUSD += c }
         } catch {

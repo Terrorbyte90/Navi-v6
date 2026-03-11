@@ -214,11 +214,11 @@ final class XAIClient: ObservableObject {
         return (content, usage)
     }
 
-    // MARK: - Image Generation (Aurora)
+    // MARK: - Image Generation (grok-2-aurora)
 
     func generateImage(
         prompt: String,
-        model: String = "aurora",
+        model: String = "grok-2-aurora",
         size: String = "1024x1024",   // kept for API compat but not sent to xAI
         n: Int = 1
     ) async throws -> [XAIImageResult] {

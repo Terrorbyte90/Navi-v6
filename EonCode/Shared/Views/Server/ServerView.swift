@@ -377,6 +377,7 @@ private struct CopyableInfoRow: View {
 struct TerminalView: View {
     @StateObject private var brain = NaviBrainService.shared
     @State private var inputText  = ""
+    @State private var didAutoStart = false
     @FocusState private var focused: Bool
 
     private let quickCommands = [
@@ -422,6 +423,16 @@ struct TerminalView: View {
                 .onChange(of: brain.isTerminalSending) { sending in
                     if sending {
                         withAnimation { proxy.scrollTo("cursor", anchor: .bottom) }
+                    }
+                }
+                .onAppear {
+                    // Auto-run pm2 status on first open so terminal is never empty
+                    guard !didAutoStart, brain.terminalLines.isEmpty else { return }
+                    didAutoStart = true
+                    Task {
+                        await brain.execCommand(
+                            "echo '=== Navi Brain Terminal ===' && echo 'Server: 209.38.98.107:3001' && echo '' && /root/.bun/bin/bun x pm2 status 2>/dev/null"
+                        )
                     }
                 }
             }
@@ -769,7 +780,12 @@ struct BrainChatView: View {
                 }
                 .padding(.top, 2)
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 6) {
+                    // Tool call strip (shown if model executed tools)
+                    if let tools = msg.toolCalls, !tools.isEmpty {
+                        toolCallStrip(tools: tools)
+                    }
+
                     Text(msg.content)
                         .font(NaviTheme.body(15))
                         .foregroundColor(.primary)
@@ -804,6 +820,53 @@ struct BrainChatView: View {
         }
     }
 
+    /// Visual strip showing which tools the model executed
+    @ViewBuilder
+    func toolCallStrip(tools: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(accentColor.opacity(0.7))
+                Text("\(tools.count) verktyg kördes")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(accentColor.opacity(0.7))
+            }
+            ForEach(tools.prefix(4), id: \.self) { tool in
+                HStack(spacing: 5) {
+                    Image(systemName: toolIcon(tool))
+                        .font(.system(size: 8))
+                        .foregroundColor(accentColor.opacity(0.5))
+                    Text(tool)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(accentColor.opacity(0.65))
+                        .lineLimit(1)
+                }
+            }
+            if tools.count > 4 {
+                Text("+ \(tools.count - 4) till…")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary.opacity(0.4))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(accentColor.opacity(0.07))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(accentColor.opacity(0.15), lineWidth: 1)
+        )
+        .cornerRadius(8)
+    }
+
+    private func toolIcon(_ tool: String) -> String {
+        if tool.hasPrefix("bash") || tool.hasPrefix("run_command") { return "terminal" }
+        if tool.hasPrefix("read_file")  { return "doc.text" }
+        if tool.hasPrefix("write_file") { return "square.and.pencil" }
+        if tool.hasPrefix("list_files") { return "folder" }
+        return "wrench"
+    }
+
     func userBubble(_ msg: BrainMessage) -> some View {
         Text(msg.content)
             .font(NaviTheme.body(15))
@@ -818,7 +881,7 @@ struct BrainChatView: View {
     // MARK: - Thinking indicator
 
     var thinkingIndicator: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             // Animated dots
             HStack(spacing: 5) {
                 ForEach(0..<3, id: \.self) { i in
@@ -834,11 +897,24 @@ struct BrainChatView: View {
                         )
                 }
             }
+            // Rotating tool indicator
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 10))
+                .foregroundColor(accentColor.opacity(0.4))
+                .rotationEffect(.degrees(isSending ? 360 : 0))
+                .animation(
+                    .linear(duration: 2.0).repeatForever(autoreverses: false),
+                    value: isSending
+                )
             // Activity label
-            Text(mode == .opus ? "Opus tänker…" : mode == .minimax ? "Minimax jobbar…" : "Qwen jobbar…")
+            Text(mode == .opus ? "Opus arbetar…" : mode == .minimax ? "Minimax arbetar…" : "Qwen arbetar…")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary.opacity(0.4))
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(accentColor.opacity(0.06))
+        .cornerRadius(10)
     }
 
     // MARK: - Input bar

@@ -46,7 +46,7 @@ final class MediaGenerationManager: ObservableObject {
 
     func generateImage(
         prompt: String,
-        model: String = "aurora",
+        model: String = "grok-2-aurora",
         size: String = "1024x1024",
         variations: Int = 1
     ) async {

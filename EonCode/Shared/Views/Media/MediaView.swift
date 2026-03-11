@@ -820,7 +820,7 @@ struct MediaView: View {
         guard canGenerate, !trimmed.isEmpty else { return }
 
         // Capture parameters before clearing state
-        let model = "aurora"
+        let model = "grok-2-aurora"
         let capturedImageData = referenceImageData
         let capturedMode = selectedMode
         let capturedVariations = imageVariations
