@@ -143,13 +143,12 @@ struct GitHubView: View {
                     .font(.system(size: 12)).foregroundColor(.secondary)
             }
             .buttonStyle(.plain).help("Uppdatera repos")
-            
-            // Automatisk synk aktiverad - ingen manuell knapp behövs
-            // Button { Task { await gh.syncAllReposToiCloud() } } label: {
-            //     Image(systemName: "icloud.and.arrow.down")
-            //         .font(.system(size: 12)).foregroundColor(.accentNavi)
-            // }
-            // .buttonStyle(.plain).help("Synka ALLA repos till iCloud")
+
+            Button { Task { await gh.syncAllReposToiCloud() } } label: {
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.system(size: 12)).foregroundColor(.accentNavi)
+            }
+            .buttonStyle(.plain).help("Synka ALLA repos till iCloud")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
@@ -199,6 +198,12 @@ struct GitHubView: View {
                 }
             }
             Spacer()
+            Button { Task { await gh.syncAllReposToiCloud() } } label: {
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.system(size: 16)).foregroundColor(.accentNavi)
+            }
+            .buttonStyle(.plain)
+
             Button { Task { await gh.fetchRepos() } } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 16)).foregroundColor(.secondary)

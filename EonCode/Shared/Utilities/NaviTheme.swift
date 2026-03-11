@@ -173,10 +173,12 @@ enum NaviTheme {
     static let cornerRadiusMedium: CGFloat = 12
     static let cornerRadiusLarge:  CGFloat = 18
 
-    // MARK: - Typography — Claude iOS: clean system fonts
+    // MARK: - Typography — polished serif body + clean system headings
+    // Body text uses .serif (New York) for a warm, readable feel.
+    // Headings use system .rounded for contrast.
 
     static func body(_ size: CGFloat = 15.5) -> Font {
-        .system(size: size, weight: .regular)
+        .system(size: size, weight: .regular, design: .serif)
     }
     static func bodyRounded(_ size: CGFloat = 15) -> Font {
         .system(size: size, weight: .regular, design: .rounded)
@@ -191,10 +193,19 @@ enum NaviTheme {
         .system(size: size, weight: weight, design: .monospaced)
     }
     static func heading(_ size: CGFloat = 17, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight)
+        .system(size: size, weight: weight, design: .rounded)
     }
     static func display(_ size: CGFloat = 28, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight)
+        .system(size: size, weight: weight, design: .rounded)
+    }
+
+    /// Primary body font for chat messages — warm, readable serif
+    static func bodyFont(size: CGFloat = 16) -> Font {
+        .system(size: size, weight: .regular, design: .serif)
+    }
+    /// Heading font — clean rounded system
+    static func headingFont(size: CGFloat = 17, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
     }
 
     // MARK: - Spring Animations

@@ -44,12 +44,39 @@ final class XAIClient: ObservableObject {
         }
         for msg in messages {
             let role = msg.role == .user ? "user" : "assistant"
-            // Extract text from content blocks
-            let text = msg.content.compactMap { block -> String? in
-                if case .text(let t) = block { return t }
-                return nil
-            }.joined()
-            apiMessages.append(["role": role, "content": text])
+
+            // Check for image content (multimodal)
+            let hasImages = msg.content.contains { block in
+                if case .image = block { return true }
+                return false
+            }
+
+            if hasImages && role == "user" {
+                var parts: [[String: Any]] = []
+                for block in msg.content {
+                    switch block {
+                    case .text(let t):
+                        if !t.isEmpty { parts.append(["type": "text", "text": t]) }
+                    case .image(let data, let mimeType):
+                        let b64 = data.base64EncodedString()
+                        parts.append([
+                            "type": "image_url",
+                            "image_url": ["url": "data:\(mimeType);base64,\(b64)"]
+                        ])
+                    default:
+                        break
+                    }
+                }
+                if !parts.isEmpty {
+                    apiMessages.append(["role": role, "content": parts])
+                }
+            } else {
+                let text = msg.content.compactMap { block -> String? in
+                    if case .text(let t) = block { return t }
+                    return nil
+                }.joined()
+                apiMessages.append(["role": role, "content": text])
+            }
         }
 
         let body: [String: Any] = [

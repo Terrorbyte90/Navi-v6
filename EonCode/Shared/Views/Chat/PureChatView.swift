@@ -435,7 +435,7 @@ struct PureChatBubble: View, Equatable {
                         imageRow(imgs)
                     }
                     Text(message.content)
-                        .font(.system(size: 17, weight: .regular, design: .rounded))
+                        .font(NaviTheme.bodyFont(size: 17))
                         .foregroundColor(.primary)
                         .lineSpacing(5)
                         .padding(.horizontal, 14)
@@ -722,11 +722,11 @@ struct MarkdownTextView: View, Equatable {
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) {
             Text(attributed)
-                .font(.system(size: 17, weight: .regular, design: .rounded))
+                .font(NaviTheme.bodyFont(size: 17))
                 .lineSpacing(6)
         } else {
             Text(raw)
-                .font(.system(size: 17, weight: .regular, design: .rounded))
+                .font(NaviTheme.bodyFont(size: 17))
                 .lineSpacing(6)
         }
     }

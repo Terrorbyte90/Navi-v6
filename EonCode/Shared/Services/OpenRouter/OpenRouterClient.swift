@@ -43,12 +43,42 @@ final class OpenRouterClient: ObservableObject {
 
         for msg in messages {
             let role = msg.role == .user ? "user" : "assistant"
-            let text = msg.content.compactMap { block -> String? in
-                if case .text(let t) = block { return t }
-                return nil
-            }.joined()
-            guard !text.isEmpty else { continue }
-            apiMessages.append(["role": role, "content": text])
+
+            // Check if message has image content (multimodal)
+            let hasImages = msg.content.contains { block in
+                if case .image = block { return true }
+                return false
+            }
+
+            if hasImages && role == "user" {
+                // Build OpenAI-compatible multimodal content array
+                var parts: [[String: Any]] = []
+                for block in msg.content {
+                    switch block {
+                    case .text(let t):
+                        if !t.isEmpty {
+                            parts.append(["type": "text", "text": t])
+                        }
+                    case .image(let data, let mimeType):
+                        let b64 = data.base64EncodedString()
+                        parts.append([
+                            "type": "image_url",
+                            "image_url": ["url": "data:\(mimeType);base64,\(b64)"]
+                        ])
+                    default:
+                        break
+                    }
+                }
+                guard !parts.isEmpty else { continue }
+                apiMessages.append(["role": role, "content": parts])
+            } else {
+                let text = msg.content.compactMap { block -> String? in
+                    if case .text(let t) = block { return t }
+                    return nil
+                }.joined()
+                guard !text.isEmpty else { continue }
+                apiMessages.append(["role": role, "content": text])
+            }
         }
 
         return apiMessages

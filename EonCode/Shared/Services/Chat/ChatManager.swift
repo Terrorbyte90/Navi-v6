@@ -100,7 +100,27 @@ final class ChatManager: ObservableObject {
 
         // Build system prompt with memories + active project context
         let memoryCtx = MemoryManager.shared.memoryContext()
-        var systemPrompt = "Du är Navi — en kunnig AI-assistent specialiserad på kodning, design och teknik. Var koncis och professionell. Gå rakt på sak — skriv korta, tydliga svar. Tänk högt kort vid komplexa frågor.\(memoryCtx)"
+        var systemPrompt = """
+        Du är Navi — en expert AI-assistent specialiserad på kodning, design och teknik.
+
+        ## Svarsstil
+        - Skriv **levande, strukturerade** svar med tydlig hierarki
+        - Använd **fetstil** för nyckelbegrepp och viktiga insikter
+        - Bryt upp längre svar med rubriker (## och ###)
+        - Använd punktlistor och numrerade listor för tydlighet
+        - Inkludera kodblock med korrekt språkmarkering (```swift, ```python, etc.)
+        - Var professionell men varm — inte torra faktasvar
+        - Vid kodningsfrågor: ge komplett, fungerande kod — inga placeholders
+        - Svara ALLTID på frågan direkt — ingen onödig inledning
+
+        ## Verktyg
+        - Du har GitHub-verktyg: github_list_repos, github_get_repo, github_list_branches, github_list_commits, github_list_pull_requests, github_create_pull_request, github_get_file_content, github_search_repos, github_get_user
+        - Använd ALLTID dessa verktyg för GitHub-frågor istället för att gissa
+        - Vänta alltid på verktygsresultat innan du svarar — hoppa aldrig över dem
+
+        ## Minnen
+        \(memoryCtx)
+        """
 
         // Inject active project context so the chat knows about cloned repos
         if let project = ProjectStore.shared.activeProject {
@@ -164,8 +184,7 @@ final class ChatManager: ObservableObject {
 
         var fullText = ""
         var finalUsage: TokenUsage?
-        // Throttle UI updates: only publish streamingText every ~60ms (~16fps)
-        // to avoid re-rendering the entire chat view on every token
+        // Smooth streaming: publish every ~30ms (~33fps) for fluid text appearance
         var lastPublish = Date.distantPast
         var charsSinceScroll = 0
 
@@ -198,9 +217,9 @@ final class ChatManager: ObservableObject {
                     charsSinceScroll += chunk.count
                     onToken(chunk)
                     let now = Date()
-                    if now.timeIntervalSince(lastPublish) >= 0.06 {
+                    if now.timeIntervalSince(lastPublish) >= 0.03 {
                         self.streamingText = fullText
-                        if charsSinceScroll >= 80 {
+                        if charsSinceScroll >= 40 {
                             self.streamingScrollTick += 1
                             charsSinceScroll = 0
                         }
@@ -210,15 +229,16 @@ final class ChatManager: ObservableObject {
                     currentToolJSON += json
                 }
             case .contentBlockStop(_):
-                if blockType == "tool_use" {
-                    // Parse the tool call
-                    if let data = currentToolJSON.data(using: .utf8),
+                if blockType == "tool_use" && !currentToolName.isEmpty {
+                    // Parse the accumulated tool input JSON
+                    var inputCodable: [String: AnyCodable] = [:]
+                    if !currentToolJSON.isEmpty,
+                       let data = currentToolJSON.data(using: .utf8),
                        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        let name = json["name"] as? String ?? currentToolName
-                        let input = json["input"] as? [String: Any] ?? [:]
-                        let inputCodable = input.mapValues { AnyCodable($0) }
-                        toolCalls.append((id: currentToolID, name: name, input: inputCodable))
+                        inputCodable = json.mapValues { AnyCodable($0) }
                     }
+                    toolCalls.append((id: currentToolID, name: currentToolName, input: inputCodable))
+                    NaviLog.info("Chat: parsed tool call \(currentToolName) with \(inputCodable.count) params")
                 }
                 blockType = ""
                 currentToolID = ""
@@ -269,20 +289,24 @@ final class ChatManager: ObservableObject {
                 fullText += "\n\n🔧 **\(tc.name)**:\n\(result)"
             }
             
-            // Add tool results to messages and continue conversation
-            conversation.messages.append(PureChatMessage(
-                role: .user,
-                content: toolResults.map { tc in
-                    if case .toolResult(let id, let content, let error) = tc {
-                        return "🔧 \(id): \(content)"
-                    }
-                    return ""
-                }.joined(separator: "\n\n"),
-                costSEK: 0,
-                model: conversation.model,
-                tokenUsage: nil,
-                memoriesInContext: []
-            ))
+            // Add tool results summary to conversation for UI display
+            let toolSummary = toolResults.compactMap { tc -> String? in
+                if case .toolResult(_, let content, _) = tc {
+                    return content.prefix(300).description
+                }
+                return nil
+            }.joined(separator: "\n\n")
+
+            if !toolSummary.isEmpty {
+                conversation.messages.append(PureChatMessage(
+                    role: .assistant,
+                    content: "🔧 **GitHub-resultat:**\n\n\(toolSummary)",
+                    costSEK: 0,
+                    model: conversation.model,
+                    tokenUsage: nil,
+                    memoriesInContext: []
+                ))
+            }
             
             // Continue with tool results for final response
             let secondPassMessages = apiMessages + [
@@ -304,7 +328,7 @@ final class ChatManager: ObservableObject {
                         charsSinceScroll2 += chunk.count
                         onToken(chunk)
                         let now = Date()
-                        if now.timeIntervalSince(lastSecondPublish) >= 0.06 {
+                        if now.timeIntervalSince(lastSecondPublish) >= 0.03 {
                             self.streamingText = fullText
                             lastSecondPublish = now
                         }

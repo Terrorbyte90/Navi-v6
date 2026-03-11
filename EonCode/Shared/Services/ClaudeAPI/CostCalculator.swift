@@ -56,7 +56,7 @@ enum ResponseCleaner {
         "search_quality_reflection", "search_quality_score",
     ]
 
-    /// Strips raw function_calls XML, invoke blocks, thinking blocks, and other internal artifacts from response text.
+    /// Strips raw function_calls XML, invoke blocks, thinking blocks, system echoes, and other internal artifacts from response text.
     static func clean(_ text: String) -> String {
         var result = text
 
@@ -75,12 +75,44 @@ enum ResponseCleaner {
             result = regex.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
         }
 
+        // Strip system prompt echoes from MiniMax/OpenRouter models
+        // These models sometimes repeat the system prompt at the start of the response
+        result = stripSystemEchoes(result)
+
         // Clean up excessive blank lines left after removal
         while result.contains("\n\n\n") {
             result = result.replacingOccurrences(of: "\n\n\n", with: "\n\n")
         }
 
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Strip system prompt echoes that MiniMax and other OpenRouter models sometimes include
+    private static func stripSystemEchoes(_ text: String) -> String {
+        var result = text
+
+        // Common patterns where models echo back system instructions
+        let systemEchoPatterns = [
+            // Models echoing "Du är Navi" system prompt
+            "^\\s*(?:System:|\\[System\\]|<system>).*?(?:\n\n|\n(?=[A-ZÅÄÖ]))",
+            // Models echoing role assignments
+            "^\\s*(?:As an AI assistant|I am Navi|Jag är Navi —).*?(?:\n\n)",
+            // Navi Code system prompt echo
+            "^\\s*Du är Navi Code — senior arkitekt.*?(?:\\n\\n|$)",
+            // Models echoing ## Identitet, ## Modellregler etc.
+            "^\\s*## (?:Identitet|Modellregler|Ditt arbetsflöde|Kodkvalitet|Projektkontext|Vad du ALDRIG).*?(?=\\n## |\\n\\n[^#]|$)",
+        ]
+
+        for pattern in systemEchoPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) {
+                let range = NSRange(result.startIndex..., in: result)
+                // Only strip from the beginning (first 500 chars) to avoid removing legitimate content
+                let limitedRange = NSRange(location: 0, length: min(500, range.length))
+                result = regex.stringByReplacingMatches(in: result, range: limitedRange, withTemplate: "")
+            }
+        }
+
+        return result
     }
 
     private static func removeXMLBlocks(from text: String, tag: String) -> String {

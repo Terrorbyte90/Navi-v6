@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import PhotosUI
+#endif
 
 // MARK: - CodeView
 // Code generation with pipeline agent. Model selection now properly syncs.
@@ -8,10 +11,14 @@ struct CodeView: View {
     @StateObject private var settings = SettingsStore.shared
     @State private var inputText = ""
     @State private var showModelPicker = false
+    @State private var selectedImages: [Data] = []
+    @State private var isShowingFilePicker = false
     @FocusState private var inputFocused: Bool
+    #if os(iOS)
+    @State private var photoPickerItems: [PhotosPickerItem] = []
+    #endif
 
-    /// The model to use — defaults to the user's chosen default model,
-    /// updated when the user picks a different model in the popover.
+    /// The model to use — persisted via settings.defaultModel
     @State private var selectedModel: ClaudeModel = .sonnet46
     @State private var errorMessage: String?
 
@@ -29,7 +36,7 @@ struct CodeView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 12))
                     Text(error)
-                        .font(.system(size: 12.5, design: .rounded))
+                        .font(NaviTheme.bodyFont(size: 12.5))
                         .lineLimit(3)
                     Spacer()
                     Button { errorMessage = nil } label: {
@@ -60,7 +67,7 @@ struct CodeView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Text("Kod")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .font(NaviTheme.headingFont(size: 17))
                     .foregroundColor(.primary)
 
                 Spacer()
@@ -140,6 +147,7 @@ struct CodeView: View {
         let hasKey = Self.hasAPIKey(for: model)
         Button {
             selectedModel = model
+            settings.defaultModel = model
             errorMessage = nil
         } label: {
             HStack {
@@ -304,11 +312,66 @@ struct CodeView: View {
         .background(NaviTheme.warningBg)
     }
 
-    // MARK: - Input bar — Claude style
+    // MARK: - Input bar — with attachment support
 
     private var inputBar: some View {
         VStack(spacing: 8) {
+            // Image thumbnails
+            if !selectedImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, data in
+                            InputImageThumb(data: data) { selectedImages.remove(at: idx) }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+                }
+            }
+
             HStack(alignment: .center, spacing: 8) {
+                #if os(iOS)
+                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
+                    ZStack {
+                        Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
+                        Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.checkmark")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.primary.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+                .onChange(of: photoPickerItems) { _, items in
+                    Task {
+                        for item in items {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                await MainActor.run { selectedImages.append(data) }
+                            }
+                        }
+                        await MainActor.run { photoPickerItems = [] }
+                    }
+                }
+                #endif
+
+                // Attachment menu
+                Menu {
+                    #if os(macOS)
+                    Button { } label: { Label("Bild", systemImage: "photo") }
+                    #endif
+                    Button { isShowingFilePicker = true } label: {
+                        Label("Fil", systemImage: "doc")
+                    }
+                } label: {
+                    ZStack {
+                        Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.primary.opacity(0.4))
+                    }
+                }
+                #if os(macOS)
+                .menuStyle(.borderlessButton)
+                #endif
+
                 TextField(
                     agent.activeProject == nil
                         ? "Beskriv ett projekt att bygga…"
@@ -317,13 +380,13 @@ struct CodeView: View {
                     axis: .vertical
                 )
                 .lineLimit(1...6)
-                .font(.system(size: 15, design: .rounded))
+                .font(NaviTheme.bodyFont(size: 15))
                 .textFieldStyle(.plain)
                 .focused($inputFocused)
                 .onSubmit { sendMessage() }
                 .submitLabel(.send)
                 .padding(.vertical, 10)
-                .padding(.leading, 12)
+                .padding(.leading, 4)
 
                 Button { sendMessage() } label: {
                     ZStack {
@@ -337,10 +400,9 @@ struct CodeView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(sendDisabled)
-                .padding(.trailing, 8)
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color.inputBackground)
@@ -356,7 +418,8 @@ struct CodeView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .padding(.bottom, 16)
+        .padding(.top, 8)
     }
 
     private var sendDisabled: Bool {
@@ -413,7 +476,7 @@ struct CodeMessageRow: View, Equatable {
         HStack {
             Spacer(minLength: 60)
             Text(message.content)
-                .font(.system(size: 16, design: .rounded))
+                .font(NaviTheme.bodyFont(size: 16))
                 .foregroundColor(.primary)
                 .lineSpacing(4)
                 .padding(.horizontal, 14)

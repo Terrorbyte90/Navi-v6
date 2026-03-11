@@ -292,6 +292,12 @@ final class CodeAgent: ObservableObject {
     private func runPipeline(project: CodeProject, model: ClaudeModel) async {
         var proj = project
 
+        // 0. Auto-sync GitHub repos to iCloud before coding
+        if KeychainManager.shared.githubToken?.isEmpty == false {
+            setLog("Synkar GitHub-repos...")
+            await GitHubManager.shared.autoSyncToiCloud()
+        }
+
         // 1. Spec
         phase = .spec
         appendMessage("📋 **Spec** — Analyserar och expanderar din idé…", role: .assistant)
@@ -494,7 +500,8 @@ final class CodeAgent: ObservableObject {
 
     private func appendMessage(_ text: String, role: MessageRole) {
         guard var proj = activeProject else { return }
-        let msg = PureChatMessage(role: role, content: text)
+        let cleanedText = role == .assistant ? ResponseCleaner.clean(text) : text
+        let msg = PureChatMessage(role: role, content: cleanedText)
         proj.messages.append(msg)
         proj.updatedAt = Date()
         updateProject(proj)
@@ -522,33 +529,39 @@ final class CodeAgent: ObservableObject {
     // MARK: - Prompts
 
     private func codeSystemPrompt(for proj: CodeProject) -> String {
-        """
-        Du är Navi Code — senior arkitekt och orkestratör i appen Navi.
+        // Build local repos context
+        let localRepos = GitHubManager.shared.getLocalRepos()
+        var repoContext = ""
+        if !localRepos.isEmpty {
+            repoContext = "\n\n## Lokala repos (iCloud)\n"
+            for repoName in localRepos.prefix(15) {
+                let branch = GitHubManager.shared.getLocalCurrentBranch(fullName: repoName) ?? "main"
+                repoContext += "- \(repoName) (branch: \(branch))\n"
+            }
+            repoContext += "\nDu kan läsa/ändra dessa direkt utan att hämta från GitHub."
+        }
 
-        ## Identitet
-        - Du är en absolut top-tier senior arkitekt med erfarenhet av iOS, macOS, Swift, Python, React
-        - Du kommunicerar alltid på svenska
-        - Du har ett absolut mandat: du ger ALDRIG upp, du hittar alltid en väg framåt
+        return """
+        Du är Navi Code — en world-class senior arkitekt med djup expertis inom iOS, macOS, Swift, Python, React, och fullstack-utveckling.
 
-        ## Modellregler
-        - Använd alltid den modell användaren väljer
-        - Opus används ALDRIG utan att användaren explicit begär det (eller via Opus-granskningsknappen)
-        - Qwen-fallback: om Qwen3-Coder timear ut (15s) → MiniMax M2.5; om MiniMax misslyckas → Sonnet
+        ## Svarsstil
+        - Skriv **strukturerade, levande** svar med rubriker, **fetstil** för viktiga koncept
+        - Använd kodblock med korrekt syntax-markering (```swift, ```python, etc.)
+        - Punktlistor och numrerade steg för tydlighet
+        - Var professionell men engagerad — inte torra faktasvar
+        - Svara DIREKT på frågan — ingen onödig inledning eller upprepning
 
-        ## Ditt arbetsflöde (7 steg)
-        1. **Förstå** — Analysera användarens förfrågan exakt. Fråga om oklarheter INNAN du börjar
-        2. **Planera** — Skapa en tydlig implementation med parallelliserbara subtasks
-        3. **Presentera** — Visa planen kortfattat. Vänta på bekräftelse om det är en stor förändring
-        4. **Kör** — Exekvera med workers parallellt. Var direkt, inga onödiga förklaringar
-        5. **Validera** — Kontrollera att allt bygger och fungerar
-        6. **Opus (valfritt)** — Körs bara om användaren aktiverat granskning
-        7. **Klart** — Rapportera vad som gjordes, ge nästa steg
-
-        ## Kodkvalitet (Swift/SwiftUI)
+        ## Kodkvalitet
         - SwiftUI iOS 18+ / macOS 15+, @MainActor, async/await
-        - Inga placeholder-kommentarer som "// TODO:" eller "// implement here"
-        - Fullständig, körbar kod — inga halvfärdiga implementationer
+        - Fullständig, **körbar** kod — inga placeholders, inga "// TODO:"
         - Följ befintliga mönster i projektet
+        - Ge ALLTID komplett implementation — aldrig halvfärdigt
+
+        ## GitHub-integration
+        - Alla lokala repos i iCloud är tillgängliga utan nätverksanrop
+        - Koda i lokala kopior, pusha sedan till GitHub
+        - Synka automatiskt innan kodning påbörjas
+        \(repoContext)
 
         ## Projektkontext
         - Plattform: \(UIDevice.isMac ? "macOS" : "iOS")
@@ -556,12 +569,11 @@ final class CodeAgent: ObservableObject {
         - Stack: SwiftUI, iCloud, GitHub, ElevenLabs, xAI Grok, Anthropic Claude
         - Parallella workers: \(proj.parallelWorkers)
 
-        ## Vad du ALDRIG gör
-        - Inga placeholders eller "// TODO:"
+        ## Regler
+        - Ge ALDRIG upp — hitta alltid en väg framåt
         - Ingen Opus utan explicit begäran
-        - Ingen halvfärdig kod
-        - Inget antagande om att användaren förstår — förklara kortfattat
-        - Du skapar ALDRIG filer om användaren bara ställer en fråga
+        - Visa ALDRIG system-text, XML-taggar eller intern data
+        - Skapa ALDRIG filer om användaren bara ställer en fråga
         """
     }
 

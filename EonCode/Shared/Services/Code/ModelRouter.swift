@@ -26,19 +26,34 @@ final class ModelRouter {
         // Validate API key before doing anything
         try validateAPIKey(for: model)
 
-        // Tools are Anthropic-only — fall back to sonnet46 for non-Anthropic models with tools
+        // Tools: Anthropic supports native tool use.
+        // xAI/OpenRouter: fall back to Anthropic Sonnet only for tool calls.
+        // Exception: Qwen and MiniMax do NOT get fallback — they just run without tools.
         if let tools, !tools.isEmpty, model.provider != .anthropic {
-            try validateAPIKey(for: .sonnet46)
-            try await ClaudeAPIClient.shared.streamMessage(
+            // For xAI models, fall back to Anthropic for tool use
+            if model.provider == .xai {
+                try validateAPIKey(for: .sonnet46)
+                try await ClaudeAPIClient.shared.streamMessage(
+                    messages: messages,
+                    model: .sonnet46,
+                    systemPrompt: systemPrompt,
+                    tools: tools,
+                    maxTokens: maxTokens,
+                    usePromptCaching: false,
+                    onEvent: onEvent
+                )
+                return .sonnet46
+            }
+            // OpenRouter models: run without tools (they handle instructions inline)
+            try await routeStream(
                 messages: messages,
-                model: .sonnet46,
+                model: model,
                 systemPrompt: systemPrompt,
-                tools: tools,
                 maxTokens: maxTokens,
-                usePromptCaching: false,
+                tools: nil,
                 onEvent: onEvent
             )
-            return .sonnet46
+            return model
         }
 
         // Qwen3-Coder: 15-second timeout + fallback to MiniMax M2.5
