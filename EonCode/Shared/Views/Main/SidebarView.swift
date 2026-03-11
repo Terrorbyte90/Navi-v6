@@ -232,7 +232,7 @@ struct SidebarView: View {
         case .pureChat:  chatList
         case .code:      codeProjectList
         case .artifacts: artifactList
-        case .github:    githubRepoList
+        case .github:    emptyHint(icon: "arrow.triangle.branch", text: "GitHub")
         case .agents:    agentSidebarList
         case .media:     mediaHistoryList
         case .profile:   emptyHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")

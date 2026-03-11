@@ -134,7 +134,7 @@ struct PureChatView: View {
                                     .padding(.bottom, 4)
                             }
 
-                            ForEach(conv.messages) { msg in
+                            ForEach(conv.messages.filter { $0.role != .system }) { msg in
                                 PureChatBubble(message: msg)
                                     .equatable()
                                     .id(msg.id)
@@ -188,10 +188,8 @@ struct PureChatView: View {
 
     @ViewBuilder
     var macModelBar: some View {
-        #if os(macOS)
         modelPickerBar
         Divider().opacity(0.08)
-        #endif
     }
 
     var modelPickerBar: some View {
@@ -255,7 +253,11 @@ struct PureChatView: View {
     private func modelMenuButton(model: ClaudeModel, currentModel: ClaudeModel, convID: UUID) -> some View {
         let hasKey = Self.hasAPIKey(for: model)
         Button {
-            manager.updateModel(model, for: convID)
+            // Switching model opens a fresh conversation with the new model
+            // so each chat stays tied to a single model
+            if model != currentModel {
+                _ = manager.newConversation(model: model)
+            }
             manager.lastError = nil
         } label: {
             HStack {
@@ -1025,7 +1027,7 @@ private struct PureChatInputBar: View {
 
 // MARK: - Image Thumbnail
 
-private struct InputImageThumb: View {
+struct InputImageThumb: View {
     let data: Data
     let onRemove: () -> Void
 

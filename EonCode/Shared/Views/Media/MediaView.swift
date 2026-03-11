@@ -820,7 +820,7 @@ struct MediaView: View {
         guard canGenerate, !trimmed.isEmpty else { return }
 
         // Capture parameters before clearing state
-        let model = useProModel ? "grok-imagine-image-pro" : "grok-imagine-image"
+        let model = "aurora"
         let capturedImageData = referenceImageData
         let capturedMode = selectedMode
         let capturedVariations = imageVariations

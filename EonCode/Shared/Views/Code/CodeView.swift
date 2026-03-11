@@ -72,6 +72,25 @@ struct CodeView: View {
 
                 Spacer()
 
+                // New session button
+                if agent.activeProject != nil {
+                    Button {
+                        withAnimation(NaviTheme.Spring.smooth) {
+                            agent.activeProject = nil
+                        }
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary.opacity(0.55))
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    #if os(macOS)
+                    .help("Ny kodsession")
+                    #endif
+                }
+
                 // Model picker — shows current model, grouped by provider
                 Menu {
                     Section("Anthropic") {

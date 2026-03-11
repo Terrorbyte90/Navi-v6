@@ -218,14 +218,15 @@ final class XAIClient: ObservableObject {
 
     func generateImage(
         prompt: String,
-        model: String = "grok-imagine-image",
+        model: String = "aurora",
         size: String = "1024x1024",   // kept for API compat but not sent to xAI
         n: Int = 1
     ) async throws -> [XAIImageResult] {
         let headers = try authHeaders()
 
-        // xAI image API — request b64_json to avoid downloading from imgen.x.ai
-        // (imgen.x.ai CDN URLs fail on iOS with "Socket is not connected")
+        // xAI Aurora image API
+        // Note: response_format "b64_json" is preferred to avoid CDN download issues
+        // If the model doesn't support b64_json, we fall back to URL-based downloads
         let body: [String: Any] = [
             "model": model,
             "prompt": prompt,

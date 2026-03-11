@@ -14,11 +14,16 @@ struct AgentView: View {
     }
 
     var body: some View {
-        #if os(macOS)
-        macLayout
-        #else
-        iOSLayout
-        #endif
+        Group {
+            #if os(macOS)
+            macLayout
+            #else
+            iOSLayout
+            #endif
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showCreateAgent)) { _ in
+            showCreateSheet = true
+        }
     }
 
     #if os(macOS)
@@ -39,18 +44,19 @@ struct AgentView: View {
             agentList
                 .navigationTitle("Agenter")
                 #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.large)
                 #endif
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button { showCreateSheet = true } label: {
                             Image(systemName: "plus")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(NaviTheme.accent)
                         }
                     }
                 }
         }
+        .navigationViewStyle(.stack)
     }
 
     // MARK: - Agent list

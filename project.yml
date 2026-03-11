@@ -68,6 +68,8 @@ targets:
         NSMicrophoneUsageDescription: "Navi uses the microphone for voice mode — speak to chat hands-free."
         NSSpeechRecognitionUsageDescription: "Navi uses speech recognition to transcribe your voice into text for chat."
         ITSAppUsesNonExemptEncryption: false
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
         UIBackgroundModes:
           - remote-notification
           - background-fetch

@@ -219,7 +219,9 @@ struct ServerView: View {
                 VStack(alignment: .leading, spacing: 16) {
 
                     infoCard("Server") {
-                        InfoRow(label: "Adress", value: "209.38.98.107:3001")
+                        CopyableInfoRow(label: "Adress",   value: "209.38.98.107:3001")
+                        CopyableInfoRow(label: "HTTP URL", value: "http://209.38.98.107:3001")
+                        CopyableInfoRow(label: "SSH",      value: "ssh root@209.38.98.107")
                         InfoRow(label: "Status",
                                 value: brain.isConnected ? "Online ✓" : "Offline ✗")
                         if let v = brain.serverStatus?.version {
@@ -329,6 +331,44 @@ private struct InfoRow: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.primary)
         }
+    }
+}
+
+// MARK: - CopyableInfoRow
+
+private struct CopyableInfoRow: View {
+    let label: String
+    let value: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            #if os(iOS)
+            UIPasteboard.general.string = value
+            #else
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(value, forType: .string)
+            #endif
+            withAnimation { copied = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation { copied = false }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(label)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(value)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(NaviTheme.accent)
+                    .lineLimit(1)
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10))
+                    .foregroundColor(copied ? NaviTheme.success : NaviTheme.accent.opacity(0.5))
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
