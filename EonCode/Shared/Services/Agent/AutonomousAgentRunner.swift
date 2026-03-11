@@ -14,7 +14,6 @@ final class AutonomousAgentRunner: ObservableObject {
     @Published var streamingText: String = ""
 
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
-    private let api = ClaudeAPIClient.shared
     private let store = AgentDefinitionStore.shared
 
     // Transient counters — reset when agent stops/restarts, never persisted
@@ -265,20 +264,37 @@ final class AutonomousAgentRunner: ObservableObject {
         var goalAchieved = false
 
         do {
-            let (response, usage) = try await api.sendMessage(
+            // Route through ModelRouter so non-Anthropic models (xAI, OpenRouter) are handled correctly
+            var finalUsage = TokenUsage(inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: nil, cacheReadInputTokens: nil)
+
+            let usedModel = try await ModelRouter.stream(
                 messages: messages,
                 model: agent.model,
                 systemPrompt: systemPrompt,
-                maxTokens: agent.maxTokensPerIteration
+                maxTokens: min(agent.maxTokensPerIteration, Constants.Agent.maxTokensLarge),
+                tools: nil,
+                onEvent: { [weak self] event in
+                    switch event {
+                    case .contentBlockDelta(_, let delta):
+                        if case .text(let t) = delta {
+                            fullResponse += t
+                            self?.streamingText = fullResponse
+                        }
+                    case .messageDelta(_, let usage):
+                        if let u = usage { finalUsage = u }
+                    default:
+                        break
+                    }
+                }
             )
-            fullResponse = response
+            let usage = finalUsage
 
             // Successful call — clear the error retry counter
             errorRetryCounters[agentID] = 0
 
-            let (_, costSEK) = CostCalculator.shared.calculate(usage: usage, model: agent.model)
+            let (_, costSEK) = CostCalculator.shared.calculate(usage: usage, model: usedModel)
             let tokens = usage.inputTokens + usage.outputTokens
-            CostTracker.shared.record(usage: usage, model: agent.model)
+            CostTracker.shared.record(usage: usage, model: usedModel)
 
             if let i = agents.firstIndex(where: { $0.id == agentID }) {
                 agents[i].totalTokensUsed += tokens
@@ -545,13 +561,21 @@ final class AutonomousAgentRunner: ObservableObject {
     #if os(macOS)
     private func runWorkerTask(_ task: String, model: ClaudeModel) async -> String {
         do {
-            let (response, _) = try await api.sendMessage(
+            var result = ""
+            _ = try await ModelRouter.stream(
                 messages: [ChatMessage(role: .user, content: [.text(task)])],
                 model: model,
                 systemPrompt: "Du är en worker-agent. Utför uppgiften direkt och koncist. Svara med resultatet.",
-                maxTokens: 4000
+                maxTokens: 4000,
+                tools: nil,
+                onEvent: { event in
+                    if case .contentBlockDelta(_, let delta) = event,
+                       case .text(let t) = delta {
+                        result += t
+                    }
+                }
             )
-            return response
+            return result
         } catch {
             return "Worker-fel: \(error.localizedDescription)"
         }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(iOS)
 import PhotosUI
 #endif
@@ -871,6 +872,7 @@ private struct PureChatInputBar: View {
     @FocusState private var inputFocused: Bool
     #if os(iOS)
     @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
     #endif
 
     var body: some View {
@@ -894,18 +896,39 @@ private struct PureChatInputBar: View {
 
             // Input pill — Claude iOS warm rounded style
             HStack(alignment: .center, spacing: 8) {
-                #if os(iOS)
-                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
+                // Single + button with photo & file options
+                Menu {
+                    #if os(iOS)
+                    Button {
+                        showPhotoPicker = true
+                    } label: {
+                        Label("Bild", systemImage: "photo")
+                    }
+                    #else
+                    Button {
+                        pickImageMacOS()
+                    } label: {
+                        Label("Bild", systemImage: "photo")
+                    }
+                    #endif
+                    Button { isShowingFilePicker = true } label: {
+                        Label("Fil", systemImage: "doc")
+                    }
+                } label: {
                     ZStack {
                         Circle()
                             .fill(Color.primary.opacity(0.05))
                             .frame(width: 32, height: 32)
-                        Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.checkmark")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.5))
+                        Image(systemName: selectedImages.isEmpty ? "plus" : "plus.circle.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(selectedImages.isEmpty ? .primary.opacity(0.4) : .accentNavi)
                     }
                 }
-                .buttonStyle(.plain)
+                #if os(macOS)
+                .menuStyle(.borderlessButton)
+                #endif
+                #if os(iOS)
+                .photosPicker(isPresented: $showPhotoPicker, selection: $photoPickerItems, maxSelectionCount: 5, matching: .images)
                 .onChange(of: photoPickerItems) { _, items in
                     Task {
                         for item in items {
@@ -916,28 +939,6 @@ private struct PureChatInputBar: View {
                         await MainActor.run { photoPickerItems = [] }
                     }
                 }
-                #endif
-
-                // Attachment menu
-                Menu {
-                    #if os(macOS)
-                    Button { } label: { Label("Image", systemImage: "photo") }
-                    #endif
-                    Button { isShowingFilePicker = true } label: {
-                        Label("File", systemImage: "doc")
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.primary.opacity(0.05))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.4))
-                    }
-                }
-                #if os(macOS)
-                .menuStyle(.borderlessButton)
                 #endif
 
                 // Text field
@@ -1004,6 +1005,22 @@ private struct PureChatInputBar: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
     }
+
+    #if os(macOS)
+    private func pickImageMacOS() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK {
+            for url in panel.urls {
+                if let data = try? Data(contentsOf: url) {
+                    selectedImages.append(data)
+                }
+            }
+        }
+    }
+    #endif
 }
 
 // MARK: - Image Thumbnail

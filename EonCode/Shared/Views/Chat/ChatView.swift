@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(iOS)
 import PhotosUI
 #endif
@@ -1018,6 +1019,7 @@ struct InputBar: View {
     @FocusState private var inputFocused: Bool
     #if os(iOS)
     @State private var chatPickerItems: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
     #endif
 
     var body: some View {
@@ -1056,15 +1058,45 @@ struct InputBar: View {
             // Main input pill
             HStack(alignment: .bottom, spacing: 0) {
                 HStack(spacing: 4) {
-                    #if os(iOS)
-                    PhotosPicker(selection: $chatPickerItems, maxSelectionCount: 5, matching: .images) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
+                    Menu {
+                        #if os(iOS)
+                        Button {
+                            showPhotoPicker = true
+                        } label: {
+                            Label("Bild", systemImage: "photo")
+                        }
+                        #else
+                        Button {
+                            let panel = NSOpenPanel()
+                            panel.allowedContentTypes = [.image]
+                            panel.allowsMultipleSelection = true
+                            panel.canChooseDirectories = false
+                            if panel.runModal() == .OK {
+                                for url in panel.urls {
+                                    if let data = try? Data(contentsOf: url) {
+                                        selectedImages.append(data)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("Bild", systemImage: "photo")
+                        }
+                        #endif
+                        Button { } label: {
+                            Label("Fil", systemImage: "doc")
+                        }
+                    } label: {
+                        Image(systemName: selectedImages.isEmpty ? "plus" : "plus.circle.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(selectedImages.isEmpty ? .secondary : .accentNavi)
                             .frame(width: 32, height: 32)
                             .contentShape(Circle())
                     }
-                    .buttonStyle(.plain)
+                    #if os(macOS)
+                    .menuStyle(.borderlessButton)
+                    #endif
+                    #if os(iOS)
+                    .photosPicker(isPresented: $showPhotoPicker, selection: $chatPickerItems, maxSelectionCount: 5, matching: .images)
                     .onChange(of: chatPickerItems) { _, items in
                         Task {
                             for item in items {
@@ -1075,17 +1107,6 @@ struct InputBar: View {
                             await MainActor.run { chatPickerItems = [] }
                         }
                     }
-                    #else
-                    Button {
-                        // macOS: no picker needed in project chat (uses menu bar)
-                    } label: {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
                     #endif
 
                     Button {

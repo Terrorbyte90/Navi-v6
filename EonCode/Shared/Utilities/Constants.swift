@@ -64,7 +64,7 @@ enum Constants {
             grok4:          (3.0,  15.0),
             grok41Fast:     (0.20,  0.50),
             grok3Mini:      (0.30,  0.50),
-            minimaxM25:     (0.295, 1.20),
+            minimaxM25:     (0.30,  1.20),
             kimiK25:        (0.45,  2.20),
             qwen3CoderFree: (0.0,   0.0),
         ]
@@ -162,7 +162,7 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
         case .grok4:          return "Mest kapabel · $3/$15/MTok"
         case .grok41Fast:     return "Snabb & billig · $0.20/$0.50/MTok"
         case .grok3Mini:      return "Liten & effektiv · $0.30/$0.50/MTok"
-        case .minimaxM25:     return "80% SWE-Bench · $0.295/$1.20/MTok"
+        case .minimaxM25:     return "80% SWE-Bench · $0.30/$1.20/MTok"
         case .kimiK25:        return "Agentisk kodning · $0.45/$2.20/MTok"
         case .qwen3CoderFree: return "480B MoE · GRATIS · 262K context"
         }

@@ -320,7 +320,7 @@ final class OpenRouterClient: ObservableObject {
         let headers = try authHeaders()
 
         let body: [String: Any] = [
-            "model": "minimax/minimax-m2.5",
+            "model": Constants.Models.minimaxM25,
             "messages": [["role": "user", "content": "Hi"]],
             "max_tokens": 10
         ]

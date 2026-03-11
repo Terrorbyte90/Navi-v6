@@ -776,19 +776,19 @@ struct AgentModelCard: View {
                 }
                 Spacer()
                 Menu {
-                    ForEach(ClaudeModel.allCases, id: \.self) { m in
-                        Button {
-                            selection = m
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(m.displayName)
-                                    Text(modelCostHint(m))
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                }
-                                if m == selection { Image(systemName: "checkmark") }
-                            }
+                    Section("Anthropic") {
+                        ForEach(ClaudeModel.anthropicModels) { m in
+                            modelButton(m)
+                        }
+                    }
+                    Section("xAI / Grok") {
+                        ForEach(ClaudeModel.xaiModels) { m in
+                            modelButton(m)
+                        }
+                    }
+                    Section("OpenRouter") {
+                        ForEach(ClaudeModel.openRouterModels) { m in
+                            modelButton(m)
                         }
                     }
                 } label: {
@@ -812,6 +812,23 @@ struct AgentModelCard: View {
                 .padding(.leading, 40)
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func modelButton(_ m: ClaudeModel) -> some View {
+        Button {
+            selection = m
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.displayName)
+                    Text(modelCostHint(m))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                if m == selection { Image(systemName: "checkmark") }
+            }
+        }
     }
 
     private func modelCostHint(_ m: ClaudeModel) -> String {
