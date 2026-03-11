@@ -195,9 +195,10 @@ final class ChatManager: ObservableObject {
         var currentToolJSON: String = ""
         var blockType: String = ""
 
-        // Check if we have GitHub tools available
-        let useTools = KeychainManager.shared.githubToken?.isEmpty == false
-        let toolsToUse = useTools ? agentTools : nil
+        // Only use tools with Anthropic models (OpenRouter/xAI use different streaming format
+        // that doesn't parse tool_use blocks correctly, causing garbled output)
+        let githubConnected = KeychainManager.shared.githubToken?.isEmpty == false
+        let toolsToUse = (githubConnected && conversation.model.provider == .anthropic) ? agentTools : nil
 
         // Route streaming by provider
         let eventHandler: (StreamEvent) -> Void = { [self] event in
@@ -275,51 +276,37 @@ final class ChatManager: ObservableObject {
             throw error
         }
 
-        // Execute tool calls if any
+        // Capture executed tool names for visual display
+        let executedToolNames = toolCalls.map { $0.name }
+
+        // Execute tool calls if any (only happens with Anthropic models)
         if !toolCalls.isEmpty {
             NaviLog.info("Chat: executing \(toolCalls.count) tool calls: \(toolCalls.map { $0.name })")
             var toolResults: [MessageContent] = []
-            
+
+            // Capture first-pass full text BEFORE executing tools (to build secondPassMessages)
+            let firstPassText = fullText
+
             for tc in toolCalls {
                 NaviLog.info("Chat: calling tool \(tc.name) with params: \(tc.input.keys)")
                 let params = tc.input.mapValues { String(describing: $0.value) }
                 let result = await toolExecutor.execute(name: tc.name, params: params, projectRoot: nil)
                 NaviLog.info("Chat: tool \(tc.name) result: \(result.prefix(200))")
                 toolResults.append(.toolResult(id: tc.id, content: result, isError: result.hasPrefix("FEL:") || result.hasPrefix("❌")))
-                fullText += "\n\n🔧 **\(tc.name)**:\n\(result)"
             }
-            
-            // Add tool results summary to conversation for UI display
-            let toolSummary = toolResults.compactMap { tc -> String? in
-                if case .toolResult(_, let content, _) = tc {
-                    return content.prefix(300).description
-                }
-                return nil
-            }.joined(separator: "\n\n")
 
-            if !toolSummary.isEmpty {
-                conversation.messages.append(PureChatMessage(
-                    role: .assistant,
-                    content: "🔧 **GitHub-resultat:**\n\n\(toolSummary)",
-                    costSEK: 0,
-                    model: conversation.model,
-                    tokenUsage: nil,
-                    memoriesInContext: []
-                ))
-            }
-            
-            // Continue with tool results for final response
+            // Build second pass with the first-pass assistant content + tool results as user
             let secondPassMessages = apiMessages + [
-                ChatMessage(role: .assistant, content: [.text(fullText)]),
+                ChatMessage(role: .assistant, content: [.text(firstPassText.isEmpty ? "(thinking)" : firstPassText)]),
                 ChatMessage(role: .user, content: toolResults)
             ]
-            
+
             // Second pass - get final response after tools
             fullText = ""
             toolCalls = []
             var lastSecondPublish = Date.distantPast
             var charsSinceScroll2 = 0
-            
+
             let secondEventHandler: (StreamEvent) -> Void = { [self] event in
                 switch event {
                 case .contentBlockDelta(_, let delta):
@@ -330,6 +317,10 @@ final class ChatManager: ObservableObject {
                         let now = Date()
                         if now.timeIntervalSince(lastSecondPublish) >= 0.03 {
                             self.streamingText = fullText
+                            if charsSinceScroll2 >= 40 {
+                                self.streamingScrollTick += 1
+                                charsSinceScroll2 = 0
+                            }
                             lastSecondPublish = now
                         }
                     }
@@ -339,7 +330,7 @@ final class ChatManager: ObservableObject {
                     break
                 }
             }
-            
+
             do {
                 _ = try await ModelRouter.stream(
                     messages: secondPassMessages,
@@ -350,8 +341,9 @@ final class ChatManager: ObservableObject {
                     onEvent: secondEventHandler
                 )
             } catch {
-                // If second pass fails, use the first response
+                // If second pass fails, keep the first response text
                 NaviLog.error("Chat tool second pass failed: \(error)")
+                if fullText.isEmpty { fullText = firstPassText }
             }
         }
 
@@ -367,7 +359,8 @@ final class ChatManager: ObservableObject {
             costSEK: costSEK,
             model: conversation.model,
             tokenUsage: finalUsage,
-            memoriesInContext: relevantMems.map(\.fact)
+            memoriesInContext: relevantMems.map(\.fact),
+            toolCallNames: executedToolNames.isEmpty ? nil : executedToolNames
         )
         conversation.messages.append(assistantMsg)
         conversation.updatedAt = Date()

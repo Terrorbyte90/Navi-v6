@@ -456,6 +456,11 @@ struct PureChatBubble: View, Equatable {
                     .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 8) {
+                    // Tool call strip — shown when model executed tools
+                    if let tools = message.toolCallNames, !tools.isEmpty {
+                        ChatToolCallStrip(tools: tools)
+                    }
+
                     MarkdownTextView(text: message.content)
                         .equatable()
                         .textSelection(.enabled)
@@ -1078,5 +1083,75 @@ struct AgentActivityOverlay: View {
         AgentActivityView(activity: NaviOrchestrator.shared.activity, compact: true)
             .padding(.horizontal, 4)
             .padding(.top, 4)
+    }
+}
+
+// MARK: - Chat Tool Call Strip — visual card for tool calls in Chat + Code views
+
+struct ChatToolCallStrip: View {
+    let tools: [String]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.accentNavi.opacity(0.7))
+                    Text("\(tools.count) \(tools.count == 1 ? "verktyg" : "verktyg") kördes")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentNavi.opacity(0.7))
+                    Spacer(minLength: 0)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.accentNavi.opacity(0.4))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(tools.prefix(8), id: \.self) { tool in
+                        HStack(spacing: 5) {
+                            Image(systemName: toolIcon(tool))
+                                .font(.system(size: 8))
+                                .foregroundColor(.accentNavi.opacity(0.5))
+                            Text(tool)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.accentNavi.opacity(0.65))
+                                .lineLimit(1)
+                        }
+                    }
+                    if tools.count > 8 {
+                        Text("+ \(tools.count - 8) till…")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary.opacity(0.4))
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.accentNavi.opacity(0.06))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.accentNavi.opacity(0.15), lineWidth: 1)
+        )
+        .cornerRadius(10)
+    }
+
+    private func toolIcon(_ tool: String) -> String {
+        let t = tool.lowercased()
+        if t.hasPrefix("bash") || t.hasPrefix("run_command") || t.hasPrefix("execute") { return "terminal" }
+        if t.hasPrefix("read_file") || t.hasPrefix("get_file") { return "doc.text" }
+        if t.hasPrefix("write_file") || t.hasPrefix("create_file") { return "square.and.pencil" }
+        if t.hasPrefix("list_files") || t.hasPrefix("list_dir") { return "folder" }
+        if t.hasPrefix("github") { return "arrow.triangle.branch" }
+        if t.hasPrefix("search") { return "magnifyingglass" }
+        return "wrench"
     }
 }

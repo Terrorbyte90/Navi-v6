@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppSection: String, Hashable { case pureChat, code, artifacts, github, agents, media, profile, voice, server }
+enum AppSection: String, Hashable { case pureChat, code, artifacts, github, media, profile, voice, server }
 
 struct ContentView: View {
     @StateObject private var projectStore = ProjectStore.shared
@@ -67,7 +67,6 @@ struct ContentView: View {
         case .code:      CodeView()
         case .artifacts: ArtifactView()
         case .github:    GitHubView()
-        case .agents:    AgentView()
         case .media:     MediaView()
         case .profile:   ProfileView()
         case .voice:     VoiceView()
@@ -141,7 +140,6 @@ struct ContentView: View {
         case .code:      viewName = "Code"; viewPurpose = "Kodning med AI-agenter: spec, research, bygg och push."
         case .artifacts: viewName = "Artefakter"; viewPurpose = "Hantera genererade filer och resurser."
         case .github:    viewName = "GitHub"; viewPurpose = "Hantera repos, PRs och issues."
-        case .agents:    viewName = "Agenter"; viewPurpose = "Autonoma agenter som arbetar mot långsiktiga mål."
         case .media:     viewName = "Media"; viewPurpose = "Generera bilder och video via xAI."
         case .profile:   viewName = "Profil"; viewPurpose = "AI-syntetiserad användarprofil baserad på minnen."
         case .voice:     viewName = "Röst"; viewPurpose = "Text-till-tal, ljudgenerering och röstdesign via ElevenLabs."
@@ -200,7 +198,6 @@ struct ContentView: View {
         case .code:      return "Code"
         case .artifacts: return "Artefakter"
         case .github:    return "GitHub"
-        case .agents:    return "Agenter"
         case .media:     return "Media"
         case .profile:   return "Profil"
         case .voice:     return "Röst"
@@ -231,7 +228,6 @@ struct ContentView: View {
         case .code:      CodeView()
         case .artifacts: ArtifactView()
         case .github:    GitHubView()
-        case .agents:    AgentView()
         case .media:     MediaView()
         case .profile:   ProfileView()
         case .voice:     VoiceView()
@@ -245,7 +241,6 @@ struct ContentView: View {
         case .code:      return .code
         case .artifacts: return .artifacts
         case .github:    return .github
-        case .agents:    return .agents
         case .media:     return .media
         case .profile:   return .profile
         case .voice:     return .voice
@@ -357,7 +352,7 @@ private struct ChatNavTitle: View {
 // MARK: - Tabs
 
 enum AppTab: Int, Hashable {
-    case chat, code, artifacts, github, agents, media, profile, voice, server
+    case chat, code, artifacts, github, media, profile, voice, server
 }
 
 // MARK: - macOS Main View

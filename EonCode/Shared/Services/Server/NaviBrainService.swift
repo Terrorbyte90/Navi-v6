@@ -3,6 +3,13 @@ import Combine
 
 // MARK: - Models
 
+struct BrainLiveStatus: Decodable {
+    let active: Bool
+    let model: String?
+    let tool: String?
+    let iter: Int?
+}
+
 struct BrainServerStatus: Decodable {
     let status: String
     let version: String?
@@ -154,9 +161,13 @@ final class NaviBrainService: ObservableObject {
     @Published var logs: [BrainLogEntry] = []
     @Published var isLoadingLogs = false
 
+    // MARK: - Live Status (real-time tool call progress)
+    @Published var liveStatus: BrainLiveStatus?
+
     // MARK: - Private
     private var statusTimer: Timer?
     private var logsTimer: Timer?
+    private var liveStatusTimer: Timer?
     private let urlSession = URLSession(configuration: .default)
 
     private init() {}
@@ -184,6 +195,40 @@ final class NaviBrainService: ObservableObject {
         statusTimer = nil
         logsTimer?.invalidate()
         logsTimer = nil
+    }
+
+    // MARK: - Live Status Polling (while any model is sending)
+
+    private func startLiveStatusPolling() {
+        guard liveStatusTimer == nil else { return }
+        liveStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.fetchLiveStatus()
+            }
+        }
+    }
+
+    private func stopLiveStatusPolling() {
+        liveStatusTimer?.invalidate()
+        liveStatusTimer = nil
+        liveStatus = nil
+    }
+
+    private var isAnySending: Bool {
+        isSendingMinimax || isSendingQwen || isSendingOpus
+    }
+
+    func fetchLiveStatus() async {
+        guard let url = URL(string: "\(Self.baseURL)/brain/live-status") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 3)
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        if let (data, _) = try? await urlSession.data(for: req) {
+            liveStatus = try? JSONDecoder().decode(BrainLiveStatus.self, from: data)
+        }
+        // Stop polling when no model is working
+        if !isAnySending {
+            stopLiveStatusPolling()
+        }
     }
 
     func fetchStatus() async {
@@ -279,7 +324,8 @@ final class NaviBrainService: ObservableObject {
         guard !isSendingMinimax else { return }
         minimaxMessages.append(BrainMessage(role: .user, content: prompt))
         isSendingMinimax = true
-        defer { isSendingMinimax = false }
+        startLiveStatusPolling()
+        defer { isSendingMinimax = false; stopLiveStatusPolling() }
         do {
             let r = try await postAsk(prompt: prompt, endpoint: "/ask")
             minimaxMessages.append(BrainMessage(role: .assistant, content: r.response,
@@ -303,7 +349,8 @@ final class NaviBrainService: ObservableObject {
         guard !isSendingQwen else { return }
         qwenMessages.append(BrainMessage(role: .user, content: prompt))
         isSendingQwen = true
-        defer { isSendingQwen = false }
+        startLiveStatusPolling()
+        defer { isSendingQwen = false; stopLiveStatusPolling() }
         do {
             let r = try await postAsk(prompt: prompt, endpoint: "/qwen/ask")
             qwenMessages.append(BrainMessage(role: .assistant, content: r.response,
@@ -327,7 +374,8 @@ final class NaviBrainService: ObservableObject {
         guard !isSendingOpus else { return }
         opusMessages.append(BrainMessage(role: .user, content: prompt))
         isSendingOpus = true
-        defer { isSendingOpus = false }
+        startLiveStatusPolling()
+        defer { isSendingOpus = false; stopLiveStatusPolling() }
         do {
             let r = try await postAsk(prompt: prompt, endpoint: "/opus/ask",
                                       extraHeaders: ["x-anthropic-key": anthropicKey])

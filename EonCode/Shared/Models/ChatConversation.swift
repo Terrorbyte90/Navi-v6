@@ -34,6 +34,7 @@ struct PureChatMessage: Codable, Identifiable {
     let model: ClaudeModel?
     let tokenUsage: TokenUsage?
     var memoriesInContext: [String]   // memory facts that were active when this message was generated
+    var toolCallNames: [String]?      // tool calls executed to produce this response
 
     init(
         role: MessageRole,
@@ -42,7 +43,8 @@ struct PureChatMessage: Codable, Identifiable {
         costSEK: Double? = nil,
         model: ClaudeModel? = nil,
         tokenUsage: TokenUsage? = nil,
-        memoriesInContext: [String] = []
+        memoriesInContext: [String] = [],
+        toolCallNames: [String]? = nil
     ) {
         self.id = UUID()
         self.role = role
@@ -53,6 +55,7 @@ struct PureChatMessage: Codable, Identifiable {
         self.model = model
         self.tokenUsage = tokenUsage
         self.memoriesInContext = memoriesInContext
+        self.toolCallNames = toolCallNames
     }
 
     // Convenience for building API request content

@@ -513,6 +513,10 @@ struct CodeMessageRow: View, Equatable {
             ThinkingOrb(size: 24, isAnimating: false)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 6) {
+                // Tool call visual strip
+                if let tools = message.toolCallNames, !tools.isEmpty {
+                    ChatToolCallStrip(tools: tools)
+                }
                 MarkdownTextView(text: message.content)
                     .equatable()
                     .textSelection(.enabled)

@@ -10,7 +10,6 @@ struct SidebarView: View {
     @Binding var section: AppSection
 
     @StateObject private var store = ProjectStore.shared
-    @StateObject private var agentPool = AgentPool.shared
     @StateObject private var chatManager = ChatManager.shared
     @StateObject private var artifactStore = ArtifactStore.shared
     @StateObject private var statusBroadcaster = DeviceStatusBroadcaster.shared
@@ -76,7 +75,6 @@ struct SidebarView: View {
             Button {
                 switch section {
                 case .pureChat: _ = chatManager.newConversation()
-                case .agents:   NotificationCenter.default.post(name: .showCreateAgent, object: nil)
                 default: break
                 }
             } label: {
@@ -95,14 +93,13 @@ struct SidebarView: View {
     }
 
     private var canCreateNew: Bool {
-        section == .pureChat || section == .code || section == .agents
+        section == .pureChat || section == .code
     }
 
     private var newItemTooltip: String {
         switch section {
         case .pureChat: return "Ny chatt"
         case .code:     return "Nytt Code-projekt"
-        case .agents:   return "Ny agent"
         default:        return "Ny"
         }
     }
@@ -138,7 +135,6 @@ struct SidebarView: View {
         case .code:      return "Sök Code-projekt…"
         case .artifacts: return "Sök artefakter…"
         case .github:    return "Sök repos…"
-        case .agents:    return "Sök agenter…"
         case .media:     return "Sök media…"
         case .profile:   return "Profil"
         case .voice:     return "Röst"
@@ -151,18 +147,15 @@ struct SidebarView: View {
     var navSection: some View {
         VStack(alignment: .leading, spacing: 2) {
             navItem(icon: "bubble.left.and.bubble.right", label: "Chatt",      target: .pureChat)
-            navItem(icon: "terminal.fill", label: "Kod", target: .code)
-            navItem(icon: "arrow.triangle.branch", label: "GitHub", target: .github,
-                    badge: githubBadge)
-            navItem(icon: "cpu",                          label: "Agenter",    target: .agents,
-                    badge: agentsBadge)
+            navItem(icon: "terminal.fill",                label: "Kod",        target: .code)
+            navItem(icon: "arrow.triangle.branch",        label: "GitHub",     target: .github)
             navItem(icon: "photo.stack",                  label: "Media",      target: .media,
                     badge: mediaBadge)
             navItem(icon: "tray.2",                       label: "Artefakter", target: .artifacts,
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
-            navItem(icon: "person.crop.circle",           label: "Profil",   target: .profile)
-            navItem(icon: "waveform",                     label: "Röst",     target: .voice)
-            navItem(icon: "server.rack",                  label: "Server",   target: .server,
+            navItem(icon: "person.crop.circle",           label: "Profil",     target: .profile)
+            navItem(icon: "waveform",                     label: "Röst",       target: .voice)
+            navItem(icon: "server.rack",                  label: "Server",     target: .server,
                     badge: serverBadge)
         }
         .padding(.horizontal, 8)
@@ -172,22 +165,9 @@ struct SidebarView: View {
         NaviBrainService.shared.isConnected ? nil : "!"
     }
 
-    private var agentsBadge: String? {
-        let running = AutonomousAgentRunner.shared.agents.filter { $0.status.isActive }.count
-        return running > 0 ? "\(running)" : nil
-    }
-
     private var mediaBadge: String? {
         let active = mediaManager.activeGenerations.count
         return active > 0 ? "\(active)" : nil
-    }
-
-    private var githubBadge: String? {
-        if case .authorized = GitHubManager.shared.authState {
-            let count = GitHubManager.shared.repos.count
-            return count > 0 ? "\(count)" : nil
-        }
-        return nil
     }
 
     @ViewBuilder
@@ -233,7 +213,6 @@ struct SidebarView: View {
         case .code:      codeProjectList
         case .artifacts: artifactList
         case .github:    emptyHint(icon: "arrow.triangle.branch", text: "GitHub")
-        case .agents:    agentSidebarList
         case .media:     mediaHistoryList
         case .profile:   emptyHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
         case .voice:     emptyHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
@@ -524,80 +503,6 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Agent sidebar list
-
-    var agentSidebarList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 1) {
-                let runner = AutonomousAgentRunner.shared
-                let filtered = searchText.isEmpty ? runner.agents
-                    : runner.agents.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.goal.localizedCaseInsensitiveContains(searchText) }
-
-                if filtered.isEmpty {
-                    emptyHint(icon: "cpu.fill", text: searchText.isEmpty ? "Inga agenter" : "Inga träffar")
-                } else {
-                    let running = filtered.filter { $0.status.isActive }
-                    let other   = filtered.filter { !$0.status.isActive }
-
-                    if !running.isEmpty {
-                        listSectionHeader("Aktiva")
-                        ForEach(running) { agent in agentSidebarRow(agent) }
-                    }
-                    if !other.isEmpty {
-                        listSectionHeader("Övriga")
-                        ForEach(other) { agent in agentSidebarRow(agent) }
-                    }
-                }
-            }
-            .padding(.bottom, 8)
-        }
-    }
-
-    @ViewBuilder
-    private func agentSidebarRow(_ agent: AgentDefinition) -> some View {
-        Button { section = .agents } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(agentSidebarColor(agent).opacity(0.12))
-                        .frame(width: 22, height: 22)
-                    Image(systemName: agent.status.isActive ? "cpu.fill" : "cpu")
-                        .font(.system(size: 10))
-                        .foregroundColor(agentSidebarColor(agent))
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(agent.name)
-                        .font(.system(size: 13))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    Text(agent.currentTaskDescription.isEmpty ? agent.status.displayName : agent.currentTaskDescription)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary.opacity(0.6))
-                        .lineLimit(1)
-                }
-                Spacer()
-                if agent.status.isActive {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 6)
-    }
-
-    private func agentSidebarColor(_ agent: AgentDefinition) -> Color {
-        switch agent.status {
-        case .running:   return .green
-        case .paused:    return .orange
-        case .completed: return .blue
-        case .failed:    return .red
-        case .idle:      return .secondary
-        }
-    }
-
     // MARK: - Media history list
 
     var mediaHistoryList: some View {
@@ -670,22 +575,6 @@ struct SidebarView: View {
 
     var bottomBar: some View {
         VStack(spacing: 0) {
-            // Active agent indicator
-            if agentPool.activeCount > 0 {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color.primary.opacity(0.5))
-                        .frame(width: 6, height: 6)
-                    Text("\(agentPool.activeCount) active")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color.primary.opacity(0.6))
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.primary.opacity(0.03))
-            }
-
             Divider().opacity(0.06)
 
             // User row - minimal

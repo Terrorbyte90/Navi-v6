@@ -878,41 +878,75 @@ struct BrainChatView: View {
             .textSelection(.enabled)
     }
 
-    // MARK: - Thinking indicator
+    // MARK: - Thinking indicator (shows live tool status when available)
 
     var thinkingIndicator: some View {
-        HStack(spacing: 8) {
-            // Animated dots
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(accentColor.opacity(0.5))
-                        .frame(width: 7, height: 7)
-                        .scaleEffect(isSending ? 1.0 : 0.4)
-                        .animation(
-                            .easeInOut(duration: 0.5)
-                                .repeatForever(autoreverses: true)
-                                .delay(Double(i) * 0.18),
-                            value: isSending
-                        )
+        let live = brain.liveStatus
+        let hasLiveStatus = live?.active == true && live?.tool != nil
+
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                // Animated dots
+                HStack(spacing: 5) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .fill(accentColor.opacity(0.5))
+                            .frame(width: 7, height: 7)
+                            .scaleEffect(isSending ? 1.0 : 0.4)
+                            .animation(
+                                .easeInOut(duration: 0.5)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(i) * 0.18),
+                                value: isSending
+                            )
+                    }
+                }
+                // Rotating tool indicator
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(accentColor.opacity(0.4))
+                    .rotationEffect(.degrees(isSending ? 360 : 0))
+                    .animation(
+                        .linear(duration: 2.0).repeatForever(autoreverses: false),
+                        value: isSending
+                    )
+                // Activity label
+                if hasLiveStatus, let iter = live?.iter {
+                    Text("iter \(iter + 1)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(accentColor.opacity(0.5))
+                } else {
+                    Text(mode == .opus ? "Opus arbetar…" : mode == .minimax ? "Minimax arbetar…" : "Qwen arbetar…")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.4))
                 }
             }
-            // Rotating tool indicator
-            Image(systemName: "terminal.fill")
-                .font(.system(size: 10))
-                .foregroundColor(accentColor.opacity(0.4))
-                .rotationEffect(.degrees(isSending ? 360 : 0))
-                .animation(
-                    .linear(duration: 2.0).repeatForever(autoreverses: false),
-                    value: isSending
+
+            // Live tool call card
+            if hasLiveStatus, let tool = live?.tool {
+                HStack(spacing: 5) {
+                    Image(systemName: toolIcon(tool))
+                        .font(.system(size: 9))
+                        .foregroundColor(accentColor.opacity(0.7))
+                    Text(tool)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(accentColor.opacity(0.8))
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(accentColor.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(accentColor.opacity(0.2), lineWidth: 1)
                 )
-            // Activity label
-            Text(mode == .opus ? "Opus arbetar…" : mode == .minimax ? "Minimax arbetar…" : "Qwen arbetar…")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary.opacity(0.4))
+                .cornerRadius(6)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: hasLiveStatus)
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
         .background(accentColor.opacity(0.06))
         .cornerRadius(10)
     }

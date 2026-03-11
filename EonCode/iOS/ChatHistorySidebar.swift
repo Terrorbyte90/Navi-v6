@@ -118,21 +118,7 @@ struct ChatHistorySidebar: View {
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)") {
                 selectedTab = .artifacts; showSidebar = false
             }
-            navItem(icon: "cpu.fill", label: "Agenter", isActive: selectedTab == .agents,
-                    badge: { let n = AutonomousAgentRunner.shared.agents.filter { $0.status.isActive }.count; return n > 0 ? "\(n)" : nil }()) {
-                selectedTab = .agents; showSidebar = false
-            }
-            navItem(
-                icon: "arrow.triangle.branch",
-                label: "GitHub",
-                isActive: selectedTab == .github,
-                badge: {
-                    if case .authorized = ghManager.authState, !ghManager.repos.isEmpty {
-                        return "\(ghManager.repos.count)"
-                    }
-                    return nil
-                }()
-            ) {
+            navItem(icon: "arrow.triangle.branch", label: "GitHub", isActive: selectedTab == .github) {
                 selectedTab = .github; showSidebar = false
             }
             navItem(icon: "photo.stack.fill", label: "Media", isActive: selectedTab == .media,
@@ -171,8 +157,6 @@ struct ChatHistorySidebar: View {
             artifactHistory
         case .github:
             githubHistory
-        case .agents:
-            agentsHistory
         case .media:
             mediaHistory
         case .profile:
@@ -348,73 +332,6 @@ struct ChatHistorySidebar: View {
             Button(role: .destructive) {
                 Task { await chatManager.delete(conv) }
             } label: { Label("Radera", systemImage: "trash") }
-        }
-    }
-
-    // MARK: - Agents history
-
-    @ViewBuilder
-    var agentsHistory: some View {
-        let runner = AutonomousAgentRunner.shared
-        if runner.agents.isEmpty {
-            emptyHistoryHint(icon: "cpu.fill", text: "Skapa en agent för att börja")
-        } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    let running = runner.agents.filter { $0.status.isActive }
-                    let other   = runner.agents.filter { !$0.status.isActive }
-                    if !running.isEmpty {
-                        sectionHeader("Aktiva")
-                        ForEach(running) { agent in agentHistoryRow(agent) }
-                    }
-                    if !other.isEmpty {
-                        sectionHeader("Övriga")
-                        ForEach(other) { agent in agentHistoryRow(agent) }
-                    }
-                }
-                .padding(.bottom, 8)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func agentHistoryRow(_ agent: AgentDefinition) -> some View {
-        Button { selectedTab = .agents; showSidebar = false } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(agentHistoryColor(agent).opacity(0.12))
-                        .frame(width: 26, height: 26)
-                    Image(systemName: agent.status.isActive ? "cpu.fill" : "cpu")
-                        .font(.system(size: 11))
-                        .foregroundColor(agentHistoryColor(agent))
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(agent.name)
-                        .font(.system(size: 13))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    Text(agent.currentTaskDescription.isEmpty ? agent.status.displayName : agent.currentTaskDescription)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                if agent.status.isActive { ProgressView().scaleEffect(0.6) }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func agentHistoryColor(_ agent: AgentDefinition) -> Color {
-        switch agent.status {
-        case .running:   return NaviTheme.success
-        case .paused:    return NaviTheme.warning
-        case .completed: return Color(naviHex: "5B8DEF")
-        case .failed:    return NaviTheme.error
-        case .idle:      return .secondary
         }
     }
 
