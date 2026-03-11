@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppSection: String, Hashable { case pureChat, code, artifacts, github, agents, media, profile, voice }
+enum AppSection: String, Hashable { case pureChat, code, artifacts, github, agents, media, profile, voice, server }
 
 struct ContentView: View {
     @StateObject private var projectStore = ProjectStore.shared
@@ -71,6 +71,7 @@ struct ContentView: View {
         case .media:     MediaView()
         case .profile:   ProfileView()
         case .voice:     VoiceView()
+        case .server:    ServerView()
         }
     }
     #endif
@@ -144,6 +145,7 @@ struct ContentView: View {
         case .media:     viewName = "Media"; viewPurpose = "Generera bilder och video via xAI."
         case .profile:   viewName = "Profil"; viewPurpose = "AI-syntetiserad användarprofil baserad på minnen."
         case .voice:     viewName = "Röst"; viewPurpose = "Text-till-tal, ljudgenerering och röstdesign via ElevenLabs."
+        case .server:    viewName = "Server"; viewPurpose = "Navi Brain: Terminal, Minimax och Qwen på din server."
         }
         MessageBuilder.currentViewContext = "\(viewName) — \(viewPurpose)"
     }
@@ -202,6 +204,7 @@ struct ContentView: View {
         case .media:     return "Media"
         case .profile:   return "Profil"
         case .voice:     return "Röst"
+        case .server:    return "Server"
         }
     }
 
@@ -214,6 +217,8 @@ struct ContentView: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.primary.opacity(0.6))
             }
+        case .server:
+            ServerConnectionIndicator()
         default:
             Color.clear.frame(width: 1, height: 1)
         }
@@ -230,6 +235,7 @@ struct ContentView: View {
         case .media:     MediaView()
         case .profile:   ProfileView()
         case .voice:     VoiceView()
+        case .server:    ServerView()
         }
     }
 
@@ -243,6 +249,7 @@ struct ContentView: View {
         case .media:     return .media
         case .profile:   return .profile
         case .voice:     return .voice
+        case .server:    return .server
         }
     }
 
@@ -256,6 +263,20 @@ struct ContentView: View {
     }
     #endif
 }
+
+// MARK: - Server connection indicator (top-bar trailing button for Server tab)
+
+#if os(iOS)
+private struct ServerConnectionIndicator: View {
+    @StateObject private var brain = NaviBrainService.shared
+    var body: some View {
+        Circle()
+            .fill(brain.isConnected ? NaviTheme.success : NaviTheme.error.opacity(0.7))
+            .frame(width: 9, height: 9)
+            .padding(.trailing, 4)
+    }
+}
+#endif
 
 // MARK: - Isolated chat nav title (prevents streaming redraws of ContentView)
 
@@ -336,7 +357,7 @@ private struct ChatNavTitle: View {
 // MARK: - Tabs
 
 enum AppTab: Int, Hashable {
-    case chat, code, artifacts, github, agents, media, profile, voice
+    case chat, code, artifacts, github, agents, media, profile, voice, server
 }
 
 // MARK: - macOS Main View

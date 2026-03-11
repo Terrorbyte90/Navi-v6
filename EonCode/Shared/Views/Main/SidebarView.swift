@@ -142,6 +142,7 @@ struct SidebarView: View {
         case .media:     return "Sök media…"
         case .profile:   return "Profil"
         case .voice:     return "Röst"
+        case .server:    return "Server"
         }
     }
 
@@ -161,8 +162,14 @@ struct SidebarView: View {
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
             navItem(icon: "person.crop.circle",           label: "Profil",   target: .profile)
             navItem(icon: "waveform",                     label: "Röst",     target: .voice)
+            navItem(icon: "server.rack",                  label: "Server",   target: .server,
+                    badge: serverBadge)
         }
         .padding(.horizontal, 8)
+    }
+
+    private var serverBadge: String? {
+        NaviBrainService.shared.isConnected ? nil : "!"
     }
 
     private var agentsBadge: String? {
@@ -230,6 +237,59 @@ struct SidebarView: View {
         case .media:     mediaHistoryList
         case .profile:   emptyHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
         case .voice:     emptyHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
+        case .server:    serverSidebarList
+        }
+    }
+
+    var serverSidebarList: some View {
+        let brain = NaviBrainService.shared
+        return VStack(alignment: .leading, spacing: 0) {
+            listSectionHeader("Navi Brain")
+            // Connection status row
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(brain.isConnected ? NaviTheme.success : NaviTheme.error)
+                    .frame(width: 7, height: 7)
+                Text(brain.isConnected ? "Online" : "Offline")
+                    .font(.system(size: 12))
+                    .foregroundColor(brain.isConnected ? NaviTheme.success : NaviTheme.error)
+                Spacer()
+                if let repos = brain.serverStatus?.repos {
+                    Text("\(repos) repos")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.4))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+
+            if let model = brain.serverStatus?.model {
+                listSectionHeader("Modell")
+                Text(model.components(separatedBy: "/").last ?? model)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 4)
+            }
+
+            let totalMsgs = brain.minimaxMessages.count + brain.qwenMessages.count
+            if totalMsgs > 0 {
+                listSectionHeader("Chatt")
+                HStack(spacing: 6) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.4))
+                    Text("\(totalMsgs) meddelanden")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
+            }
+
+            if totalMsgs == 0 && !brain.isConnected {
+                emptyHint(icon: "server.rack", text: "Servern är offline")
+            }
         }
     }
 

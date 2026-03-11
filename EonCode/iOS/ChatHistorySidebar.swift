@@ -145,9 +145,17 @@ struct ChatHistorySidebar: View {
             navItem(icon: "waveform", label: "Röst", isActive: selectedTab == .voice) {
                 selectedTab = .voice; showSidebar = false
             }
+            navItem(icon: "server.rack", label: "Server", isActive: selectedTab == .server,
+                    badge: serverBadge) {
+                selectedTab = .server; showSidebar = false
+            }
         }
         .padding(.horizontal, 8)
         .padding(.top, 4)
+    }
+
+    private var serverBadge: String? {
+        NaviBrainService.shared.isConnected ? nil : "!"
     }
 
     // MARK: - Context-aware history
@@ -171,7 +179,52 @@ struct ChatHistorySidebar: View {
             emptyHistoryHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
         case .voice:
             emptyHistoryHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
+        case .server:
+            serverHistory
         }
+    }
+
+    @ViewBuilder
+    var serverHistory: some View {
+        let brain = NaviBrainService.shared
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader("Navi Brain")
+            serverStatRow(
+                icon: "circle.fill",
+                iconColor: brain.isConnected ? NaviTheme.success : NaviTheme.error,
+                label: brain.isConnected ? "Online" : "Offline",
+                value: "209.38.98.107"
+            )
+            if let model = brain.serverStatus?.model {
+                serverStatRow(icon: "cpu", iconColor: NaviTheme.accent,
+                              label: "Model", value: model.components(separatedBy: "/").last ?? model)
+            }
+            let totalMsgs = brain.minimaxMessages.count + brain.qwenMessages.count
+            if totalMsgs > 0 {
+                serverStatRow(icon: "bubble.left.and.bubble.right", iconColor: .secondary,
+                              label: "Meddelanden", value: "\(totalMsgs)")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func serverStatRow(icon: String, iconColor: Color, label: String, value: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundColor(iconColor)
+                .frame(width: 18)
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 7)
     }
 
     @ViewBuilder
