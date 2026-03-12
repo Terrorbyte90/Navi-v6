@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - AgentActivityView: Reusable visual component for all views
 
 struct AgentActivityView: View {
-    let activity: AgentActivityState
+    @ObservedObject var activity: AgentActivityState
     var compact: Bool = false
 
     @State private var showTodo = true

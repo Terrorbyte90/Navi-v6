@@ -4,29 +4,28 @@ import SwiftUI
 // MARK: - Agent Activity State (drives all visual feedback across views)
 
 @MainActor
-@Observable
-final class AgentActivityState {
+final class AgentActivityState: ObservableObject {
     // Current phase
-    var phase: AgentPhase = .idle
+    @Published var phase: AgentPhase = .idle
 
     // Structured TODO
-    var todoItems: [AgentTodoItem] = []
+    @Published var todoItems: [AgentTodoItem] = []
 
     // Code changes with diff data
-    var codeChanges: [CodeChange] = []
+    @Published var codeChanges: [CodeChange] = []
 
     // Timeline of all actions
-    var timeline: [TimelineEntry] = []
+    @Published var timeline: [TimelineEntry] = []
 
     // Metrics
-    var currentCostSEK: Double = 0
-    var tokensUsed: Int = 0
-    var startTime: Date?
-    var progress: Double = 0 // 0.0 - 1.0
+    @Published var currentCostSEK: Double = 0
+    @Published var tokensUsed: Int = 0
+    @Published var startTime: Date?
+    @Published var progress: Double = 0 // 0.0 - 1.0
 
     // Streaming code display
-    var activeFileContent: String = ""
-    var activeFileName: String = ""
+    @Published var activeFileContent: String = ""
+    @Published var activeFileName: String = ""
 
     var isActive: Bool { phase != .idle }
 

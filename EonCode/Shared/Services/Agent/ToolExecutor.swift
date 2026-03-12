@@ -684,7 +684,8 @@ final class ToolExecutor {
 
     func serverAsk(prompt: String) async -> String {
         guard !prompt.isEmpty else { return "Ange en fråga till Brain" }
-        guard NaviBrainService.shared.isConnected else { return "🔴 Brain-servern är offline eller ej ansluten" }
+        let connected = await MainActor.run { NaviBrainService.shared.isConnected }
+        guard connected else { return "🔴 Brain-servern är offline eller ej ansluten" }
         do {
             let data = try await brainRequest(path: "/ask", method: "POST", body: ["prompt": prompt])
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -708,7 +709,7 @@ final class ToolExecutor {
                     let mem = (p["memory"] as? Int).map { "\($0/1024/1024)MB" } ?? "?"
                     return "  • \(name): \(status) (\(mem))"
                 }.joined(separator: "\n")
-                let uptime = json["uptime"] as? String ?? json["uptime"] as? Int ?? "?"
+                let uptime: String = (json["uptime"] as? String) ?? (json["uptime"] as? Int).map { "\($0)" } ?? "?"
                 let mem = json["memory"] as? [String: Any]
                 let memUsed = (mem?["used"] as? Int).map { "\($0/1024/1024)MB" } ?? "?"
                 return """

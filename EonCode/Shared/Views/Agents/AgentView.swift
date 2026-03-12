@@ -546,10 +546,13 @@ struct AgentSettingsEditor: View {
                     } header: { Text("Mål") }
 
                     Section("Projekt") {
-                        Picker("Projekt", selection: $selectedProjectID) {
-                            Text("Inget projekt").tag(UUID?.none)
+                        Picker("Projekt", selection: Binding<String>(
+                            get: { selectedProjectID?.uuidString ?? "" },
+                            set: { selectedProjectID = UUID(uuidString: $0) }
+                        )) {
+                            Text("Inget projekt").tag("")
                             ForEach(projectStore.projects) { p in
-                                Text(p.name).tag(UUID?.some(p.id))
+                                Text(p.name).tag(p.id.uuidString)
                             }
                         }
                         .onChange(of: selectedProjectID) { save() }
@@ -989,9 +992,12 @@ struct CreateAgentSheet: View {
                   footer: { Text("Agenten arbetar autonomt tills målet är uppnått.") }
 
                 Section("Projekt (valfritt)") {
-                    Picker("Projekt", selection: $selectedProjectID) {
-                        Text("Inget projekt").tag(UUID?.none)
-                        ForEach(projects) { p in Text(p.name).tag(UUID?.some(p.id)) }
+                    Picker("Projekt", selection: Binding<String>(
+                        get: { selectedProjectID?.uuidString ?? "" },
+                        set: { selectedProjectID = UUID(uuidString: $0) }
+                    )) {
+                        Text("Inget projekt").tag("")
+                        ForEach(projects) { p in Text(p.name).tag(p.id.uuidString) }
                     }
                 }
 

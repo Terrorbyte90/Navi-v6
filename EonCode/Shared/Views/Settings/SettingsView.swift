@@ -164,9 +164,12 @@ struct SettingsView: View {
 
     var iOSAgentModeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Picker("Läge", selection: $settings.iosAgentMode) {
-                Text("Autonom").tag(AgentMode.autonomous)
-                Text("Remote").tag(AgentMode.remoteOnly)
+            Picker("Läge", selection: Binding<String>(
+                get: { settings.iosAgentMode.rawValue },
+                set: { settings.iosAgentMode = AgentMode(rawValue: $0) ?? .autonomous }
+            )) {
+                Text("Autonom").tag(AgentMode.autonomous.rawValue)
+                Text("Remote").tag(AgentMode.remoteOnly.rawValue)
             }
             .pickerStyle(.segmented)
 

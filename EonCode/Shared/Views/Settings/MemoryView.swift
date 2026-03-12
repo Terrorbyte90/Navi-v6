@@ -198,9 +198,12 @@ struct AddMemorySheet: View {
                         .lineLimit(3...6)
                 }
                 Section("Kategori") {
-                    Picker("Kategori", selection: $category) {
+                    Picker("Kategori", selection: Binding<String>(
+                        get: { category.rawValue },
+                        set: { category = MemoryCategory(rawValue: $0) ?? .personal }
+                    )) {
                         ForEach(MemoryCategory.allCases, id: \.self) { cat in
-                            Label(cat.displayName, systemImage: cat.icon).tag(cat)
+                            Label(cat.displayName, systemImage: cat.icon).tag(cat.rawValue)
                         }
                     }
                     .pickerStyle(.inline)

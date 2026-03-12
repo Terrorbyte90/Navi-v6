@@ -604,9 +604,12 @@ struct NewArtifactSheet: View {
                     Text("Typ")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
-                    Picker("Typ", selection: $type) {
+                    Picker("Typ", selection: Binding<String>(
+                        get: { type.rawValue },
+                        set: { type = ArtifactType(rawValue: $0) ?? .text }
+                    )) {
                         ForEach(ArtifactType.allCases, id: \.self) { t in
-                            Text(t.displayName).tag(t)
+                            Text(t.displayName).tag(t.rawValue)
                         }
                     }
                     .pickerStyle(.menu)
