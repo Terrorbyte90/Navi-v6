@@ -242,6 +242,25 @@ struct CodeView: View {
                                     .id("progressCard")
                                     .transition(.opacity)
                             }
+                            // Completion state
+                            if !agent.isRunning && agent.phase == .done {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(NaviTheme.success)
+                                    Text("Projektet klart")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(NaviTheme.success.opacity(0.8))
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(NaviTheme.success.opacity(0.08))
+                                .cornerRadius(10)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 6)
+                                .transition(.scale.combined(with: .opacity))
+                                .id("codeDone")
+                            }
                             Color.clear.frame(height: 8).id("bottomAnchor")
                         }
                         .padding(.vertical, 8)

@@ -332,6 +332,43 @@ final class NaviBrainService: ObservableObject {
 
     func clearTerminal() { terminalLines = [] }
 
+    // MARK: - Context Builder (injects GitHub, iCloud, server awareness into brain prompts)
+
+    private func buildContextPrefix() -> String {
+        var ctx = ""
+
+        // GitHub repos
+        let ghRepos = GitHubManager.shared.repos
+        if !ghRepos.isEmpty {
+            ctx += "\n[KONTEXT — GitHub repos: \(ghRepos.count) st]\n"
+            for repo in ghRepos.prefix(15) {
+                ctx += "- \(repo.fullName) (\(repo.language ?? "?"))\n"
+            }
+            if ghRepos.count > 15 { ctx += "... +\(ghRepos.count - 15) till\n" }
+        }
+
+        // iCloud repos
+        let localRepos = GitHubManager.shared.getLocalRepos()
+        if !localRepos.isEmpty {
+            ctx += "\n[KONTEXT — Lokala repos i iCloud: \(localRepos.count) st]\n"
+            for repo in localRepos.prefix(10) {
+                let branch = GitHubManager.shared.getLocalCurrentBranch(fullName: repo) ?? "main"
+                ctx += "- \(repo) (branch: \(branch))\n"
+            }
+        }
+
+        // Active project
+        if let project = ProjectStore.shared.activeProject {
+            ctx += "\n[KONTEXT — Aktivt projekt: \(project.name)]"
+            if let repo = project.githubRepoFullName {
+                ctx += " GitHub: \(repo)"
+            }
+            ctx += "\n"
+        }
+
+        return ctx
+    }
+
     // MARK: - Minimax
 
     func sendMinimax(_ prompt: String) async {
@@ -341,7 +378,8 @@ final class NaviBrainService: ObservableObject {
         startLiveStatusPolling()
         defer { isSendingMinimax = false; stopLiveStatusPolling() }
         do {
-            let r = try await postAsk(prompt: prompt, endpoint: "/ask")
+            let enrichedPrompt = buildContextPrefix() + prompt
+            let r = try await postAsk(prompt: enrichedPrompt, endpoint: "/ask")
             minimaxMessages.append(BrainMessage(role: .assistant, content: r.response,
                                                 model: r.model, tokens: r.tokens,
                                                 toolCalls: r.toolCalls))
@@ -366,7 +404,8 @@ final class NaviBrainService: ObservableObject {
         startLiveStatusPolling()
         defer { isSendingQwen = false; stopLiveStatusPolling() }
         do {
-            let r = try await postAsk(prompt: prompt, endpoint: "/qwen/ask")
+            let enrichedPrompt = buildContextPrefix() + prompt
+            let r = try await postAsk(prompt: enrichedPrompt, endpoint: "/qwen/ask")
             qwenMessages.append(BrainMessage(role: .assistant, content: r.response,
                                              model: r.model, tokens: r.tokens,
                                              toolCalls: r.toolCalls))
@@ -391,7 +430,8 @@ final class NaviBrainService: ObservableObject {
         startLiveStatusPolling()
         defer { isSendingOpus = false; stopLiveStatusPolling() }
         do {
-            let r = try await postAsk(prompt: prompt, endpoint: "/opus/ask",
+            let enrichedPrompt = buildContextPrefix() + prompt
+            let r = try await postAsk(prompt: enrichedPrompt, endpoint: "/opus/ask",
                                       extraHeaders: ["x-anthropic-key": anthropicKey])
             opusMessages.append(BrainMessage(role: .assistant, content: r.response,
                                              model: r.model, tokens: r.tokens, cost: r.cost,
@@ -419,7 +459,7 @@ final class NaviBrainService: ObservableObject {
                          endpoint: String,
                          extraHeaders: [String: String] = [:]) async throws -> BrainAskResponse {
         guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { throw URLError(.badURL) }
-        var req = URLRequest(url: url, timeoutInterval: 120)
+        var req = URLRequest(url: url, timeoutInterval: 300)
         req.httpMethod = "POST"
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

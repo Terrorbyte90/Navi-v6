@@ -94,9 +94,11 @@ final class OpenRouterClient: ObservableObject {
         onEvent: @escaping (StreamEvent) -> Void
     ) async throws {
         let headers = try authHeaders()
-        let apiMessages = buildAPIMessages(messages: messages, systemPrompt: systemPrompt)
+        var apiMessages = buildAPIMessages(messages: messages, systemPrompt: systemPrompt)
 
-        guard apiMessages.contains(where: { ($0["role"] as? String) == "user" }) else {
+        // Validate we have at least one non-system message
+        if !apiMessages.contains(where: { ($0["role"] as? String) == "user" }) {
+            NaviLog.info("OpenRouter: no user message found in stream, throwing")
             throw OpenRouterError.emptyRequest
         }
 

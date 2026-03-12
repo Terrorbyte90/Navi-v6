@@ -113,6 +113,7 @@ struct PureChatView: View {
     @State private var isShowingFilePicker = false
     @State private var showVoiceMode = false
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var showCompletion = false
 
     @StateObject private var projectStore = ProjectStore.shared
 
@@ -140,6 +141,12 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
+                                // Thinking phase indicator — always visible while streaming
+                                if manager.thinkingPhase != .idle && manager.thinkingPhase != .responding {
+                                    ThinkingPhaseCard(phase: manager.thinkingPhase)
+                                        .id("thinkingPhase")
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                }
                                 // Live tool call card shown while tool is executing
                                 if let liveToolName = manager.liveToolCall {
                                     LiveToolCallCard(toolName: liveToolName)
@@ -148,6 +155,15 @@ struct PureChatView: View {
                                 }
                                 StreamingBubble(text: manager.streamingText)
                                     .id("streaming")
+                            }
+
+                            // Completion indicator
+                            if showCompletion && !manager.isStreaming {
+                                CompletionIndicator()
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 4)
+                                    .id("completion")
+                                    .transition(.scale.combined(with: .opacity))
                             }
 
                             Color.clear.frame(height: 1).id("bottomAnchor")
@@ -163,6 +179,18 @@ struct PureChatView: View {
                     .onChange(of: conv.messages.count) { scrollToBottom(proxy, animated: true) }
                     .onChange(of: manager.streamingScrollTick) { _ in
                         scrollToBottom(proxy, animated: false)
+                    }
+                    .onChange(of: manager.isStreaming) { streaming in
+                        if !streaming && conv.messages.last?.role == .assistant {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showCompletion = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                withAnimation { showCompletion = false }
+                            }
+                        } else if streaming {
+                            showCompletion = false
+                        }
                     }
                 }
             } else {
@@ -1233,5 +1261,74 @@ struct LiveToolCallCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
         .onAppear { withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) { pulse = true } }
+    }
+}
+
+// MARK: - Thinking Phase Card — shows what the model is doing (preparing, connecting, thinking, etc.)
+
+struct ThinkingPhaseCard: View {
+    let phase: ChatManager.ThinkingPhase
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ThinkingOrb(size: 24, isAnimating: true)
+                .padding(.top, 2)
+            HStack(spacing: 8) {
+                Image(systemName: phase.icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.accentNavi)
+                    .rotationEffect(.degrees(pulse ? 360 : 0))
+                    .animation(.linear(duration: 2.0).repeatForever(autoreverses: false), value: pulse)
+                Text(phase.label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.primary.opacity(0.7))
+                Spacer(minLength: 0)
+                HStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .fill(Color.accentNavi.opacity(pulse ? 0.8 : 0.3))
+                            .frame(width: 4, height: 4)
+                            .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: pulse)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(Color.accentNavi.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.accentNavi.opacity(0.18), lineWidth: 1))
+            .cornerRadius(12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .onAppear { pulse = true }
+    }
+}
+
+// MARK: - Completion Indicator — shows when model is done with a task
+
+struct CompletionIndicator: View {
+    @State private var appeared = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13))
+                .foregroundColor(NaviTheme.success)
+            Text("Klar")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(NaviTheme.success.opacity(0.8))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(NaviTheme.success.opacity(0.08))
+        .cornerRadius(8)
+        .scaleEffect(appeared ? 1.0 : 0.8)
+        .opacity(appeared ? 1.0 : 0)
+        .onAppear {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                appeared = true
+            }
+        }
     }
 }

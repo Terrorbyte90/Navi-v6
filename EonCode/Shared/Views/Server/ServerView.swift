@@ -581,6 +581,7 @@ struct BrainChatView: View {
 
     @StateObject private var brain = NaviBrainService.shared
     @State private var inputText   = ""
+    @State private var showCompletion = false
     @FocusState private var focused: Bool
 
     private var messages: [BrainMessage] {
@@ -683,19 +684,50 @@ struct BrainChatView: View {
                         }
                         .id("thinking")
                     }
+
+                    if showCompletion && !isSending {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(NaviTheme.success)
+                            Text("Klar")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(NaviTheme.success.opacity(0.8))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(NaviTheme.success.opacity(0.08))
+                        .cornerRadius(8)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                        .transition(.scale.combined(with: .opacity))
+                        .id("completion")
+                    }
+
+                    Color.clear.frame(height: 1).id("brainBottom")
                 }
                 .padding(.vertical, 8)
             }
             .onChange(of: messages.count) { _ in
-                if let last = messages.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo("brainBottom", anchor: .bottom)
                 }
             }
             .onChange(of: isSending) { sending in
                 if sending {
+                    showCompletion = false
                     withAnimation { proxy.scrollTo("thinking", anchor: .bottom) }
+                } else {
+                    // Show completion indicator briefly when model finishes
+                    if !messages.isEmpty, messages.last?.role == .assistant {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            showCompletion = true
+                        }
+                        // Auto-hide after 3 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            withAnimation { showCompletion = false }
+                        }
+                    }
                 }
             }
         }
@@ -786,11 +818,9 @@ struct BrainChatView: View {
                         toolCallStrip(tools: tools)
                     }
 
-                    Text(msg.content)
-                        .font(NaviTheme.body(15))
-                        .foregroundColor(.primary)
+                    MarkdownTextView(text: msg.content)
+                        .equatable()
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 4) {
                         if let model = msg.model {
@@ -810,6 +840,21 @@ struct BrainChatView: View {
                             Text(String(format: "$%.6f", cost))
                                 .foregroundColor(Color(naviHex: "B06AFF").opacity(0.5))
                         }
+                        // Copy button
+                        Spacer()
+                        Button {
+                            #if os(iOS)
+                            UIPasteboard.general.string = msg.content
+                            #else
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(msg.content, forType: .string)
+                            #endif
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.35))
+                        }
+                        .buttonStyle(.plain)
                     }
                     .font(.system(size: 10))
                 }

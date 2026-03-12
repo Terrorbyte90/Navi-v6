@@ -18,6 +18,42 @@ final class ChatManager: ObservableObject {
     @Published var lastError: String?
     /// Live tool call currently executing during streaming (shown as animated card)
     @Published var liveToolCall: String? = nil
+    /// Current thinking phase — provides visual feedback about what the model is doing
+    @Published var thinkingPhase: ThinkingPhase = .idle
+
+    enum ThinkingPhase: Equatable {
+        case idle
+        case preparing       // Building context, loading memories
+        case connecting      // Connecting to API
+        case thinking        // Model is generating (streaming started but no text yet)
+        case responding      // Model is streaming text
+        case executingTools  // Tools are being executed
+        case finishing       // Saving, extracting memories
+
+        var label: String {
+            switch self {
+            case .idle:           return ""
+            case .preparing:      return "Förbereder kontext…"
+            case .connecting:     return "Ansluter till modell…"
+            case .thinking:       return "Tänker…"
+            case .responding:     return "Skriver svar…"
+            case .executingTools: return "Kör verktyg…"
+            case .finishing:      return "Slutför…"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .idle:           return ""
+            case .preparing:      return "brain.head.profile"
+            case .connecting:     return "antenna.radiowaves.left.and.right"
+            case .thinking:       return "sparkles"
+            case .responding:     return "text.cursor"
+            case .executingTools: return "terminal.fill"
+            case .finishing:      return "checkmark.circle"
+            }
+        }
+    }
 
     private let store = iCloudChatStore.shared
     private let api = ClaudeAPIClient.shared
@@ -174,6 +210,37 @@ final class ChatManager: ObservableObject {
             }
         }
 
+        // For non-Anthropic models: inject extra context since they can't execute tools natively
+        if conversation.model.provider != .anthropic {
+            // Inject cached GitHub repos so the model knows about them
+            let ghRepos = GitHubManager.shared.repos
+            if !ghRepos.isEmpty {
+                systemPrompt += "\n\n**GITHUB REPOS (live data, \(ghRepos.count) repos):**"
+                for repo in ghRepos.prefix(30) {
+                    systemPrompt += "\n- **\(repo.fullName)**: \(repo.description ?? "Ingen beskrivning")"
+                    systemPrompt += " [\(repo.language ?? "?"), \(repo.isPrivate ? "privat" : "publik")]"
+                }
+                if ghRepos.count > 30 {
+                    systemPrompt += "\n  ... och \(ghRepos.count - 30) till"
+                }
+            }
+
+            // Inject live server status
+            if NaviBrainService.shared.isConnected {
+                systemPrompt += "\n\n**BRAIN SERVER:** Online (209.38.98.107:3001)"
+                if let status = NaviBrainService.shared.serverStatus {
+                    if let v = status.version { systemPrompt += "\n- Version: \(v)" }
+                    if let r = status.repos { systemPrompt += "\n- Repos på servern: \(r)" }
+                }
+            } else {
+                systemPrompt += "\n\n**BRAIN SERVER:** Offline"
+            }
+
+            systemPrompt += "\n\nOBS: Du har INTE tillgång till verktyg (bara Anthropic-modeller har det). "
+            systemPrompt += "Du har dock all kontext ovan — svara baserat på den informationen. "
+            systemPrompt += "Om användaren frågar om repos, servern etc. — använd kontexten ovan, gissa aldrig."
+        }
+
         // View context
         if !MessageBuilder.currentViewContext.isEmpty {
             systemPrompt += "\n\nAKTIV VY: \(MessageBuilder.currentViewContext)"
@@ -187,7 +254,8 @@ final class ChatManager: ObservableObject {
         isStreaming = true
         streamingText = ""
         liveToolCall = nil
-        defer { isStreaming = false; streamingText = ""; liveToolCall = nil }
+        thinkingPhase = .preparing
+        defer { isStreaming = false; streamingText = ""; liveToolCall = nil; thinkingPhase = .idle }
 
         var fullText = ""
         var finalUsage: TokenUsage?
@@ -226,6 +294,7 @@ final class ChatManager: ObservableObject {
         }
 
         // Route streaming by provider
+        thinkingPhase = .connecting
         let eventHandler: (StreamEvent) -> Void = { [self] event in
             switch event {
             case .contentBlockStart(_, let type, let id, let name):
@@ -235,6 +304,10 @@ final class ChatManager: ObservableObject {
                 currentToolJSON = ""
                 if type == "tool_use", let toolName = name {
                     self.liveToolCall = toolName
+                    self.thinkingPhase = .executingTools
+                }
+                if type == "text" && self.thinkingPhase == .connecting {
+                    self.thinkingPhase = .thinking
                 }
             case .contentBlockDelta(_, let delta):
                 switch delta {
@@ -242,6 +315,9 @@ final class ChatManager: ObservableObject {
                     fullText += chunk
                     charsSinceScroll += chunk.count
                     onToken(chunk)
+                    if self.thinkingPhase != .responding {
+                        self.thinkingPhase = .responding
+                    }
                     let now = Date()
                     if now.timeIntervalSince(lastPublish) >= 0.03 {
                         self.streamingText = fullText
@@ -307,6 +383,7 @@ final class ChatManager: ObservableObject {
 
         // Execute tool calls if any (only happens with Anthropic models)
         if !toolCalls.isEmpty {
+            thinkingPhase = .executingTools
             NaviLog.info("Chat: executing \(toolCalls.count) tool calls: \(toolCalls.map { $0.name })")
             var toolResults: [MessageContent] = []
 
@@ -328,6 +405,7 @@ final class ChatManager: ObservableObject {
             ]
 
             // Second pass - get final response after tools
+            thinkingPhase = .connecting
             fullText = ""
             toolCalls = []
             var lastSecondPublish = Date.distantPast
@@ -372,6 +450,8 @@ final class ChatManager: ObservableObject {
                 if fullText.isEmpty { fullText = firstPassText }
             }
         }
+
+        thinkingPhase = .finishing
 
         // Skip cost calculation for performance - can be added back if needed
         let costSEK: Double = 0
