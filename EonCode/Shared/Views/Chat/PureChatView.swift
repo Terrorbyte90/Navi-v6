@@ -140,6 +140,12 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
+                                // Live tool call card shown while tool is executing
+                                if let liveToolName = manager.liveToolCall {
+                                    LiveToolCallCard(toolName: liveToolName)
+                                        .id("liveToolCall")
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                }
                                 StreamingBubble(text: manager.streamingText)
                                     .id("streaming")
                             }
@@ -1145,13 +1151,87 @@ struct ChatToolCallStrip: View {
     }
 
     private func toolIcon(_ tool: String) -> String {
+        ChatToolCallStrip.toolIconStatic(tool)
+    }
+
+    static func toolIconStatic(_ tool: String) -> String {
         let t = tool.lowercased()
         if t.hasPrefix("bash") || t.hasPrefix("run_command") || t.hasPrefix("execute") { return "terminal" }
         if t.hasPrefix("read_file") || t.hasPrefix("get_file") { return "doc.text" }
         if t.hasPrefix("write_file") || t.hasPrefix("create_file") { return "square.and.pencil" }
         if t.hasPrefix("list_files") || t.hasPrefix("list_dir") { return "folder" }
+        if t.hasPrefix("github_create_pull") { return "arrow.triangle.pull" }
+        if t.hasPrefix("github_create") { return "plus.circle" }
         if t.hasPrefix("github") { return "arrow.triangle.branch" }
+        if t.hasPrefix("web_search") { return "globe" }
+        if t.hasPrefix("server_exec") { return "server.rack" }
+        if t.hasPrefix("server_ask") { return "brain" }
+        if t.hasPrefix("server_status") { return "chart.bar" }
+        if t.hasPrefix("server_repos") { return "tray.2" }
+        if t.hasPrefix("server") { return "server.rack" }
         if t.hasPrefix("search") { return "magnifyingglass" }
-        return "wrench"
+        if t.hasPrefix("memory") { return "brain.head.profile" }
+        if t.hasPrefix("image") { return "photo" }
+        return "wrench.and.screwdriver"
+    }
+}
+
+// MARK: - Live Tool Call Card (shown during streaming while tool executes)
+
+struct LiveToolCallCard: View {
+    let toolName: String
+    @State private var pulse = false
+
+    private var icon: String { ChatToolCallStrip.toolIconStatic(toolName) }
+    private var label: String {
+        let t = toolName.lowercased()
+        if t == "web_search" { return "Söker på webben…" }
+        if t == "server_ask" { return "Frågar Brain…" }
+        if t == "server_exec" { return "Kör kommando…" }
+        if t == "server_status" { return "Hämtar serverstatus…" }
+        if t == "server_repos" { return "Listar repos…" }
+        if t.hasPrefix("github_list") { return "Hämtar från GitHub…" }
+        if t.hasPrefix("github_get") { return "Läser GitHub…" }
+        if t.hasPrefix("github_create") { return "Skapar på GitHub…" }
+        if t.hasPrefix("github") { return "GitHub…" }
+        if t.hasPrefix("read_file") { return "Läser fil…" }
+        if t.hasPrefix("write_file") { return "Skriver fil…" }
+        if t.hasPrefix("search") { return "Söker…" }
+        if t.hasPrefix("bash") || t.hasPrefix("run_command") { return "Kör kommando…" }
+        return "\(toolName)…"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ThinkingOrb(size: 24, isAnimating: true)
+                .padding(.top, 2)
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.accentNavi)
+                    .scaleEffect(pulse ? 1.1 : 0.95)
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.primary.opacity(0.7))
+                Spacer(minLength: 0)
+                // Animated dots
+                HStack(spacing: 3) {
+                    ForEach(0..<3) { i in
+                        Circle()
+                            .fill(Color.accentNavi.opacity(pulse ? 0.8 : 0.3))
+                            .frame(width: 4, height: 4)
+                            .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: pulse)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(Color.accentNavi.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.accentNavi.opacity(0.18), lineWidth: 1))
+            .cornerRadius(12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .onAppear { withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) { pulse = true } }
     }
 }

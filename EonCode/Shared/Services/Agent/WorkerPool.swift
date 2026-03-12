@@ -27,7 +27,8 @@ final class WorkerPool: ObservableObject {
         projectRoot: URL?,
         model: ClaudeModel,
         projectID: UUID? = nil,
-        onWorkerUpdate: @escaping (WorkerAgent) -> Void
+        onWorkerUpdate: @escaping (WorkerAgent) -> Void,
+        onToolCallActive: ((String?) -> Void)? = nil
     ) async -> [WorkerResult] {
         totalCount += tasks.count
         var results: [WorkerResult] = []
@@ -40,7 +41,8 @@ final class WorkerPool: ObservableObject {
                 projectRoot: projectRoot,
                 model: model,
                 projectID: projectID,
-                onWorkerUpdate: onWorkerUpdate
+                onWorkerUpdate: onWorkerUpdate,
+                onToolCallActive: onToolCallActive
             )
             results.append(contentsOf: batchResults)
         }
@@ -55,10 +57,16 @@ final class WorkerPool: ObservableObject {
         projectRoot: URL?,
         model: ClaudeModel,
         projectID: UUID? = nil,
-        onWorkerUpdate: @escaping (WorkerAgent) -> Void
+        onWorkerUpdate: @escaping (WorkerAgent) -> Void,
+        onToolCallActive: ((String?) -> Void)? = nil
     ) async -> [WorkerResult] {
         let workers = tasks.map { WorkerAgent(task: $0, projectRoot: projectRoot, model: model, projectID: projectID) }
-        for w in workers { activeWorkers.append(w) }
+        for w in workers {
+            activeWorkers.append(w)
+            if let onToolCallActive = onToolCallActive {
+                w.onToolCallActive = onToolCallActive
+            }
+        }
 
         // Run in parallel with TaskGroup
         var results: [WorkerResult] = []

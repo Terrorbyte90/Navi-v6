@@ -31,6 +31,10 @@ final class CodeAgent: ObservableObject {
     @Published var actualModel: ClaudeModel = .sonnet46
     @Published var quietLog: String = ""
     @Published var opusReviewEnabled: Bool = false
+    /// Live tool call name during execution (for animated card in CodeView)
+    @Published var liveToolCall: String? = nil
+    /// Iteration counter for current agentic loop
+    @Published var currentIteration: Int = 0
 
     // MARK: - Singleton
 
@@ -48,6 +52,8 @@ final class CodeAgent: ObservableObject {
         currentTask = nil
         isRunning = false
         phase = .idle
+        liveToolCall = nil
+        currentIteration = 0
     }
 
     // MARK: - Load / new project
@@ -300,6 +306,7 @@ final class CodeAgent: ObservableObject {
 
         // 1. Spec
         phase = .spec
+        currentIteration = 1
         appendMessage("📋 **Spec** — Analyserar och expanderar din idé…", role: .assistant)
         let spec = await runPhase(name: "Spec", prompt: specPrompt(for: proj), proj: &proj, model: model)
         proj.spec = spec
@@ -309,6 +316,7 @@ final class CodeAgent: ObservableObject {
 
         // 2. Research
         phase = .research
+        currentIteration = 2
         appendMessage("🔍 **Research** — Undersöker tekniska krav och beroenden…", role: .assistant)
         let research = await runPhase(name: "Research", prompt: researchPrompt(for: proj), proj: &proj, model: model)
         proj.researchNotes = research
@@ -318,6 +326,7 @@ final class CodeAgent: ObservableObject {
 
         // 3. Setup — create GitHub repo if available
         phase = .setup
+        currentIteration = 3
         appendMessage("🏗 **Setup** — Skapar GitHub-repo och projektstruktur…", role: .assistant)
         setLog("Setup: initierar projektstruktur")
 
@@ -331,6 +340,7 @@ final class CodeAgent: ObservableObject {
 
         // 4. Plan
         phase = .plan
+        currentIteration = 4
         appendMessage("📐 **Plan** — Skapar implementationsplan med uppgifter…", role: .assistant)
         let plan = await runPhase(name: "Plan", prompt: planPrompt(for: proj), proj: &proj, model: model)
         proj.plan = plan
@@ -340,6 +350,7 @@ final class CodeAgent: ObservableObject {
 
         // 5. Build — extract tasks from plan and run WorkerPool
         phase = .build
+        currentIteration = 5
         appendMessage("⚡ **Build** — Startar \(proj.parallelWorkers) parallella workers…", role: .assistant)
 
         let tasks = extractWorkerTasks(from: plan, projectID: proj.id)
@@ -351,10 +362,15 @@ final class CodeAgent: ObservableObject {
             tasks,
             projectRoot: nil,
             model: model,
-            projectID: proj.id
-        ) { [weak self] worker in
-            self?.handleWorkerUpdate(worker)
-        }
+            projectID: proj.id,
+            onWorkerUpdate: { [weak self] worker in
+                self?.handleWorkerUpdate(worker)
+            },
+            onToolCallActive: { [weak self] toolName in
+                self?.liveToolCall = toolName
+            }
+        )
+        liveToolCall = nil
 
         let buildSummary = results.map { "• \($0.output.prefix(120))" }.joined(separator: "\n")
         appendMessage("✅ **Build klar**: \(results.filter { $0.succeeded }.count)/\(results.count) lyckades\n\n\(buildSummary)", role: .assistant)
@@ -364,6 +380,7 @@ final class CodeAgent: ObservableObject {
 
         // 6. Push
         phase = .push
+        currentIteration = 6
         appendMessage("🚀 **Push**: Committar och pushar till GitHub...", role: .assistant)
         setLog("Push: git commit & push")
 

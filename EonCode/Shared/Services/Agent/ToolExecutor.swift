@@ -42,7 +42,16 @@ final class ToolExecutor {
         )
         case "github_search_repos":       return await githubSearchRepos(query: params["query"] ?? "")
         case "github_get_user":           return await githubGetUser()
-            
+
+        // MARK: - Web Search
+        case "web_search":               return await webSearch(query: params["query"] ?? "")
+
+        // MARK: - Brain Server
+        case "server_ask":               return await serverAsk(prompt: params["prompt"] ?? "")
+        case "server_status":            return await serverStatus()
+        case "server_exec":              return await serverExec(cmd: params["cmd"] ?? "")
+        case "server_repos":             return await serverRepos()
+
         default:                 return "Okänt verktyg: \(name)"
         }
     }
@@ -612,13 +621,144 @@ final class ToolExecutor {
             let user = try JSONDecoder().decode(GitHubUser.self, from: data)
             return """
             👤 Din GitHub-profil:
-            
+
             Användarnamn: \(user.login)
             Namn: \(user.name ?? "Ej angivet")
             Publika repos: \(user.publicRepos)
             Privat repos: \(user.totalPrivateRepos ?? 0)
             Avatar: \(user.avatarURL)
             """
+        } catch {
+            return "FEL: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Web Search (via Brain server or DuckDuckGo)
+
+    func webSearch(query: String) async -> String {
+        guard !query.isEmpty else { return "Ange en sökfråga" }
+
+        // Try DuckDuckGo Instant Answer API first (no key needed)
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        if let url = URL(string: "https://api.duckduckgo.com/?q=\(encoded)&format=json&no_html=1&skip_disambig=1") {
+            var req = URLRequest(url: url, timeoutInterval: 8)
+            req.setValue("Navi/3.2 (iOS)", forHTTPHeaderField: "User-Agent")
+            if let (data, _) = try? await URLSession.shared.data(for: req),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                var result = ""
+                if let abstract = json["AbstractText"] as? String, !abstract.isEmpty {
+                    result += "**\(json["Heading"] as? String ?? query)**\n\(abstract)\n"
+                    if let src = json["AbstractURL"] as? String, !src.isEmpty { result += "Källa: \(src)\n" }
+                }
+                // Related topics
+                if let topics = json["RelatedTopics"] as? [[String: Any]], !topics.isEmpty {
+                    let bullets = topics.prefix(5).compactMap { t -> String? in
+                        guard let text = t["Text"] as? String else { return nil }
+                        return "• \(text)"
+                    }.joined(separator: "\n")
+                    if !bullets.isEmpty { result += "\n**Relaterat:**\n\(bullets)" }
+                }
+                if !result.isEmpty { return "🔍 Sökresultat för '\(query)':\n\n\(result)" }
+            }
+        }
+
+        // Fallback: route through Brain server (Minimax can search the web)
+        return await serverAsk(prompt: "Sök på internet och ge mig information om: \(query)")
+    }
+
+    // MARK: - Brain Server Tools
+
+    private var brainBaseURL: String { "http://209.38.98.107:3001" }
+    private var brainAPIKey: String { "navi-brain-2026" }
+
+    private func brainRequest(path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> Data {
+        guard let url = URL(string: "\(brainBaseURL)\(path)") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url, timeoutInterval: 30)
+        req.httpMethod = method
+        req.setValue(brainAPIKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let body = body { req.httpBody = try? JSONSerialization.data(withJSONObject: body) }
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return data
+    }
+
+    func serverAsk(prompt: String) async -> String {
+        guard !prompt.isEmpty else { return "Ange en fråga till Brain" }
+        guard NaviBrainService.shared.isConnected else { return "🔴 Brain-servern är offline eller ej ansluten" }
+        do {
+            let data = try await brainRequest(path: "/ask", method: "POST", body: ["prompt": prompt])
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let response = json["response"] as? String {
+                return "🧠 Brain: \(response)"
+            }
+            return "🧠 Brain svarade: \(String(data: data, encoding: .utf8)?.prefix(500) ?? "inget svar")"
+        } catch {
+            return "FEL: Brain-anrop misslyckades: \(error.localizedDescription)"
+        }
+    }
+
+    func serverStatus() async -> String {
+        do {
+            let data = try await brainRequest(path: "/status")
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let pm2 = json["pm2"] as? [[String: Any]] ?? []
+                let pm2str = pm2.map { p -> String in
+                    let name = p["name"] as? String ?? "?"
+                    let status = p["status"] as? String ?? "?"
+                    let mem = (p["memory"] as? Int).map { "\($0/1024/1024)MB" } ?? "?"
+                    return "  • \(name): \(status) (\(mem))"
+                }.joined(separator: "\n")
+                let uptime = json["uptime"] as? String ?? json["uptime"] as? Int ?? "?"
+                let mem = json["memory"] as? [String: Any]
+                let memUsed = (mem?["used"] as? Int).map { "\($0/1024/1024)MB" } ?? "?"
+                return """
+                🖥️ Brain Server Status:
+
+                Uptime: \(uptime)
+                Minne: \(memUsed)
+                PM2-processer:
+                \(pm2str.isEmpty ? "  Inga processer" : pm2str)
+                """
+            }
+            return "Server online: \(String(data: data, encoding: .utf8)?.prefix(300) ?? "inget svar")"
+        } catch {
+            return "FEL: Kunde inte hämta serverstatus: \(error.localizedDescription)"
+        }
+    }
+
+    func serverExec(cmd: String) async -> String {
+        guard !cmd.isEmpty else { return "Ange ett kommando" }
+        // Block clearly dangerous commands
+        let blocked = ["rm -rf /", "mkfs", ":(){:|:&};:"]
+        for b in blocked {
+            if cmd.contains(b) { return "❌ Blockerat: farligt kommando '\(b)'" }
+        }
+        do {
+            let data = try await brainRequest(path: "/exec", method: "POST", body: ["cmd": cmd])
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let output = json["output"] as? String {
+                return "$ \(cmd)\n\(output)"
+            }
+            return "$ \(cmd)\n\(String(data: data, encoding: .utf8) ?? "inget svar")"
+        } catch {
+            return "FEL: server_exec misslyckades: \(error.localizedDescription)"
+        }
+    }
+
+    func serverRepos() async -> String {
+        do {
+            let data = try await brainRequest(path: "/repos")
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let repos = json["repos"] as? [[String: Any]] {
+                if repos.isEmpty { return "Inga repos synkade på servern" }
+                let list = repos.prefix(20).map { r -> String in
+                    let name = r["name"] as? String ?? "?"
+                    let branch = r["branch"] as? String ?? "main"
+                    return "• \(name) (\(branch))"
+                }.joined(separator: "\n")
+                return "📁 Repos på Brain-servern (\(repos.count) st):\n\n\(list)"
+            }
+            return String(data: data, encoding: .utf8) ?? "Inget svar"
         } catch {
             return "FEL: \(error.localizedDescription)"
         }

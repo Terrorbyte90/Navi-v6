@@ -76,6 +76,31 @@ let agentTools: [ClaudeTool] = [
                inputSchema: ToolInputSchema(properties: ["query": ToolProperty(type: "string", description: "Sökterm")], required: ["query"])),
     ClaudeTool(name: "github_get_user", description: "Hämta din GitHub-användarinformation",
                inputSchema: ToolInputSchema(properties: [:], required: [])),
+
+    // MARK: - Web Search
+    ClaudeTool(name: "web_search",
+               description: "Sök på internet efter information, nyheter, dokumentation eller valfritt ämne",
+               inputSchema: ToolInputSchema(
+                   properties: ["query": ToolProperty(type: "string", description: "Sökfrågan att söka på internet")],
+                   required: ["query"])),
+
+    // MARK: - Brain Server Tools
+    ClaudeTool(name: "server_ask",
+               description: "Ställ en fråga eller ge en uppgift till Navi Brain-servern (Minimax AI på servern)",
+               inputSchema: ToolInputSchema(
+                   properties: ["prompt": ToolProperty(type: "string", description: "Frågan eller uppgiften till Brain")],
+                   required: ["prompt"])),
+    ClaudeTool(name: "server_status",
+               description: "Hämta serverstatistik: uptime, PM2-processer, minne, disk, anslutna repos",
+               inputSchema: ToolInputSchema(properties: [:], required: [])),
+    ClaudeTool(name: "server_exec",
+               description: "Kör ett shell-kommando på Brain-servern som root (Ubuntu). Kräver bekräftelse för destruktiva kommandon.",
+               inputSchema: ToolInputSchema(
+                   properties: ["cmd": ToolProperty(type: "string", description: "Shell-kommandot att köra på servern")],
+                   required: ["cmd"])),
+    ClaudeTool(name: "server_repos",
+               description: "Lista alla repos synkade på Brain-servern med branch-info",
+               inputSchema: ToolInputSchema(properties: [:], required: [])),
 ]
 
 // MARK: - Agent Engine

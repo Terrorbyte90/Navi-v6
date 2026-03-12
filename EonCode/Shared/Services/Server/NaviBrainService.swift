@@ -163,6 +163,8 @@ final class NaviBrainService: ObservableObject {
 
     // MARK: - Live Status (real-time tool call progress)
     @Published var liveStatus: BrainLiveStatus?
+    /// ntfy.sh topic for push notifications from Brain
+    @Published var ntfyTopic: String? = nil
 
     // MARK: - Private
     private var statusTimer: Timer?
@@ -178,6 +180,7 @@ final class NaviBrainService: ObservableObject {
         Task { await fetchStatus() }
         Task { await fetchCosts() }
         Task { await fetchLogs() }
+        Task { await fetchNtfyTopic() }
         statusTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.fetchStatus()
@@ -216,6 +219,17 @@ final class NaviBrainService: ObservableObject {
 
     private var isAnySending: Bool {
         isSendingMinimax || isSendingQwen || isSendingOpus
+    }
+
+    func fetchNtfyTopic() async {
+        guard let url = URL(string: "\(Self.baseURL)/ntfy-topic") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 5)
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        if let (data, _) = try? await urlSession.data(for: req),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let topic = json["topic"] as? String {
+            ntfyTopic = topic
+        }
     }
 
     func fetchLiveStatus() async {

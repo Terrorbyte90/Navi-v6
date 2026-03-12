@@ -137,24 +137,36 @@ struct CodeView: View {
                 .help(agent.opusReviewEnabled ? "Opus-granskning aktiv" : "Aktivera Opus-kodgranskning")
                 #endif
 
-                // Stop button
-                if agent.isRunning {
-                    Button { agent.stop() } label: {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(NaviTheme.error)
-                    }
-                    .buttonStyle(.plain)
+                // Stop button — always visible per spec
+                Button {
+                    if agent.isRunning { agent.stop() }
+                } label: {
+                    Image(systemName: agent.isRunning ? "stop.fill" : "stop")
+                        .font(.system(size: 14))
+                        .foregroundColor(agent.isRunning ? NaviTheme.error : .secondary.opacity(0.25))
                 }
+                .buttonStyle(.plain)
+                .disabled(!agent.isRunning)
+                #if os(macOS)
+                .help(agent.isRunning ? "Stopp" : "Inget pågår")
+                #endif
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .frame(minHeight: 44)
 
-            // Phase progress bar when running
+            // Phase progress bar + iteration counter when running
             if agent.isRunning && agent.phase != .idle {
-                PhaseProgressBar(currentPhase: agent.phase)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                HStack(spacing: 8) {
+                    PhaseProgressBar(currentPhase: agent.phase)
+                    if agent.currentIteration > 0 {
+                        Text("iter \(agent.currentIteration)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundColor(.accentNavi.opacity(0.6))
+                            .padding(.trailing, 16)
+                    }
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .animation(NaviTheme.Spring.smooth, value: agent.isRunning)
@@ -218,6 +230,12 @@ struct CodeView: View {
                             if !agent.streamingText.isEmpty {
                                 CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
                                     .id("streaming")
+                            }
+                            // Live tool call card — shown when agent is executing a tool
+                            if agent.isRunning, let toolName = agent.liveToolCall {
+                                LiveToolCallCard(toolName: toolName)
+                                    .id("liveToolCall")
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                             if agent.isRunning && agent.phase != .idle && agent.phase != .done {
                                 CodeProgressCard(agent: agent)

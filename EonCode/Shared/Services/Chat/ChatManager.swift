@@ -16,6 +16,8 @@ final class ChatManager: ObservableObject {
     @Published var streamingScrollTick = 0   // increments every ~80 chars; used instead of .count to avoid O(n)
     @Published var isLoading = true
     @Published var lastError: String?
+    /// Live tool call currently executing during streaming (shown as animated card)
+    @Published var liveToolCall: String? = nil
 
     private let store = iCloudChatStore.shared
     private let api = ClaudeAPIClient.shared
@@ -113,10 +115,14 @@ final class ChatManager: ObservableObject {
         - Vid kodningsfrågor: ge komplett, fungerande kod — inga placeholders
         - Svara ALLTID på frågan direkt — ingen onödig inledning
 
-        ## Verktyg
-        - Du har GitHub-verktyg: github_list_repos, github_get_repo, github_list_branches, github_list_commits, github_list_pull_requests, github_create_pull_request, github_get_file_content, github_search_repos, github_get_user
-        - Använd ALLTID dessa verktyg för GitHub-frågor istället för att gissa
-        - Vänta alltid på verktygsresultat innan du svarar — hoppa aldrig över dem
+        ## Verktyg tillgängliga
+        **GitHub:** github_list_repos, github_get_repo, github_list_branches, github_list_commits, github_list_pull_requests, github_create_pull_request, github_get_file_content, github_search_repos, github_get_user
+        **Webb:** web_search — sök på internet för aktuell information, nyheter, dokumentation
+        **Brain-server:** server_ask (fråga Minimax), server_status (PM2, minne, disk), server_exec (kör shell), server_repos (lista repos)
+        - Använd ALLTID dessa verktyg för relevanta frågor — gissa aldrig
+        - web_search: använd för frågor om aktuell info, nyheter, API-dokumentation, prislistor etc.
+        - server_*: använd när Ted frågar om servern, repos, eller vill att Brain ska göra något
+        - Vänta alltid på verktygsresultat innan du svarar
 
         ## Minnen
         \(memoryCtx)
@@ -180,7 +186,8 @@ final class ChatManager: ObservableObject {
 
         isStreaming = true
         streamingText = ""
-        defer { isStreaming = false; streamingText = "" }
+        liveToolCall = nil
+        defer { isStreaming = false; streamingText = ""; liveToolCall = nil }
 
         var fullText = ""
         var finalUsage: TokenUsage?
@@ -197,8 +204,26 @@ final class ChatManager: ObservableObject {
 
         // Only use tools with Anthropic models (OpenRouter/xAI use different streaming format
         // that doesn't parse tool_use blocks correctly, causing garbled output)
-        let githubConnected = KeychainManager.shared.githubToken?.isEmpty == false
-        let toolsToUse = (githubConnected && conversation.model.provider == .anthropic) ? agentTools : nil
+        let toolsToUse: [ClaudeTool]?
+        if conversation.model.provider == .anthropic {
+            // Build the chat tool set: GitHub (if connected) + web_search + server tools
+            var chatTools = agentTools  // includes github + file + web_search + server tools
+            // Filter to chat-appropriate tools (no file write/delete/shell for safety in chat)
+            let chatToolNames: Set<String> = [
+                "github_list_repos", "github_get_repo", "github_list_branches", "github_list_commits",
+                "github_list_pull_requests", "github_create_pull_request", "github_get_file_content",
+                "github_search_repos", "github_get_user",
+                "web_search", "server_ask", "server_status", "server_exec", "server_repos"
+            ]
+            let githubConnected = KeychainManager.shared.githubToken?.isEmpty == false
+            chatTools = agentTools.filter { tool in
+                if tool.name.hasPrefix("github_") { return githubConnected }
+                return chatToolNames.contains(tool.name)
+            }
+            toolsToUse = chatTools.isEmpty ? nil : chatTools
+        } else {
+            toolsToUse = nil
+        }
 
         // Route streaming by provider
         let eventHandler: (StreamEvent) -> Void = { [self] event in
@@ -208,8 +233,8 @@ final class ChatManager: ObservableObject {
                 currentToolID = id ?? ""
                 currentToolName = name ?? ""
                 currentToolJSON = ""
-                if type == "tool_use" {
-                    onToken("🔧 ")
+                if type == "tool_use", let toolName = name {
+                    self.liveToolCall = toolName
                 }
             case .contentBlockDelta(_, let delta):
                 switch delta {
@@ -240,6 +265,7 @@ final class ChatManager: ObservableObject {
                     }
                     toolCalls.append((id: currentToolID, name: currentToolName, input: inputCodable))
                     NaviLog.info("Chat: parsed tool call \(currentToolName) with \(inputCodable.count) params")
+                    self.liveToolCall = nil
                 }
                 blockType = ""
                 currentToolID = ""
