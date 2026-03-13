@@ -2,8 +2,8 @@ import Foundation
 
 // MARK: - ModelRouter
 // Provider-agnostic streaming. Routes to Anthropic, xAI, or OpenRouter.
+// ALL providers now support native tool calling.
 // Special behaviour for Qwen3-Coder: 15s timeout → auto-fallback to MiniMax M2.5.
-// Tools are Anthropic-only — non-Anthropic models fall back to .sonnet46 when tools are provided.
 
 @MainActor
 final class ModelRouter {
@@ -11,7 +11,7 @@ final class ModelRouter {
     // MARK: - Primary entry
 
     /// Stream a completion, routing to the correct provider.
-    /// - `tools`: Anthropic-only. Non-Anthropic models auto-fall-back to `.sonnet46` when tools are provided.
+    /// - `tools`: Supported by ALL providers (Anthropic native, xAI/OpenRouter via OpenAI function calling format).
     /// - Returns: The model that was actually used (may differ from `model` if fallback triggered).
     @discardableResult
     static func stream(
@@ -26,47 +26,18 @@ final class ModelRouter {
         // Validate API key before doing anything
         try validateAPIKey(for: model)
 
-        // Tools: Anthropic supports native tool use.
-        // xAI/OpenRouter: fall back to Anthropic Sonnet only for tool calls.
-        // Exception: Qwen and MiniMax do NOT get fallback — they just run without tools.
-        if let tools, !tools.isEmpty, model.provider != .anthropic {
-            // For xAI models, fall back to Anthropic for tool use
-            if model.provider == .xai {
-                try validateAPIKey(for: .sonnet46)
-                try await ClaudeAPIClient.shared.streamMessage(
-                    messages: messages,
-                    model: .sonnet46,
-                    systemPrompt: systemPrompt,
-                    tools: tools,
-                    maxTokens: maxTokens,
-                    usePromptCaching: false,
-                    onEvent: onEvent
-                )
-                return .sonnet46
-            }
-            // OpenRouter models: run without tools (they handle instructions inline)
-            try await routeStream(
-                messages: messages,
-                model: model,
-                systemPrompt: systemPrompt,
-                maxTokens: maxTokens,
-                tools: nil,
-                onEvent: onEvent
-            )
-            return model
-        }
-
         // Qwen3-Coder: 15-second timeout + fallback to MiniMax M2.5
         if model == .qwen3CoderFree {
             return try await streamWithQwenFallback(
                 messages: messages,
                 systemPrompt: systemPrompt,
                 maxTokens: maxTokens,
+                tools: tools,
                 onEvent: onEvent
             )
         }
 
-        // All other models: direct routing, no timeout
+        // All models: direct routing with tools
         try await routeStream(
             messages: messages,
             model: model,
@@ -103,6 +74,7 @@ final class ModelRouter {
         messages: [ChatMessage],
         systemPrompt: String?,
         maxTokens: Int,
+        tools: [ClaudeTool]?,
         onEvent: @escaping (StreamEvent) -> Void
     ) async throws -> ClaudeModel {
 
@@ -115,7 +87,7 @@ final class ModelRouter {
                         model: .qwen3CoderFree,
                         systemPrompt: systemPrompt,
                         maxTokens: maxTokens,
-                        tools: nil,
+                        tools: tools,
                         onEvent: onEvent
                     )
                 }
@@ -155,7 +127,7 @@ final class ModelRouter {
                     model: .minimaxM25,
                     systemPrompt: systemPrompt,
                     maxTokens: maxTokens,
-                    tools: nil,
+                    tools: tools,
                     onEvent: onEvent
                 )
                 return .minimaxM25
@@ -172,7 +144,7 @@ final class ModelRouter {
                     model: .sonnet45,
                     systemPrompt: systemPrompt,
                     maxTokens: maxTokens,
-                    tools: nil,
+                    tools: tools,
                     onEvent: onEvent
                 )
                 return .sonnet45
@@ -207,6 +179,8 @@ final class ModelRouter {
                 messages: messages,
                 model: model,
                 systemPrompt: systemPrompt,
+                maxTokens: maxTokens,
+                tools: tools,
                 onEvent: onEvent
             )
         case .openRouter:
@@ -215,6 +189,7 @@ final class ModelRouter {
                 model: model,
                 systemPrompt: systemPrompt,
                 maxTokens: maxTokens,
+                tools: tools,
                 onEvent: onEvent
             )
         }

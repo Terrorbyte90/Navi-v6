@@ -141,18 +141,34 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
+                                // API call info card — shows provider, model, tool count
+                                if let apiInfo = manager.currentAPIInfo {
+                                    APICallInfoCard(info: apiInfo)
+                                        .id("apiInfo-\(apiInfo.iteration)")
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                }
+
                                 // Thinking phase indicator — always visible while streaming
                                 if manager.thinkingPhase != .idle && manager.thinkingPhase != .responding {
                                     ThinkingPhaseCard(phase: manager.thinkingPhase)
                                         .id("thinkingPhase")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
+
+                                // Completed tool call events — show results of executed tools
+                                ForEach(manager.toolCallEvents) { event in
+                                    ToolCallEventCard(event: event)
+                                        .id("toolEvent-\(event.id)")
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                }
+
                                 // Live tool call card shown while tool is executing
                                 if let liveToolName = manager.liveToolCall {
                                     LiveToolCallCard(toolName: liveToolName)
                                         .id("liveToolCall")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
+
                                 StreamingBubble(text: manager.streamingText)
                                     .id("streaming")
                             }
@@ -1330,5 +1346,205 @@ struct CompletionIndicator: View {
                 appeared = true
             }
         }
+    }
+}
+
+// MARK: - API Call Info Card — shows provider, model, tool count during streaming
+
+struct APICallInfoCard: View {
+    let info: ChatManager.APICallInfo
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ThinkingOrb(size: 24, isAnimating: true)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.accentNavi.opacity(0.7))
+                    Text("POST")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.accentNavi.opacity(0.7))
+                    Text(info.provider)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    if info.iteration > 1 {
+                        Text("(iteration \(info.iteration))")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.orange.opacity(0.7))
+                    }
+                }
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Text("model:")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text(info.model)
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary.opacity(0.6))
+                    }
+                    HStack(spacing: 4) {
+                        Text("tools:")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("\(info.toolCount)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary.opacity(0.6))
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.primary.opacity(0.03))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentNavi.opacity(0.12), lineWidth: 0.5)
+            )
+            .cornerRadius(10)
+            Spacer(minLength: 40)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Tool Call Event Card — shows completed tool call with result
+
+struct ToolCallEventCard: View {
+    let event: ChatManager.ToolCallEvent
+    @State private var expanded = false
+
+    private var icon: String { ChatToolCallStrip.toolIconStatic(event.toolName) }
+
+    private var statusColor: Color {
+        event.isError ? NaviTheme.error : NaviTheme.success
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ThinkingOrb(size: 24, isAnimating: false)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: event.isComplete ? (event.isError ? "xmark.circle.fill" : "checkmark.circle.fill") : "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10))
+                            .foregroundColor(event.isComplete ? statusColor : .accentNavi)
+                        Image(systemName: icon)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.accentNavi.opacity(0.7))
+                        Text(event.toolName)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.primary.opacity(0.75))
+
+                        // Show key params inline
+                        if let firstParam = event.params.first {
+                            Text(firstParam.value.prefix(40).description)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.5))
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        if let dur = event.duration {
+                            Text(String(format: "%.1fs", dur))
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.45))
+                        }
+
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(.secondary.opacity(0.35))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if expanded, let result = event.result {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(result)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(event.isError ? NaviTheme.error.opacity(0.8) : .secondary.opacity(0.7))
+                            .lineLimit(8)
+                            .padding(8)
+                    }
+                    .background(Color.primary.opacity(0.02))
+                    .cornerRadius(6)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(event.isError ? NaviTheme.error.opacity(0.04) : Color.accentNavi.opacity(0.04))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(event.isError ? NaviTheme.error.opacity(0.15) : Color.accentNavi.opacity(0.12), lineWidth: 0.5)
+            )
+            .cornerRadius(10)
+            Spacer(minLength: 40)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Enhanced Tool Call Strip (shown in saved messages)
+
+struct EnhancedToolCallStrip: View {
+    let tools: [String]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.accentNavi.opacity(0.7))
+                    Text("\(tools.count) \(tools.count == 1 ? "verktyg" : "verktyg") kördes")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentNavi.opacity(0.7))
+                    Spacer(minLength: 0)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.accentNavi.opacity(0.4))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(tools.enumerated()), id: \.offset) { idx, tool in
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 8))
+                                .foregroundColor(NaviTheme.success.opacity(0.6))
+                            Image(systemName: ChatToolCallStrip.toolIconStatic(tool))
+                                .font(.system(size: 8))
+                                .foregroundColor(.accentNavi.opacity(0.5))
+                            Text(tool)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.accentNavi.opacity(0.65))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.accentNavi.opacity(0.06))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.accentNavi.opacity(0.15), lineWidth: 1)
+        )
+        .cornerRadius(10)
     }
 }

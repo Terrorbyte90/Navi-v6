@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - OpenRouter API Client (OpenAI-compatible)
-// Completely reworked for reliability with all OpenRouter models.
+// Full tool calling support with streaming for all OpenRouter models.
 
 @MainActor
 final class OpenRouterClient: ObservableObject {
@@ -29,7 +29,30 @@ final class OpenRouterClient: ObservableObject {
         ]
     }
 
-    // MARK: - Build messages array
+    // MARK: - Convert ClaudeTool → OpenAI function format
+
+    static func openAITools(from tools: [ClaudeTool]) -> [[String: Any]] {
+        tools.map { tool in
+            var props: [String: Any] = [:]
+            for (key, prop) in tool.inputSchema.properties {
+                props[key] = ["type": prop.type, "description": prop.description]
+            }
+            return [
+                "type": "function",
+                "function": [
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": [
+                        "type": "object",
+                        "properties": props,
+                        "required": tool.inputSchema.required
+                    ] as [String: Any]
+                ] as [String: Any]
+            ]
+        }
+    }
+
+    // MARK: - Build messages array (with tool call / tool result support)
 
     private func buildAPIMessages(
         messages: [ChatMessage],
@@ -42,6 +65,64 @@ final class OpenRouterClient: ObservableObject {
         }
 
         for msg in messages {
+            // Handle tool result messages
+            let hasToolResults = msg.content.contains { block in
+                if case .toolResult = block { return true }
+                return false
+            }
+            if hasToolResults {
+                for block in msg.content {
+                    if case .toolResult(let id, let content, _) = block {
+                        apiMessages.append([
+                            "role": "tool",
+                            "tool_call_id": id,
+                            "content": content
+                        ])
+                    }
+                }
+                continue
+            }
+
+            // Handle assistant messages with tool_use blocks
+            let hasToolUse = msg.content.contains { block in
+                if case .toolUse = block { return true }
+                return false
+            }
+            if hasToolUse && msg.role == .assistant {
+                var textParts = ""
+                var toolCalls: [[String: Any]] = []
+                for block in msg.content {
+                    switch block {
+                    case .text(let t):
+                        textParts += t
+                    case .toolUse(let id, let name, let input):
+                        let jsonData = try? JSONSerialization.data(withJSONObject: input.mapValues { $0.value })
+                        let jsonStr = jsonData.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+                        toolCalls.append([
+                            "id": id,
+                            "type": "function",
+                            "function": [
+                                "name": name,
+                                "arguments": jsonStr
+                            ] as [String: Any]
+                        ])
+                    default:
+                        break
+                    }
+                }
+                var assistantMsg: [String: Any] = ["role": "assistant"]
+                if !textParts.isEmpty {
+                    assistantMsg["content"] = textParts
+                } else {
+                    assistantMsg["content"] = NSNull()
+                }
+                if !toolCalls.isEmpty {
+                    assistantMsg["tool_calls"] = toolCalls
+                }
+                apiMessages.append(assistantMsg)
+                continue
+            }
+
             let role = msg.role == .user ? "user" : "assistant"
 
             // Check if message has image content (multimodal)
@@ -84,30 +165,36 @@ final class OpenRouterClient: ObservableObject {
         return apiMessages
     }
 
-    // MARK: - Chat Completion (streaming)
+    // MARK: - Chat Completion (streaming, with tool call support)
 
     func streamChatCompletion(
         messages: [ChatMessage],
         model: ClaudeModel,
         systemPrompt: String? = nil,
         maxTokens: Int = Constants.Agent.maxTokensDefault,
+        tools: [ClaudeTool]? = nil,
         onEvent: @escaping (StreamEvent) -> Void
     ) async throws {
         let headers = try authHeaders()
-        var apiMessages = buildAPIMessages(messages: messages, systemPrompt: systemPrompt)
+        let apiMessages = buildAPIMessages(messages: messages, systemPrompt: systemPrompt)
 
         // Validate we have at least one non-system message
-        if !apiMessages.contains(where: { ($0["role"] as? String) == "user" }) {
-            NaviLog.info("OpenRouter: no user message found in stream, throwing")
+        if !apiMessages.contains(where: { ($0["role"] as? String) == "user" || ($0["role"] as? String) == "tool" }) {
+            NaviLog.info("OpenRouter: no user/tool message found in stream, throwing")
             throw OpenRouterError.emptyRequest
         }
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model.rawValue,
             "messages": apiMessages,
             "max_tokens": maxTokens,
             "stream": true
         ]
+
+        // Add tools if provided
+        if let tools, !tools.isEmpty {
+            body["tools"] = Self.openAITools(from: tools)
+        }
 
         guard let url = URL(string: Constants.API.openRouterBaseURL) else {
             throw OpenRouterError.invalidResponse
@@ -119,7 +206,8 @@ final class OpenRouterClient: ObservableObject {
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        NaviLog.info("OpenRouter stream → \(model.rawValue)")
+        let toolCount = tools?.count ?? 0
+        NaviLog.info("OpenRouter stream → \(model.rawValue) (tools: \(toolCount))")
 
         onEvent(.messageStart(id: UUID().uuidString, model: model.rawValue))
 
@@ -141,10 +229,15 @@ final class OpenRouterClient: ObservableObject {
         var outputTokens = 0
         var hasEmittedContent = false
 
+        // Track tool calls from streaming deltas
+        var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+        var hasToolCalls = false
+        var stopReason = "end_turn"
+
         for try await line in bytes.lines {
             // Skip empty lines
             guard !line.isEmpty else { continue }
-            
+
             // Skip SSE comments (lines starting with ":")
             if line.hasPrefix(":") { continue }
 
@@ -204,25 +297,68 @@ final class OpenRouterClient: ObservableObject {
                 throw OpenRouterError.apiError(500, errorMsg)
             }
 
-            // Extract delta content - handle optional content field
+            // Extract delta content - handle text + tool_calls
             if let delta = choice["delta"] as? [String: Any] {
-                // Handle reasoning_content (chain-of-thought) - skip it
-                // Only emit actual content
+                // Handle text content
                 if let content = delta["content"] as? String, !content.isEmpty {
                     hasEmittedContent = true
                     onEvent(.contentBlockDelta(index: 0, delta: .text(content)))
                 }
+
+                // Handle streaming tool calls (OpenAI format)
+                if let toolCallDeltas = delta["tool_calls"] as? [[String: Any]] {
+                    for tc in toolCallDeltas {
+                        let idx = tc["index"] as? Int ?? 0
+
+                        // New tool call start
+                        if let id = tc["id"] as? String {
+                            let funcInfo = tc["function"] as? [String: Any]
+                            let name = funcInfo?["name"] as? String ?? ""
+                            let args = funcInfo?["arguments"] as? String ?? ""
+                            pendingToolCalls[idx] = (id: id, name: name, arguments: args)
+                            hasToolCalls = true
+
+                            // Emit contentBlockStart for tool_use (Anthropic-compatible event)
+                            onEvent(.contentBlockStart(index: idx + 1, type: "tool_use", id: id, name: name))
+                        }
+
+                        // Append to existing tool call arguments
+                        if let funcInfo = tc["function"] as? [String: Any],
+                           let argChunk = funcInfo["arguments"] as? String,
+                           var existing = pendingToolCalls[idx] {
+                            // If this is just an argument chunk (no id), append
+                            if tc["id"] == nil {
+                                existing.arguments += argChunk
+                                pendingToolCalls[idx] = existing
+                            }
+                            // Also update name if provided mid-stream
+                            if let name = funcInfo["name"] as? String, !name.isEmpty {
+                                existing.name = name
+                                pendingToolCalls[idx] = existing
+                            }
+                            onEvent(.contentBlockDelta(index: idx + 1, delta: .inputJSON(argChunk)))
+                        }
+                    }
+                }
             }
 
-            // Handle normal finish
-            if let finishReason = choice["finish_reason"] as? String,
-               finishReason == "stop" || finishReason == "length" {
+            // Handle finish_reason
+            if let finishReason = choice["finish_reason"] as? String {
+                if finishReason == "tool_calls" {
+                    stopReason = "tool_use"
+                } else if finishReason == "stop" || finishReason == "length" {
+                    stopReason = finishReason == "stop" ? "end_turn" : "max_tokens"
+                }
+                // Emit contentBlockStop for each tool call
+                for (idx, _) in pendingToolCalls {
+                    onEvent(.contentBlockStop(index: idx + 1))
+                }
                 break
             }
         }
 
-        // Fallback if no content was emitted
-        if !hasEmittedContent {
+        // Fallback if no content was emitted and no tool calls
+        if !hasEmittedContent && !hasToolCalls {
             NaviLog.error("OpenRouter stream tom – ingen content för \(model.displayName)")
             onEvent(.contentBlockDelta(
                 index: 0,
@@ -236,10 +372,10 @@ final class OpenRouterClient: ObservableObject {
             cacheCreationInputTokens: nil,
             cacheReadInputTokens: nil
         )
-        onEvent(.messageDelta(stopReason: "end_turn", usage: usage))
+        onEvent(.messageDelta(stopReason: stopReason, usage: usage))
         onEvent(.messageStop)
-        
-        NaviLog.info("OpenRouter stream klar – \(outputTokens) output tokens")
+
+        NaviLog.info("OpenRouter stream klar – \(outputTokens) output tokens, \(pendingToolCalls.count) tool calls")
     }
 
     // MARK: - Chat Completion (non-streaming)

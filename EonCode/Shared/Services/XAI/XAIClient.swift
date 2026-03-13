@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - xAI API Client (OpenAI-compatible)
+// MARK: - xAI API Client (OpenAI-compatible, with full tool calling support)
 
 @MainActor
 final class XAIClient: ObservableObject {
@@ -26,23 +26,77 @@ final class XAIClient: ObservableObject {
         ]
     }
 
-    // MARK: - Chat Completion (streaming, emits StreamEvent for ChatManager compat)
+    // MARK: - Build messages (with tool call / tool result support)
 
-    func streamChatCompletion(
+    private func buildAPIMessages(
         messages: [ChatMessage],
-        model: ClaudeModel,
-        systemPrompt: String? = nil,
-        maxTokens: Int = Constants.Agent.maxTokensDefault,
-        onEvent: @escaping (StreamEvent) -> Void
-    ) async throws {
-        let headers = try authHeaders()
-
-        // Build OpenAI-compatible messages
+        systemPrompt: String?
+    ) -> [[String: Any]] {
         var apiMessages: [[String: Any]] = []
+
         if let sys = systemPrompt, !sys.isEmpty {
             apiMessages.append(["role": "system", "content": sys])
         }
+
         for msg in messages {
+            // Handle tool result messages
+            let hasToolResults = msg.content.contains { block in
+                if case .toolResult = block { return true }
+                return false
+            }
+            if hasToolResults {
+                for block in msg.content {
+                    if case .toolResult(let id, let content, _) = block {
+                        apiMessages.append([
+                            "role": "tool",
+                            "tool_call_id": id,
+                            "content": content
+                        ])
+                    }
+                }
+                continue
+            }
+
+            // Handle assistant messages with tool_use blocks
+            let hasToolUse = msg.content.contains { block in
+                if case .toolUse = block { return true }
+                return false
+            }
+            if hasToolUse && msg.role == .assistant {
+                var textParts = ""
+                var toolCalls: [[String: Any]] = []
+                for block in msg.content {
+                    switch block {
+                    case .text(let t):
+                        textParts += t
+                    case .toolUse(let id, let name, let input):
+                        let jsonData = try? JSONSerialization.data(withJSONObject: input.mapValues { $0.value })
+                        let jsonStr = jsonData.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+                        toolCalls.append([
+                            "id": id,
+                            "type": "function",
+                            "function": [
+                                "name": name,
+                                "arguments": jsonStr
+                            ] as [String: Any]
+                        ])
+                    default:
+                        break
+                    }
+                }
+                var assistantMsg: [String: Any] = ["role": "assistant"]
+                if !textParts.isEmpty {
+                    assistantMsg["content"] = textParts
+                } else {
+                    assistantMsg["content"] = NSNull()
+                }
+                if !toolCalls.isEmpty {
+                    assistantMsg["tool_calls"] = toolCalls
+                }
+                apiMessages.append(assistantMsg)
+                continue
+            }
+
             let role = msg.role == .user ? "user" : "assistant"
 
             // Check for image content (multimodal)
@@ -79,17 +133,41 @@ final class XAIClient: ObservableObject {
             }
         }
 
-        let body: [String: Any] = [
+        return apiMessages
+    }
+
+    // MARK: - Chat Completion (streaming, emits StreamEvent for ChatManager compat)
+
+    func streamChatCompletion(
+        messages: [ChatMessage],
+        model: ClaudeModel,
+        systemPrompt: String? = nil,
+        maxTokens: Int = Constants.Agent.maxTokensDefault,
+        tools: [ClaudeTool]? = nil,
+        onEvent: @escaping (StreamEvent) -> Void
+    ) async throws {
+        let headers = try authHeaders()
+        let apiMessages = buildAPIMessages(messages: messages, systemPrompt: systemPrompt)
+
+        var body: [String: Any] = [
             "model": model.rawValue,
             "messages": apiMessages,
             "max_tokens": maxTokens,
             "stream": true
         ]
 
+        // Add tools if provided (OpenAI function calling format)
+        if let tools, !tools.isEmpty {
+            body["tools"] = OpenRouterClient.openAITools(from: tools)
+        }
+
         var request = URLRequest(url: URL(string: Constants.API.xaiChatEndpoint)!)
         request.httpMethod = "POST"
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let toolCount = tools?.count ?? 0
+        NaviLog.info("xAI stream → \(model.rawValue) (tools: \(toolCount))")
 
         onEvent(.messageStart(id: UUID().uuidString, model: model.rawValue))
 
@@ -107,19 +185,26 @@ final class XAIClient: ObservableObject {
         var inputTokens = 0
         var outputTokens = 0
 
+        // Track tool calls from streaming deltas
+        var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+        var hasToolCalls = false
+        var stopReason = "end_turn"
+
         for try await line in bytes.lines {
             guard line.hasPrefix("data: ") else { continue }
             let jsonStr = String(line.dropFirst(6))
             if jsonStr == "[DONE]" {
-                onEvent(.messageDelta(
-                    stopReason: "end_turn",
-                    usage: TokenUsage(
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        cacheCreationInputTokens: nil,
-                        cacheReadInputTokens: nil
-                    )
-                ))
+                let usage = TokenUsage(
+                    inputTokens: inputTokens,
+                    outputTokens: outputTokens,
+                    cacheCreationInputTokens: nil,
+                    cacheReadInputTokens: nil
+                )
+                // Emit contentBlockStop for each pending tool call
+                for (idx, _) in pendingToolCalls {
+                    onEvent(.contentBlockStop(index: idx + 1))
+                }
+                onEvent(.messageDelta(stopReason: stopReason, usage: usage))
                 onEvent(.messageStop)
                 break
             }
@@ -133,19 +218,58 @@ final class XAIClient: ObservableObject {
                 outputTokens = usage["completion_tokens"] as? Int ?? outputTokens
             }
 
-            // Extract delta text
+            // Extract choices
             if let choices = obj["choices"] as? [[String: Any]],
-               let first = choices.first,
-               let delta = first["delta"] as? [String: Any],
-               let content = delta["content"] as? String {
-                onEvent(.contentBlockDelta(index: 0, delta: .text(content)))
-            }
+               let first = choices.first {
 
-            // Check for finish_reason
-            if let choices = obj["choices"] as? [[String: Any]],
-               let first = choices.first,
-               let finish = first["finish_reason"] as? String, finish == "stop" {
-                // Will be handled by [DONE]
+                if let delta = first["delta"] as? [String: Any] {
+                    // Handle text content
+                    if let content = delta["content"] as? String {
+                        onEvent(.contentBlockDelta(index: 0, delta: .text(content)))
+                    }
+
+                    // Handle streaming tool calls (OpenAI format)
+                    if let toolCallDeltas = delta["tool_calls"] as? [[String: Any]] {
+                        for tc in toolCallDeltas {
+                            let idx = tc["index"] as? Int ?? 0
+
+                            // New tool call start
+                            if let id = tc["id"] as? String {
+                                let funcInfo = tc["function"] as? [String: Any]
+                                let name = funcInfo?["name"] as? String ?? ""
+                                let args = funcInfo?["arguments"] as? String ?? ""
+                                pendingToolCalls[idx] = (id: id, name: name, arguments: args)
+                                hasToolCalls = true
+
+                                onEvent(.contentBlockStart(index: idx + 1, type: "tool_use", id: id, name: name))
+                            }
+
+                            // Append to existing tool call arguments
+                            if let funcInfo = tc["function"] as? [String: Any],
+                               let argChunk = funcInfo["arguments"] as? String,
+                               var existing = pendingToolCalls[idx] {
+                                if tc["id"] == nil {
+                                    existing.arguments += argChunk
+                                    pendingToolCalls[idx] = existing
+                                }
+                                if let name = funcInfo["name"] as? String, !name.isEmpty {
+                                    existing.name = name
+                                    pendingToolCalls[idx] = existing
+                                }
+                                onEvent(.contentBlockDelta(index: idx + 1, delta: .inputJSON(argChunk)))
+                            }
+                        }
+                    }
+                }
+
+                // Handle finish_reason
+                if let finish = first["finish_reason"] as? String {
+                    if finish == "tool_calls" {
+                        stopReason = "tool_use"
+                    } else if finish == "stop" {
+                        stopReason = "end_turn"
+                    }
+                }
             }
         }
     }
