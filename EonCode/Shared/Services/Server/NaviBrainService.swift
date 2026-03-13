@@ -116,6 +116,71 @@ struct BrainMessage: Identifiable {
     }
 }
 
+// MARK: - BrainSessionMode
+
+enum BrainSessionMode: String, CaseIterable {
+    case minimax, qwen, opus
+
+    var displayName: String {
+        switch self {
+        case .minimax: return "MiniMax M2.5"
+        case .qwen:    return "DeepSeek R1 / Qwen3"
+        case .opus:    return "Claude Sonnet 4.6"
+        }
+    }
+
+    var endpoint: String {
+        switch self {
+        case .minimax: return "/ask"
+        case .qwen:    return "/qwen/ask"
+        case .opus:    return "/opus/ask"
+        }
+    }
+
+    var clearEndpoint: String {
+        switch self {
+        case .minimax: return "/minimax/history/clear"
+        case .qwen:    return "/qwen/history/clear"
+        case .opus:    return "/opus/history/clear"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .minimax: return "sparkles"
+        case .qwen:    return "bolt.fill"
+        case .opus:    return "cpu.fill"
+        }
+    }
+
+    var accentHex: String {
+        switch self {
+        case .minimax: return "da7756"
+        case .qwen:    return "5B8DEF"
+        case .opus:    return "B06AFF"
+        }
+    }
+}
+
+// MARK: - BrainSession (one concurrent chat session per model)
+
+@MainActor
+final class BrainSession: ObservableObject, Identifiable {
+    let id = UUID()
+    let mode: BrainSessionMode
+    let sessionId: String
+    @Published var name: String
+    @Published var messages: [BrainMessage] = []
+    @Published var isSending = false
+    let createdAt = Date()
+
+    init(mode: BrainSessionMode, index: Int) {
+        self.mode = mode
+        self.sessionId = "ios-\(mode.rawValue)-\(UUID().uuidString.prefix(8))"
+        self.name = "Session \(index)"
+    }
+}
+
 struct TerminalLine: Identifiable {
     let id        = UUID()
     enum LineType { case command, output, error, info }
@@ -143,19 +208,21 @@ final class NaviBrainService: ObservableObject {
     @Published var terminalLines: [TerminalLine] = []
     @Published var isTerminalSending = false
 
-    // MARK: - Minimax
-    @Published var minimaxMessages: [BrainMessage] = []
+    // MARK: - Brain Sessions (multiple concurrent per model)
+    @Published var brainSessions: [BrainSession] = []
     @Published var isSendingMinimax = false
-
-    // MARK: - Qwen
-    @Published var qwenMessages: [BrainMessage] = []
     @Published var isSendingQwen = false
-
-    // MARK: - Opus-Brain
-    @Published var opusMessages: [BrainMessage] = []
     @Published var isSendingOpus = false
-    @Published var opusCostUSD: Double = 0.0   // running total from server
+    @Published var opusCostUSD: Double = 0.0
     @Published var opusTokensTotal: Int = 0
+
+    /// Backward-compatible message counts (used by sidebars)
+    var minimaxMessages: [BrainMessage] {
+        brainSessions.filter { $0.mode == .minimax }.flatMap { $0.messages }
+    }
+    var qwenMessages: [BrainMessage] {
+        brainSessions.filter { $0.mode == .qwen }.flatMap { $0.messages }
+    }
 
     // MARK: - Logs
     @Published var logs: [BrainLogEntry] = []
@@ -186,6 +253,9 @@ final class NaviBrainService: ObservableObject {
         Task { await fetchCosts() }
         Task { await fetchLogs() }
         Task { await fetchNtfyTopic() }
+        Task { await fetchPersistedTasks() }
+        // Start ntfy push notification polling
+        NotificationManager.shared.startNtfyPolling()
         statusTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.fetchStatus()
@@ -205,6 +275,7 @@ final class NaviBrainService: ObservableObject {
         logsTimer = nil
         taskPollTimer?.invalidate()
         taskPollTimer = nil
+        NotificationManager.shared.stopNtfyPolling()
     }
 
     // MARK: - Live Status Polling (while any model is sending)
@@ -376,104 +447,175 @@ final class NaviBrainService: ObservableObject {
         return ctx
     }
 
-    // MARK: - Minimax
+    // MARK: - Brain Session Management
 
-    func sendMinimax(_ prompt: String) async {
-        guard !isSendingMinimax else { return }
-        minimaxMessages.append(BrainMessage(role: .user, content: prompt))
-        isSendingMinimax = true
+    func sessionsFor(_ mode: BrainSessionMode) -> [BrainSession] {
+        brainSessions.filter { $0.mode == mode }
+    }
+
+    @discardableResult
+    func createBrainSession(mode: BrainSessionMode) -> BrainSession {
+        let index = sessionsFor(mode).count + 1
+        let session = BrainSession(mode: mode, index: index)
+        brainSessions.append(session)
+        return session
+    }
+
+    func removeBrainSession(_ id: UUID) {
+        brainSessions.removeAll { $0.id == id }
+        syncSendingFlags()
+    }
+
+    /// Send a prompt to a specific session — multiple sessions can run in parallel
+    func sendToSession(_ session: BrainSession, prompt: String, anthropicKey: String? = nil) async {
+        guard !session.isSending else { return }
+        session.messages.append(BrainMessage(role: .user, content: prompt))
+        session.isSending = true
+        syncSendingFlags()
         startLiveStatusPolling()
-        defer { isSendingMinimax = false; stopLiveStatusPolling() }
+        defer {
+            session.isSending = false
+            syncSendingFlags()
+            if !isAnySending { stopLiveStatusPolling() }
+        }
+
+        var extraHeaders: [String: String] = [:]
+        if session.mode == .opus, let key = anthropicKey {
+            extraHeaders["x-anthropic-key"] = key
+        }
+
         do {
             let enrichedPrompt = buildContextPrefix() + prompt
-            let r = try await postAsk(prompt: enrichedPrompt, endpoint: "/ask")
-            minimaxMessages.append(BrainMessage(role: .assistant, content: r.response,
-                                                model: r.model, tokens: r.tokens,
-                                                toolCalls: r.toolCalls))
+            let r = try await postAskWithRetry(prompt: enrichedPrompt,
+                                               endpoint: session.mode.endpoint,
+                                               sessionId: session.sessionId,
+                                               extraHeaders: extraHeaders)
+            session.messages.append(BrainMessage(role: .assistant, content: r.response,
+                                                 model: r.model, tokens: r.tokens, cost: r.cost,
+                                                 toolCalls: r.toolCalls))
+            if session.mode == .opus, let c = r.cost { opusCostUSD += c }
+            let costStr = r.cost.map { String(format: "$%.4f", $0) }
+            NotificationManager.shared.notifyTaskCompleted(
+                taskDescription: prompt.prefix(60).description,
+                model: session.mode == .opus
+                    ? "Claude Sonnet 4.6\(costStr.map { " (\($0))" } ?? "")"
+                    : session.mode.displayName,
+                duration: nil
+            )
         } catch {
-            minimaxMessages.append(BrainMessage(role: .assistant,
-                                                content: "Fel: \(error.localizedDescription)"))
+            session.messages.append(BrainMessage(role: .assistant,
+                                                 content: "Fel: \(error.localizedDescription)"))
+            NotificationManager.shared.notifyServerError(
+                error: "\(session.mode.displayName): \(error.localizedDescription)")
         }
         Task { await fetchLogs() }
+        if session.mode == .opus { Task { await fetchCosts() } }
     }
 
-    func clearMinimaxHistory() {
-        minimaxMessages = []
-        Task { _ = try? await postClear(endpoint: "/minimax/history/clear") }
+    func clearSession(_ session: BrainSession) {
+        session.messages = []
+        let sid = session.sessionId
+        let endpoint = session.mode.clearEndpoint
+        Task { _ = try? await postClear(endpoint: endpoint, sessionId: sid) }
     }
 
-    // MARK: - Qwen
+    /// Sync service-level sending flags from session states
+    private func syncSendingFlags() {
+        isSendingMinimax = brainSessions.contains { $0.mode == .minimax && $0.isSending }
+        isSendingQwen    = brainSessions.contains { $0.mode == .qwen && $0.isSending }
+        isSendingOpus    = brainSessions.contains { $0.mode == .opus && $0.isSending }
+    }
 
-    func sendQwen(_ prompt: String) async {
-        guard !isSendingQwen else { return }
-        qwenMessages.append(BrainMessage(role: .user, content: prompt))
-        isSendingQwen = true
-        startLiveStatusPolling()
-        defer { isSendingQwen = false; stopLiveStatusPolling() }
+    // MARK: - Fetch persisted tasks from server (syncs on startup)
+
+    func fetchPersistedTasks() async {
+        guard let url = URL(string: "\(Self.baseURL)/tasks") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         do {
-            let enrichedPrompt = buildContextPrefix() + prompt
-            let r = try await postAsk(prompt: enrichedPrompt, endpoint: "/qwen/ask")
-            qwenMessages.append(BrainMessage(role: .assistant, content: r.response,
-                                             model: r.model, tokens: r.tokens,
-                                             toolCalls: r.toolCalls))
+            let (data, resp) = try await urlSession.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let tasks = json["tasks"] as? [[String: Any]] {
+                for taskJson in tasks {
+                    guard let taskId = taskJson["taskId"] as? String,
+                          let statusStr = taskJson["status"] as? String
+                    else { continue }
+                    // Only add tasks we don't already track locally
+                    if serverTasks.contains(where: { $0.id == taskId || $0.serverTaskId == taskId }) { continue }
+                    let modelStr = taskJson["model"] as? String ?? "minimax"
+                    let model: ServerTaskModel = modelStr == "opus" ? .opus : modelStr == "qwen" ? .qwen : .minimax
+                    let status: ServerTaskStatus
+                    switch statusStr {
+                    case "completed": status = .completed
+                    case "failed": status = .failed
+                    case "cancelled": status = .cancelled
+                    case "running": status = .running
+                    default: status = .running
+                    }
+                    var task = ServerTask(
+                        id: taskId,
+                        prompt: taskJson["prompt"] as? String ?? "",
+                        model: model,
+                        status: status
+                    )
+                    task.serverTaskId = taskId
+                    task.result = taskJson["result"] as? String
+                    task.error = taskJson["error"] as? String
+                    if let tc = taskJson["toolCalls"] as? Int { task.toolCallCount = tc }
+                    serverTasks.append(task)
+                }
+            }
         } catch {
-            qwenMessages.append(BrainMessage(role: .assistant,
-                                             content: "Fel: \(error.localizedDescription)"))
+            // Silent fail — best effort sync
         }
-        Task { await fetchLogs() }
-    }
-
-    func clearQwenHistory() {
-        qwenMessages = []
-        Task { _ = try? await postClear(endpoint: "/qwen/history/clear") }
-    }
-
-    // MARK: - Opus-Brain (requires Anthropic key)
-
-    func sendOpus(_ prompt: String, anthropicKey: String) async {
-        guard !isSendingOpus else { return }
-        opusMessages.append(BrainMessage(role: .user, content: prompt))
-        isSendingOpus = true
-        startLiveStatusPolling()
-        defer { isSendingOpus = false; stopLiveStatusPolling() }
-        do {
-            let enrichedPrompt = buildContextPrefix() + prompt
-            let r = try await postAsk(prompt: enrichedPrompt, endpoint: "/opus/ask",
-                                      extraHeaders: ["x-anthropic-key": anthropicKey])
-            opusMessages.append(BrainMessage(role: .assistant, content: r.response,
-                                             model: r.model, tokens: r.tokens, cost: r.cost,
-                                             toolCalls: r.toolCalls))
-            // Update running cost
-            if let c = r.cost { opusCostUSD += c }
-        } catch {
-            opusMessages.append(BrainMessage(role: .assistant,
-                                             content: "Fel: \(error.localizedDescription)"))
+        // Start polling if there are active tasks
+        if serverTasks.contains(where: { $0.status.isActive }) {
+            startTaskPolling()
         }
-        Task {
-            await fetchLogs()
-            await fetchCosts()
-        }
-    }
-
-    func clearOpusHistory() {
-        opusMessages = []
-        Task { _ = try? await postClear(endpoint: "/opus/history/clear") }
     }
 
     // MARK: - HTTP Helpers
 
+    /// Post with automatic retry (1 retry on timeout/network error)
+    private func postAskWithRetry(prompt: String,
+                                  endpoint: String,
+                                  sessionId: String? = nil,
+                                  extraHeaders: [String: String] = [:],
+                                  maxRetries: Int = 1) async throws -> BrainAskResponse {
+        var lastError: Error?
+        for attempt in 0...maxRetries {
+            do {
+                return try await postAsk(prompt: prompt, endpoint: endpoint,
+                                         sessionId: sessionId, extraHeaders: extraHeaders)
+            } catch {
+                lastError = error
+                let nsError = error as NSError
+                // Only retry on network/timeout errors, not HTTP 4xx/5xx
+                let isRetryable = nsError.domain == NSURLErrorDomain &&
+                    [NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet].contains(nsError.code)
+                if !isRetryable || attempt >= maxRetries { throw error }
+                // Wait before retry
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+        throw lastError ?? URLError(.unknown)
+    }
+
     private func postAsk(prompt: String,
                          endpoint: String,
+                         sessionId sid: String? = nil,
                          extraHeaders: [String: String] = [:]) async throws -> BrainAskResponse {
         guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { throw URLError(.badURL) }
+        let effectiveSessionId = sid ?? sessionId
         var req = URLRequest(url: url, timeoutInterval: 300)
         req.httpMethod = "POST"
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(sessionId, forHTTPHeaderField: "x-session-id")
+        req.setValue(effectiveSessionId, forHTTPHeaderField: "x-session-id")
         for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
 
-        let body: [String: Any] = ["prompt": prompt, "sessionId": sessionId]
+        let body: [String: Any] = ["prompt": prompt, "sessionId": effectiveSessionId]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, resp) = try await urlSession.data(for: req)
@@ -485,12 +627,13 @@ final class NaviBrainService: ObservableObject {
         return try JSONDecoder().decode(BrainAskResponse.self, from: data)
     }
 
-    private func postClear(endpoint: String) async throws {
+    private func postClear(endpoint: String, sessionId sid: String? = nil) async throws {
         guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { return }
+        let effectiveSessionId = sid ?? sessionId
         var req = URLRequest(url: url, timeoutInterval: 10)
         req.httpMethod = "POST"
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        req.setValue(sessionId, forHTTPHeaderField: "x-session-id")
+        req.setValue(effectiveSessionId, forHTTPHeaderField: "x-session-id")
         _ = try await urlSession.data(for: req)
     }
 

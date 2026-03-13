@@ -1,8 +1,8 @@
 // ============================================================
-// Navi Brain v3.1 — Autonomous AI Server
+// Navi Brain v3.2 — Autonomous AI Server
 // ============================================================
 // Models: MiniMax M2.5 (OpenRouter), DeepSeek R1/Qwen3 (OpenRouter), Claude Sonnet 4.6 (Anthropic)
-// Features: ReAct tool loop, persistent tasks, ntfy.sh push notifications
+// Features: ReAct tool loop, persistent tasks, ntfy.sh push, disk persistence
 // ============================================================
 
 const express = require('express');
@@ -24,6 +24,11 @@ const PORT = process.env.PORT || 3001;
 const API_KEY = process.env.API_KEY || 'navi-brain-2026';
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY || '';
 const NTFY_TOPIC = process.env.NTFY_TOPIC || 'navi-brain-' + require('os').hostname();
+const DATA_DIR = path.join(__dirname, 'data');
+const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const COSTS_FILE = path.join(DATA_DIR, 'costs.json');
+const startTime = Date.now();
 
 // Model IDs
 const MODELS = {
@@ -44,6 +49,109 @@ function auth(req, res, next) {
   }
   next();
 }
+
+// ============================================================
+// PERSISTENCE — save/load to disk
+// ============================================================
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+function saveTasks() {
+  try {
+    ensureDataDir();
+    const data = JSON.stringify(Object.values(activeTasks), null, 2);
+    fs.writeFileSync(TASKS_FILE, data, 'utf8');
+  } catch (e) {
+    console.error('[PERSIST] Failed to save tasks:', e.message);
+  }
+}
+
+function loadTasks() {
+  try {
+    if (!fs.existsSync(TASKS_FILE)) return;
+    const data = fs.readFileSync(TASKS_FILE, 'utf8');
+    const tasks = JSON.parse(data);
+    for (const task of tasks) {
+      // Mark any previously "running" tasks as failed (server restarted)
+      if (task.status === 'running') {
+        task.status = 'failed';
+        task.error = 'Servern startades om under körning';
+        task.completedAt = new Date().toISOString();
+      }
+      activeTasks[task.taskId] = task;
+    }
+    addLog('PERSIST', `Laddade ${tasks.length} sparade uppgifter`);
+  } catch (e) {
+    console.error('[PERSIST] Failed to load tasks:', e.message);
+  }
+}
+
+function saveSessions() {
+  try {
+    ensureDataDir();
+    // Only save last 10 messages per session to keep file small
+    const trimmed = {};
+    for (const [id, s] of Object.entries(sessions)) {
+      trimmed[id] = { history: s.history.slice(-20) };
+    }
+    const data = JSON.stringify({
+      minimax: trimmed,
+      qwen: Object.fromEntries(Object.entries(qwenSessions).map(([k, v]) => [k, { history: v.history.slice(-20) }])),
+      opus: Object.fromEntries(Object.entries(opusSessions).map(([k, v]) => [k, {
+        history: v.history.slice(-10),
+        totalCost: v.totalCost || 0,
+        totalTokens: v.totalTokens || 0,
+      }])),
+    }, null, 2);
+    fs.writeFileSync(SESSIONS_FILE, data, 'utf8');
+  } catch (e) {
+    console.error('[PERSIST] Failed to save sessions:', e.message);
+  }
+}
+
+function loadSessions() {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    if (data.minimax) Object.assign(sessions, data.minimax);
+    if (data.qwen) Object.assign(qwenSessions, data.qwen);
+    if (data.opus) Object.assign(opusSessions, data.opus);
+    addLog('PERSIST', 'Sessioner laddade från disk');
+  } catch (e) {
+    console.error('[PERSIST] Failed to load sessions:', e.message);
+  }
+}
+
+function saveCosts() {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(COSTS_FILE, JSON.stringify(costTracker, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[PERSIST] Failed to save costs:', e.message);
+  }
+}
+
+function loadCosts() {
+  try {
+    if (!fs.existsSync(COSTS_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(COSTS_FILE, 'utf8'));
+    costTracker.total_cost = data.total_cost || 0;
+    costTracker.total_requests = data.total_requests || 0;
+  } catch (e) {
+    console.error('[PERSIST] Failed to load costs:', e.message);
+  }
+}
+
+// Auto-save periodically (every 60 seconds)
+setInterval(() => {
+  saveTasks();
+  saveSessions();
+  saveCosts();
+}, 60_000);
 
 // ============================================================
 // STATE
@@ -504,15 +612,47 @@ function sendNtfyNotification(title, message, tags = [], priority = 3) {
 }
 
 // ============================================================
-// ROUTES — Health
+// ROUTES — Health & Status
 // ============================================================
 
+function formatUptime(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
 app.get('/', (req, res) => {
+  const uptime = formatUptime(Date.now() - startTime);
+  const activeTaskCount = Object.values(activeTasks).filter(t => t.status === 'running').length;
   res.json({
     status: 'online',
-    version: '3.1.0',
-    repos: 0,
+    version: '3.2.0',
+    uptime,
     model: MODELS.minimax,
+    activeTasks: activeTaskCount,
+    totalTasks: Object.keys(activeTasks).length,
+    totalCost: `$${costTracker.total_cost.toFixed(4)}`,
+    dailyCost: `$${(costTracker.total_cost / Math.max(1, (Date.now() - startTime) / 86400000)).toFixed(4)}`,
+  });
+});
+
+// Dedicated health endpoint for monitoring
+app.get('/health', (req, res) => {
+  const memUsage = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    version: '3.2.0',
+    uptime: formatUptime(Date.now() - startTime),
+    memory: {
+      rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+      heap: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+    },
+    activeTasks: Object.values(activeTasks).filter(t => t.status === 'running').length,
+    models: Object.keys(MODELS),
+    ntfyTopic: NTFY_TOPIC,
   });
 });
 
@@ -582,6 +722,7 @@ app.post('/exec', auth, (req, res) => {
 app.post('/ask', auth, async (req, res) => {
   const prompt = req.body.prompt || '';
   const sessionId = req.body.sessionId || req.headers['x-session-id'] || 'default';
+  const notify = req.body.notify !== false;
 
   if (!sessions[sessionId]) sessions[sessionId] = { history: [] };
   const session = sessions[sessionId];
@@ -597,6 +738,16 @@ app.post('/ask', auth, async (req, res) => {
     if (session.history.length > 40) session.history.splice(0, session.history.length - 40);
 
     addLog('MINIMAX', `Svar: ${result.response.substring(0, 80)} (${result.tokens} tok)`, 'minimax', result.tokens);
+
+    // Send notification for completed chat request
+    if (notify && result.toolCalls.length > 0) {
+      sendNtfyNotification(
+        'MiniMax klar',
+        `${result.toolCalls.length} verktyg, ${result.tokens} tok: ${prompt.substring(0, 60)}`,
+        ['chat_complete', 'sparkles'],
+        3
+      );
+    }
 
     res.json({
       response: result.response,
@@ -624,6 +775,7 @@ app.post('/minimax/history/clear', auth, (req, res) => {
 app.post('/qwen/ask', auth, async (req, res) => {
   const prompt = req.body.prompt || '';
   const sessionId = req.body.sessionId || req.headers['x-session-id'] || 'default';
+  const notify = req.body.notify !== false;
 
   if (!qwenSessions[sessionId]) qwenSessions[sessionId] = { history: [] };
   const session = qwenSessions[sessionId];
@@ -645,6 +797,16 @@ app.post('/qwen/ask', auth, async (req, res) => {
     if (session.history.length > 30) session.history.splice(0, session.history.length - 30);
 
     addLog('QWEN', `Svar: ${result.response.substring(0, 80)} (${result.tokens} tok)`, 'qwen', result.tokens);
+
+    // Send notification for completed chat request
+    if (notify && result.toolCalls.length > 0) {
+      sendNtfyNotification(
+        'Qwen/DeepSeek klar',
+        `${result.toolCalls.length} verktyg, ${result.tokens} tok: ${prompt.substring(0, 60)}`,
+        ['chat_complete', 'zap'],
+        3
+      );
+    }
 
     res.json({
       response: result.response,
@@ -672,7 +834,8 @@ app.post('/qwen/history/clear', auth, (req, res) => {
 app.post('/opus/ask', auth, async (req, res) => {
   const prompt = req.body.prompt || '';
   const sessionId = req.body.sessionId || req.headers['x-session-id'] || 'default';
-  const anthropicKey = req.headers['x-anthropic-key'] || '';
+  const anthropicKey = req.headers['x-anthropic-key'] || process.env.ANTHROPIC_API_KEY || '';
+  const notify = req.body.notify !== false;
 
   if (!anthropicKey) {
     return res.status(400).json({ response: 'Ingen Anthropic API-nyckel', tokens: 0 });
@@ -694,6 +857,16 @@ app.post('/opus/ask', auth, async (req, res) => {
     session.totalTokens += result.tokens || 0;
 
     addLog('OPUS', `Svar: ${result.response.substring(0, 80)} ($${(result.cost || 0).toFixed(6)})`, 'opus', result.tokens);
+
+    // Send notification for completed chat request
+    if (notify && result.toolCalls.length > 0) {
+      sendNtfyNotification(
+        'Claude Sonnet klar',
+        `${result.toolCalls.length} verktyg, $${(result.cost || 0).toFixed(4)}: ${prompt.substring(0, 60)}`,
+        ['chat_complete', 'brain'],
+        3
+      );
+    }
 
     res.json({
       response: result.response,
@@ -755,17 +928,19 @@ app.post('/task/start', auth, async (req, res) => {
   };
 
   activeTasks[taskId] = task;
+  saveTasks();
   addLog('TASK', `Startad: ${modelKey} — ${prompt.substring(0, 80)}`, modelKey);
 
   // Respond immediately — task runs in background
   res.json({ taskId, status: 'running' });
 
   // Run task asynchronously
-  runTaskInBackground(task, anthropicKey).catch(e => {
+  runTaskInBackground(task, anthropicKey || process.env.ANTHROPIC_API_KEY).catch(e => {
     addLog('ERROR', `Task ${taskId}: ${e.message}`);
     task.status = 'failed';
     task.error = e.message;
     task.completedAt = new Date().toISOString();
+    saveTasks();
 
     if (task.notify) {
       sendNtfyNotification(
@@ -804,6 +979,7 @@ async function runTaskInBackground(task, anthropicKey) {
     task.result = result.response;
     task.toolCalls = result.toolCalls?.length || 0;
     task.completedAt = new Date().toISOString();
+    saveTasks();
 
     addLog('TASK', `Klar: ${task.model} — ${result.response.substring(0, 80)} (${result.tokens} tok)`, task.model, result.tokens);
 
@@ -821,6 +997,7 @@ async function runTaskInBackground(task, anthropicKey) {
     task.status = 'failed';
     task.error = e.message;
     task.completedAt = new Date().toISOString();
+    saveTasks();
     throw e;
   }
 }
@@ -850,6 +1027,7 @@ app.post('/task/cancel/:taskId', auth, (req, res) => {
   }
   task.status = 'cancelled';
   task.completedAt = new Date().toISOString();
+  saveTasks();
   addLog('TASK', `Avbruten: ${task.taskId}`, task.model);
   res.json({ ok: true, status: 'cancelled' });
 });
@@ -866,11 +1044,35 @@ app.get('/tasks', auth, (req, res) => {
 // START SERVER
 // ============================================================
 
+// Load persisted data before starting
+loadCosts();
+loadTasks();
+loadSessions();
+
 app.listen(PORT, '0.0.0.0', () => {
-  addLog('BOOT', `Navi Brain v3.1 startad på port ${PORT}`);
+  addLog('BOOT', `Navi Brain v3.2 startad på port ${PORT}`);
   addLog('BOOT', `Modeller: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
   addLog('BOOT', `ntfy.sh topic: ${NTFY_TOPIC}`);
-  console.log(`\n🧠 Navi Brain v3.1 running on port ${PORT}`);
+  addLog('BOOT', `Persistens: ${DATA_DIR}`);
+  console.log(`\n🧠 Navi Brain v3.2 running on port ${PORT}`);
   console.log(`   ntfy topic: ${NTFY_TOPIC}`);
-  console.log(`   Models: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6\n`);
+  console.log(`   Models: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
+  console.log(`   Data dir: ${DATA_DIR}\n`);
+});
+
+// Graceful shutdown — save state
+process.on('SIGTERM', () => {
+  console.log('[SHUTDOWN] Saving state...');
+  saveTasks();
+  saveSessions();
+  saveCosts();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[SHUTDOWN] Saving state...');
+  saveTasks();
+  saveSessions();
+  saveCosts();
+  process.exit(0);
 });

@@ -185,6 +185,8 @@
 		BD938F539F093300DBCA0682 /* AgentPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = D366B7022FC3F5CF7F3A9F6A /* AgentPool.swift */; };
 		BFAD9B2D3063EE7532775DBC /* ArtifactView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAFC5773CE20A8F2A4FE63E2 /* ArtifactView.swift */; };
 		C15E99F34AF91FF5E12A729B /* MarkdownPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B112A1A381A48BE71E8F958 /* MarkdownPreview.swift */; };
+		C340D66A9CD0F141967E16C5 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8D4455BE159D853AD60A52A /* NotificationManager.swift */; };
+		C3508E57D4711A0ADAB3EECF /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8D4455BE159D853AD60A52A /* NotificationManager.swift */; };
 		C395A7DB8080B4F7FAA797A6 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EE35E70A539E90187F695B1 /* PlanView.swift */; };
 		C6549CBABC752E94E7A70864 /* InstructionQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 778D32197C8BE96A9E02A02E /* InstructionQueue.swift */; };
 		C70A4E86C9285523887F0D82 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BE7D1EDE2C854EDF626CFEF /* ChatView.swift */; };
@@ -298,7 +300,7 @@
 		64B074907A2FB58C840C223A /* NaviApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviApp.swift; sourceTree = "<group>"; };
 		6FD7C47B7A159B2A9A089AB6 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
 		7423689F437F42E5120BB320 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
-		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7547E53210F7158811E0657B /* BrowserAgentLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAgentLogView.swift; sourceTree = "<group>"; };
 		75E16C42F31EA3521A28B103 /* PremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumComponents.swift; sourceTree = "<group>"; };
 		778D08B3D0DD0AD571D93118 /* TerminalExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalExecutor.swift; sourceTree = "<group>"; };
@@ -361,6 +363,7 @@
 		E774684432AF41D71C0FDE5F /* ProjectIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIndexer.swift; sourceTree = "<group>"; };
 		E87C7BE71A8355DEDB314675 /* ScreenshotAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotAnalyzer.swift; sourceTree = "<group>"; };
 		E8CAC7A9FF0AD1150D931FF0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		E8D4455BE159D853AD60A52A /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		E8FBE4871F30BAC1E28FF834 /* WebViewContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewContainer.swift; sourceTree = "<group>"; };
 		E9F974224709EF892C219B9E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F4D9B1368F02F5A7149ABB20 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -486,6 +489,7 @@
 				5E502968CD1C560CA8145085 /* GitHub */,
 				9DF676323B20F50CC3C5BB90 /* Keychain */,
 				67506849CB62E83FDA6BA807 /* Memory */,
+				938BFE48A96C67B681D9CA1A /* Notifications */,
 				379553951772758A07E182C9 /* OpenRouter */,
 				CA27EF3974381168F0C0E1EA /* Persistence */,
 				602FEA5200F5DE2B73A8EB23 /* Planning */,
@@ -709,6 +713,14 @@
 			path = Chat;
 			sourceTree = "<group>";
 		};
+		938BFE48A96C67B681D9CA1A /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				E8D4455BE159D853AD60A52A /* NotificationManager.swift */,
+			);
+			path = Notifications;
+			sourceTree = "<group>";
+		};
 		9A3DAEB5D18E2B3E7DFF1FC9 /* Agents */ = {
 			isa = PBXGroup;
 			children = (
@@ -923,6 +935,7 @@
 						ProvisioningStyle = Automatic;
 					};
 					DAB8911160F888000AB35966 = {
+						DevelopmentTeam = DV646H5VDP;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -1038,6 +1051,7 @@
 				B87077F40C6321BFFC1B0D7F /* NaviBrainService.swift in Sources */,
 				EA96CBA653E94ED559CD73D8 /* NaviOrchestrator.swift in Sources */,
 				4722D94CA50D105B709BB8D0 /* NaviTheme.swift in Sources */,
+				C3508E57D4711A0ADAB3EECF /* NotificationManager.swift in Sources */,
 				F56FC1CDF4CF49BA48E3651B /* OpenRouterClient.swift in Sources */,
 				D7CEADF1D001464D7228191A /* OpusReviewer.swift in Sources */,
 				C83A966720CFF24D66E15767 /* OrchestratorAgent.swift in Sources */,
@@ -1161,6 +1175,7 @@
 				ACADB3EA59F3521FED3FB7B3 /* NaviBrainService.swift in Sources */,
 				E2A3E9DC5D13A81DB17598FE /* NaviOrchestrator.swift in Sources */,
 				F8EEB79C104AE2898C6C35B3 /* NaviTheme.swift in Sources */,
+				C340D66A9CD0F141967E16C5 /* NotificationManager.swift in Sources */,
 				94591937335C9C4F94D559AC /* OpenRouterClient.swift in Sources */,
 				DD43C3382056E034C9508147 /* OpusReviewer.swift in Sources */,
 				349661EF9DEB83FA9F05EFCA /* OrchestratorAgent.swift in Sources */,
@@ -1363,14 +1378,13 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = G648H762LD;
+				DEVELOPMENT_TEAM = DV646H5VDP;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.tedsvard.navi.ios;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -1405,14 +1419,13 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = G648H762LD;
+				DEVELOPMENT_TEAM = DV646H5VDP;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.tedsvard.navi.ios;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

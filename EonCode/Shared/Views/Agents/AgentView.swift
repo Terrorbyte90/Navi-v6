@@ -56,7 +56,9 @@ struct AgentView: View {
                     }
                 }
         }
+        #if os(iOS)
         .navigationViewStyle(.stack)
+        #endif
     }
 
     // MARK: - Agent list

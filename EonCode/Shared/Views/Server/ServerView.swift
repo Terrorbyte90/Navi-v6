@@ -66,7 +66,7 @@ struct ServerView: View {
                     Text("Navi Brain")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.primary)
-                    Text("v3")
+                    Text("v\(brain.serverStatus?.version ?? "3.2")")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary.opacity(0.5))
                         .padding(.horizontal, 5).padding(.vertical, 1)
@@ -167,6 +167,19 @@ struct ServerView: View {
                                             value: isTabBusy(tab)
                                         )
                                 }
+
+                                // Badge for tasks tab showing active count
+                                if tab == .tasks {
+                                    let activeCount = brain.serverTasks.filter { $0.status.isActive }.count
+                                    if activeCount > 0 {
+                                        Text("\(activeCount)")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .frame(width: 16, height: 16)
+                                            .background(tab.accentColor)
+                                            .clipShape(Circle())
+                                    }
+                                }
                             }
                             .foregroundColor(selectedTab == tab
                                              ? tab.accentColor
@@ -209,9 +222,9 @@ struct ServerView: View {
         switch selectedTab {
         case .tasks:    ServerTasksView()
         case .terminal: TerminalView()
-        case .minimax:  BrainChatView(mode: .minimax)
-        case .qwen:     BrainChatView(mode: .qwen)
-        case .opus:     BrainChatView(mode: .opus)
+        case .minimax:  BrainSessionsView(mode: .minimax)
+        case .qwen:     BrainSessionsView(mode: .qwen)
+        case .opus:     BrainSessionsView(mode: .opus)
         case .logs:     LogsView()
         }
     }
@@ -244,14 +257,16 @@ struct ServerView: View {
                     }
 
                     infoCard("Endpoints") {
+                        endpointRow("GET  /health",            desc: "Hälsokontroll")
                         endpointRow("POST /ask",              desc: "Minimax chat")
                         endpointRow("POST /qwen/ask",         desc: "Qwen chat")
                         endpointRow("POST /opus/ask",         desc: "Opus-Brain chat")
+                        endpointRow("POST /task/start",       desc: "Starta bakgrundsuppgift")
                         endpointRow("POST /exec",             desc: "Shell-kommando")
-                        endpointRow("GET  /costs",            desc: "Minimax kostnader")
+                        endpointRow("GET  /costs",            desc: "Kostnader")
                         endpointRow("GET  /opus/status",      desc: "Opus statistik")
                         endpointRow("GET  /logs",             desc: "Serverloggar")
-                        endpointRow("GET  /repos",            desc: "GitHub repos")
+                        endpointRow("GET  /tasks",            desc: "Alla uppgifter")
                     }
 
                     if let costs = brain.serverCosts {
@@ -578,52 +593,134 @@ struct TerminalView: View {
     }
 }
 
-// MARK: - BrainChatView (Minimax / Qwen / Opus)
+// MARK: - BrainSessionsView (multi-session wrapper)
+
+struct BrainSessionsView: View {
+    let mode: BrainSessionMode
+    @StateObject private var brain = NaviBrainService.shared
+    @State private var activeSessionId: UUID?
+
+    private var sessions: [BrainSession] {
+        brain.sessionsFor(mode)
+    }
+
+    private var activeSession: BrainSession? {
+        if let id = activeSessionId { return sessions.first { $0.id == id } }
+        return sessions.first
+    }
+
+    private var accentColor: Color {
+        Color(naviHex: mode.accentHex)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Session picker bar
+            if sessions.count > 1 || !sessions.isEmpty {
+                sessionPicker
+                Divider().opacity(0.08)
+            }
+
+            // Active session chat
+            if let session = activeSession {
+                BrainChatView(session: session, mode: mode)
+            } else {
+                Spacer()
+            }
+        }
+        .onAppear {
+            if sessions.isEmpty {
+                let session = brain.createBrainSession(mode: mode)
+                activeSessionId = session.id
+            } else if activeSessionId == nil {
+                activeSessionId = sessions.first?.id
+            }
+        }
+    }
+
+    var sessionPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(sessions) { session in
+                    Button {
+                        withAnimation(NaviTheme.Spring.quick) { activeSessionId = session.id }
+                    } label: {
+                        HStack(spacing: 5) {
+                            if session.isSending {
+                                ProgressView()
+                                    .scaleEffect(0.45)
+                                    .tint(accentColor)
+                            } else {
+                                Circle()
+                                    .fill(session.messages.isEmpty
+                                          ? Color.secondary.opacity(0.2)
+                                          : accentColor.opacity(0.5))
+                                    .frame(width: 6, height: 6)
+                            }
+                            Text(session.name)
+                                .font(.system(size: 11, weight: activeSessionId == session.id ? .semibold : .regular))
+                                .lineLimit(1)
+                        }
+                        .foregroundColor(activeSessionId == session.id
+                                         ? accentColor
+                                         : .secondary.opacity(0.5))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(activeSessionId == session.id
+                                    ? accentColor.opacity(0.1)
+                                    : Color.clear)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        if sessions.count > 1 {
+                            Button(role: .destructive) {
+                                let id = session.id
+                                if activeSessionId == id {
+                                    activeSessionId = sessions.first { $0.id != id }?.id
+                                }
+                                brain.removeBrainSession(id)
+                            } label: {
+                                Label("Ta bort session", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+
+                // New session button
+                Button {
+                    let session = brain.createBrainSession(mode: mode)
+                    withAnimation(NaviTheme.Spring.quick) { activeSessionId = session.id }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(accentColor.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+        .background(Color.chatBackground)
+    }
+}
+
+// MARK: - BrainChatView (single session chat)
 
 struct BrainChatView: View {
-    enum Mode { case minimax, qwen, opus }
-    let mode: Mode
+    @ObservedObject var session: BrainSession
+    let mode: BrainSessionMode
 
     @StateObject private var brain = NaviBrainService.shared
     @State private var inputText   = ""
     @State private var showCompletion = false
     @FocusState private var focused: Bool
 
-    private var messages: [BrainMessage] {
-        switch mode {
-        case .minimax: return brain.minimaxMessages
-        case .qwen:    return brain.qwenMessages
-        case .opus:    return brain.opusMessages
-        }
-    }
-    private var isSending: Bool {
-        switch mode {
-        case .minimax: return brain.isSendingMinimax
-        case .qwen:    return brain.isSendingQwen
-        case .opus:    return brain.isSendingOpus
-        }
-    }
-    private var modelLabel: String {
-        switch mode {
-        case .minimax: return "MiniMax M2.5"
-        case .qwen:    return "DeepSeek R1 / Qwen3"
-        case .opus:    return "Claude Sonnet 4.6"
-        }
-    }
-    private var accentColor: Color {
-        switch mode {
-        case .minimax: return NaviTheme.accent
-        case .qwen:    return Color(naviHex: "5B8DEF")
-        case .opus:    return Color(naviHex: "B06AFF")
-        }
-    }
-    private var avatarIcon: String {
-        switch mode {
-        case .minimax: return "sparkles"
-        case .qwen:    return "bolt.fill"
-        case .opus:    return "cpu.fill"
-        }
-    }
+    private var messages: [BrainMessage] { session.messages }
+    private var isSending: Bool { session.isSending }
+    private var modelLabel: String { mode.displayName }
+    private var accentColor: Color { Color(naviHex: mode.accentHex) }
+    private var avatarIcon: String { mode.icon }
+
     private var opusAPIKey: String? {
         mode == .opus ? KeychainManager.shared.anthropicAPIKey : nil
     }
@@ -755,16 +852,15 @@ struct BrainChatView: View {
                     .font(NaviTheme.heading(16))
                     .foregroundColor(.primary)
 
-                switch mode {
-                case .minimax:
+                if mode == .minimax {
                     Text("Kraftfull reasoning-modell på din server")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
-                case .qwen:
+                } else if mode == .qwen {
                     Text("Gratis kodningsmodell via OpenRouter")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
-                case .opus:
+                } else if mode == .opus {
                     Text("Claude på din server — agerar bara på begäran")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
@@ -977,7 +1073,7 @@ struct BrainChatView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(accentColor.opacity(0.5))
                 } else {
-                    Text(mode == .opus ? "Opus arbetar…" : mode == .minimax ? "Minimax arbetar…" : "Qwen arbetar…")
+                    Text(mode == .opus ? "Opus arbetar…" : mode == .qwen ? "Qwen arbetar…" : "Minimax arbetar…")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary.opacity(0.4))
                 }
@@ -1018,11 +1114,7 @@ struct BrainChatView: View {
         HStack(alignment: .bottom, spacing: 10) {
             Button {
                 withAnimation(NaviTheme.Spring.quick) {
-                    switch mode {
-                    case .minimax: brain.clearMinimaxHistory()
-                    case .qwen:    brain.clearQwenHistory()
-                    case .opus:    brain.clearOpusHistory()
-                    }
+                    brain.clearSession(session)
                 }
             } label: {
                 Image(systemName: "trash")
@@ -1085,13 +1177,8 @@ struct BrainChatView: View {
         guard !text.isEmpty else { return }
         inputText = ""
         focused   = false
-        switch mode {
-        case .minimax: await brain.sendMinimax(text)
-        case .qwen:    await brain.sendQwen(text)
-        case .opus:
-            guard let key = opusAPIKey else { return }
-            await brain.sendOpus(text, anthropicKey: key)
-        }
+        let anthropicKey = mode == .opus ? opusAPIKey : nil
+        await brain.sendToSession(session, prompt: text, anthropicKey: anthropicKey)
     }
 }
 

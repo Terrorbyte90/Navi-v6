@@ -18,10 +18,21 @@ final class AgentPool: ObservableObject {
         return agent
     }
 
+    func removeAgent(for projectId: UUID) {
+        if let agent = agents.removeValue(forKey: projectId) {
+            agent.stop()
+        }
+    }
+
     func stopAll() {
         for agent in agents.values {
             agent.stop()
         }
+    }
+
+    func removeAll() {
+        stopAll()
+        agents.removeAll()
     }
 
     var activeCount: Int {
