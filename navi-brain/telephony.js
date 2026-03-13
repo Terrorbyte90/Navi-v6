@@ -121,10 +121,8 @@ Skapad av Ted Svärd / Navi AI.`;
 
 async function getOrCreateDefaultAgent() {
   if (telConfig.agentId) {
-    try {
-      await elvRequest(`/v1/convai/agents/${telConfig.agentId}`);
-      return telConfig.agentId;
-    } catch { telConfig.agentId = null; }
+    // Return stored agent ID directly — skip HTTP verify (server IP may be blocked)
+    return telConfig.agentId;
   }
   return createAgent('Navi Default Agent', buildSystemPrompt(null), 'Hej, hur kan jag hjälpa dig idag?');
 }
