@@ -231,6 +231,27 @@ struct CodeView: View {
                                 CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
                                     .id("streaming")
                             }
+                            // API call info card — shows current model request
+                            if agent.isRunning, let apiInfo = agent.currentAPIInfo {
+                                CodeAPIInfoCard(info: apiInfo)
+                                    .id("apiInfo-\(apiInfo.iteration)")
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            }
+                            // Thinking phase indicator
+                            if agent.isRunning, !agent.thinkingPhase.isEmpty, agent.streamingText.isEmpty {
+                                CodeThinkingCard(phase: agent.thinkingPhase)
+                                    .id("thinking")
+                                    .transition(.opacity)
+                            }
+                            // Completed tool call events — visual feedback
+                            ForEach(agent.toolCallEvents.filter { $0.isComplete }) { event in
+                                CodeToolCallCard(event: event)
+                                    .id("tool-\(event.id)")
+                                    .transition(.asymmetric(
+                                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                                        removal: .opacity
+                                    ))
+                            }
                             // Live tool call card — shown when agent is executing a tool
                             if agent.isRunning, let toolName = agent.liveToolCall {
                                 LiveToolCallCard(toolName: toolName)
@@ -672,5 +693,156 @@ struct PhaseProgressBar: View {
         if phase.ordinal == currentPhase.ordinal { return .accentNavi }
         if phase.ordinal < currentPhase.ordinal { return NaviTheme.success.opacity(0.7) }
         return .secondary.opacity(0.3)
+    }
+}
+
+// MARK: - CodeAPIInfoCard — shows current API request info
+
+struct CodeAPIInfoCard: View {
+    let info: CodeAPIInfo
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.up.right.circle.fill")
+                .font(.system(size: 11))
+                .foregroundColor(.accentNavi.opacity(0.6))
+            Text("POST")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.accentNavi.opacity(0.7))
+            Text(info.provider.capitalized)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.6))
+            Spacer()
+            Text(info.model)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary.opacity(0.5))
+            if info.toolCount > 0 {
+                Text("\(info.toolCount) tools")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.4))
+            }
+            if info.iteration > 1 {
+                Text("iter \(info.iteration)")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundColor(.accentNavi.opacity(0.5))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.accentNavi.opacity(0.08))
+                    .cornerRadius(4)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.accentNavi.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.accentNavi.opacity(0.1), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - CodeThinkingCard — shows what the agent is thinking/doing
+
+struct CodeThinkingCard: View {
+    let phase: String
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(Color.accentNavi)
+                .frame(width: 6, height: 6)
+                .scaleEffect(pulse ? 1.3 : 1.0)
+                .opacity(pulse ? 0.5 : 1.0)
+            Text(phase)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.7))
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+    }
+}
+
+// MARK: - CodeToolCallCard — shows completed tool call with result
+
+struct CodeToolCallCard: View {
+    let event: CodeToolCallEvent
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header row
+            Button {
+                withAnimation(NaviTheme.Spring.quick) { isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: event.isError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(event.isError ? NaviTheme.error : NaviTheme.success)
+
+                    Image(systemName: event.icon)
+                        .font(.system(size: 10))
+                        .foregroundColor(.accentNavi.opacity(0.6))
+
+                    Text(event.toolName)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.primary.opacity(0.7))
+
+                    // Show key param
+                    if let path = event.params["path"] ?? event.params["query"] ?? event.params["cmd"] ?? event.params["repo"] {
+                        Text(URL(fileURLWithPath: path).lastPathComponent)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.5))
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    if event.duration > 0 {
+                        Text(String(format: "%.1fs", event.duration))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.4))
+                    }
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8))
+                        .foregroundColor(.secondary.opacity(0.3))
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+
+            // Expanded result
+            if isExpanded && !event.result.isEmpty {
+                Divider().opacity(0.1)
+                Text(event.result.prefix(800))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .lineLimit(12)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(event.isError ? NaviTheme.error.opacity(0.04) : Color.primary.opacity(0.02))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(event.isError ? NaviTheme.error.opacity(0.15) : Color.primary.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 1)
     }
 }

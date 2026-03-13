@@ -11,9 +11,54 @@ enum CodeIntent {
     case planOnly      // User wants a plan but not immediate execution
 }
 
+// MARK: - CodeToolCallEvent
+// Visual tracking of tool calls during ReAct loop
+
+struct CodeToolCallEvent: Identifiable {
+    let id = UUID()
+    let toolName: String
+    let params: [String: String]
+    var result: String = ""
+    var isError: Bool = false
+    var isComplete: Bool = false
+    var duration: TimeInterval = 0
+    let startedAt = Date()
+
+    var icon: String {
+        switch toolName {
+        case "read_file": return "doc.text"
+        case "write_file": return "square.and.pencil"
+        case "list_directory": return "folder"
+        case "search_files": return "magnifyingglass"
+        case "run_command": return "terminal"
+        case "build_project": return "hammer"
+        case "delete_file": return "trash"
+        case "move_file": return "arrow.right.arrow.left"
+        case "create_directory": return "folder.badge.plus"
+        case "download_file": return "arrow.down.circle"
+        case "zip_files": return "doc.zipper"
+        case "web_search": return "globe"
+        case let n where n.hasPrefix("github_"): return "arrow.triangle.branch"
+        case let n where n.hasPrefix("server_"): return "server.rack"
+        default: return "wrench"
+        }
+    }
+}
+
+// MARK: - CodeAPIInfo
+// Shows current API call info in the UI
+
+struct CodeAPIInfo: Equatable {
+    let provider: String
+    let model: String
+    let toolCount: Int
+    let iteration: Int
+}
+
 // MARK: - CodeAgent
-// Orchestrates the 6-phase pipeline: spec → research → setup → plan → build → push.
-// Drives CodeView's live UI via @Published properties.
+// Autonomous ReAct agent for Code view.
+// Orchestrates: intent classification → ReAct loop (THINK→ACT→OBSERVE→repeat) → pipeline for builds.
+// ALL interactions (questions, chat, GitHub, builds) use tool calling + full loop.
 
 @MainActor
 final class CodeAgent: ObservableObject {
@@ -35,6 +80,12 @@ final class CodeAgent: ObservableObject {
     @Published var liveToolCall: String? = nil
     /// Iteration counter for current agentic loop
     @Published var currentIteration: Int = 0
+    /// All tool call events during current ReAct loop (for rich visual display)
+    @Published var toolCallEvents: [CodeToolCallEvent] = []
+    /// Current API call info (for visual display)
+    @Published var currentAPIInfo: CodeAPIInfo? = nil
+    /// Current thinking phase
+    @Published var thinkingPhase: String = ""
 
     // MARK: - Singleton
 
@@ -54,6 +105,10 @@ final class CodeAgent: ObservableObject {
         phase = .idle
         liveToolCall = nil
         currentIteration = 0
+        toolCallEvents = []
+        currentAPIInfo = nil
+        thinkingPhase = ""
+        streamingText = ""
     }
 
     // MARK: - Load / new project
@@ -172,35 +227,204 @@ final class CodeAgent: ObservableObject {
         return .question
     }
 
-    /// Stream a plain answer (no pipeline) — for questions and GitHub lookups.
+    /// Full ReAct loop for answering questions, GitHub lookups, and general chat.
+    /// THINK → ACT (tools) → OBSERVE → repeat until model gives final text answer.
     private func streamAnswer(text: String, proj: inout CodeProject, model: ClaudeModel) async {
         streamingText = ""
-        var fullText = ""
-        phase = .spec // reuse spec phase icon for "thinking"
+        toolCallEvents = []
+        currentAPIInfo = nil
+        thinkingPhase = "Förbereder…"
+        phase = .spec
 
-        let messages = buildAPIMessages(from: proj)
+        var apiMessages = buildAPIMessages(from: proj)
+        let systemPrompt = codeSystemPrompt(for: proj)
+        let tools = agentTools
+        let maxToolIterations = 15
 
-        do {
-            let usedModel = try await ModelRouter.stream(
-                messages: messages,
-                model: model,
-                systemPrompt: codeSystemPrompt(for: proj),
-                onEvent: { [weak self] event in
-                    if case .contentBlockDelta(_, let delta) = event,
-                       case .text(let chunk) = delta {
-                        self?.streamingText += chunk
-                        fullText += chunk
-                    }
-                }
+        let toolExecutor = ToolExecutor()
+        toolExecutor.currentProjectID = nil
+
+        for iteration in 0..<maxToolIterations {
+            guard !Task.isCancelled else { break }
+
+            currentIteration = iteration + 1
+            streamingText = ""
+            var fullText = ""
+            var toolCalls: [(id: String, name: String, input: [String: AnyCodable])] = []
+            var currentToolID = ""
+            var currentToolName = ""
+            var currentToolJSON = ""
+            var blockType = ""
+            var stopReason = ""
+
+            thinkingPhase = iteration == 0 ? "Tänker…" : "Analyserar verktygsresultat… (steg \(iteration + 1))"
+            currentAPIInfo = CodeAPIInfo(
+                provider: model.provider.rawValue,
+                model: model.displayName,
+                toolCount: tools.count,
+                iteration: iteration + 1
             )
-            if usedModel != model { usedFallback = true; actualModel = usedModel }
-        } catch {
-            fullText = "❌ \(error.localizedDescription)"
+
+            do {
+                let usedModel = try await ModelRouter.stream(
+                    messages: apiMessages,
+                    model: model,
+                    systemPrompt: systemPrompt,
+                    maxTokens: Constants.Agent.maxTokensDefault,
+                    tools: tools,
+                    onEvent: { [weak self] event in
+                        self?.handleReActStreamEvent(
+                            event,
+                            fullText: &fullText,
+                            toolCalls: &toolCalls,
+                            currentToolID: &currentToolID,
+                            currentToolName: &currentToolName,
+                            currentToolJSON: &currentToolJSON,
+                            blockType: &blockType,
+                            stopReason: &stopReason
+                        )
+                        if !fullText.isEmpty {
+                            self?.thinkingPhase = "Skriver svar…"
+                        }
+                        self?.streamingText = ResponseCleaner.clean(fullText)
+                    }
+                )
+                if usedModel != model { usedFallback = true; actualModel = usedModel }
+            } catch {
+                fullText = "❌ \(error.localizedDescription)"
+                streamingText = ""
+                appendMessage(fullText, role: .assistant)
+                break
+            }
+
+            // Build assistant message with text + tool_use blocks
+            let cleanedText = ResponseCleaner.clean(fullText)
+            var assistantContent: [MessageContent] = []
+            if !cleanedText.isEmpty { assistantContent.append(.text(cleanedText)) }
+            for tc in toolCalls {
+                assistantContent.append(.toolUse(id: tc.id, name: tc.name, input: tc.input))
+            }
+            apiMessages.append(ChatMessage(role: .assistant, content: assistantContent, model: model))
+
+            // No tool calls → done, show final response
+            if toolCalls.isEmpty || stopReason == "end_turn" {
+                streamingText = ""
+                if !cleanedText.isEmpty {
+                    appendMessage(cleanedText, role: .assistant)
+                }
+                break
+            }
+
+            // Show intermediate text if any
+            if !cleanedText.isEmpty {
+                streamingText = ""
+                appendMessage(cleanedText, role: .assistant)
+            }
+
+            // Execute tool calls
+            thinkingPhase = "Kör \(toolCalls.count) verktyg…"
+            var toolResultContent: [MessageContent] = []
+
+            for tc in toolCalls {
+                let params = tc.input.compactMapValues { $0.value as? String }
+
+                // Create visual event
+                var event = CodeToolCallEvent(toolName: tc.name, params: params)
+                toolCallEvents.append(event)
+                liveToolCall = tc.name
+                setLog("⚙️ \(tc.name)")
+
+                let startTime = Date()
+
+                #if os(iOS)
+                let action = agentActionFromTool(name: tc.name, params: params)
+                let actionResult = await LocalAgentEngine.shared.execute(
+                    action: action,
+                    projectRoot: nil
+                )
+                let result = actionResult.output
+                let isError = false
+                #else
+                let result = await toolExecutor.execute(
+                    name: tc.name,
+                    params: params,
+                    projectRoot: nil
+                )
+                let isError = result.hasPrefix("FEL:")
+                #endif
+
+                let duration = Date().timeIntervalSince(startTime)
+
+                // Update visual event
+                if let idx = toolCallEvents.lastIndex(where: { $0.toolName == tc.name && !$0.isComplete }) {
+                    toolCallEvents[idx].result = String(result.prefix(500))
+                    toolCallEvents[idx].isError = isError
+                    toolCallEvents[idx].isComplete = true
+                    toolCallEvents[idx].duration = duration
+                }
+
+                toolResultContent.append(.toolResult(id: tc.id, content: result, isError: isError))
+                liveToolCall = nil
+            }
+
+            // Add tool results to history and continue loop
+            apiMessages.append(ChatMessage(role: .user, content: toolResultContent))
         }
 
+        // Cleanup
         streamingText = ""
-        appendMessage(fullText, role: .assistant)
+        thinkingPhase = ""
+        currentAPIInfo = nil
+        liveToolCall = nil
+        currentIteration = 0
         phase = .idle
+    }
+
+    // MARK: - ReAct stream event handler
+
+    private func handleReActStreamEvent(
+        _ event: StreamEvent,
+        fullText: inout String,
+        toolCalls: inout [(id: String, name: String, input: [String: AnyCodable])],
+        currentToolID: inout String,
+        currentToolName: inout String,
+        currentToolJSON: inout String,
+        blockType: inout String,
+        stopReason: inout String
+    ) {
+        switch event {
+        case .contentBlockStart(_, let type, let id, let name):
+            blockType = type
+            if type == "tool_use", let id = id, let name = name {
+                currentToolID = id
+                currentToolName = name
+                currentToolJSON = ""
+            }
+        case .contentBlockDelta(_, let delta):
+            switch delta {
+            case .text(let t): fullText += t
+            case .inputJSON(let j): currentToolJSON += j
+            }
+        case .contentBlockStop(_):
+            if blockType == "tool_use" && !currentToolID.isEmpty {
+                let input = parseToolInputJSON(currentToolJSON)
+                toolCalls.append((id: currentToolID, name: currentToolName, input: input))
+                currentToolID = ""
+                currentToolName = ""
+                currentToolJSON = ""
+            }
+            blockType = ""
+        case .messageDelta(let reason, _):
+            if let reason = reason { stopReason = reason }
+        default: break
+        }
+    }
+
+    private func parseToolInputJSON(_ json: String) -> [String: AnyCodable] {
+        guard let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [:] }
+        return dict.mapValues { AnyCodable($0) }
     }
 
     // MARK: - Start full pipeline directly (used internally)
@@ -253,33 +477,8 @@ final class CodeAgent: ObservableObject {
             isRunning = true
             defer { isRunning = false }
 
-            phase = .build
-
-            let messages = buildAPIMessages(from: proj)
-            streamingText = ""
-            var fullText = ""
-
-            do {
-                let usedModel = try await ModelRouter.stream(
-                    messages: messages,
-                    model: model,
-                    systemPrompt: codeSystemPrompt(for: proj),
-                    onEvent: { [weak self] event in
-                        if case .contentBlockDelta(_, let delta) = event,
-                           case .text(let chunk) = delta {
-                            self?.streamingText += chunk
-                            fullText += chunk
-                        }
-                    }
-                )
-                if usedModel != model { usedFallback = true; actualModel = usedModel }
-            } catch {
-                fullText = "❌ \(error.localizedDescription)"
-            }
-
-            streamingText = ""
-            appendMessage(fullText, role: .assistant)
-            phase = .idle
+            // Use full ReAct loop for continued chat too
+            await streamAnswer(text: text, proj: &proj, model: model)
         }
     }
 
@@ -559,38 +758,78 @@ final class CodeAgent: ObservableObject {
         }
 
         return """
-        Du är Navi Code — en world-class senior arkitekt med djup expertis inom iOS, macOS, Swift, Python, React, och fullstack-utveckling.
+        Du är Navi — en autonom, premiumkvalitativ AI-utvecklingsagent skapad av Ted Svärd.
+        Du är byggd för professionell iOS-, macOS- och fullstack-utveckling.
 
-        ## Svarsstil
-        - Skriv **strukturerade, levande** svar med rubriker, **fetstil** för viktiga koncept
-        - Använd kodblock med korrekt syntax-markering (```swift, ```python, etc.)
-        - Punktlistor och numrerade steg för tydlighet
-        - Var professionell men engagerad — inte torra faktasvar
-        - Svara DIREKT på frågan — ingen onödig inledning eller upprepning
+        Du är inte en chatbot. Du är en agent som tänker, planerar och utför — tills uppgiften är helt löst.
 
-        ## Kodkvalitet
+        ─── ARBETSSÄTT (ReAct-loop) ───────────────────────────
+
+        THINK    Förstå uppgiften på djupet. Identifiera oklarheter.
+                 Lös dem med verktyg, inte antaganden.
+        PLAN     Bryt ner i konkreta steg.
+        ACT      Använd verktyg aktivt. Läs filer innan du ändrar dem.
+                 Verifiera med verktyg — anta ingenting.
+        OBSERVE  Läs verktygsresultat noga. Anpassa planen om oväntat.
+        REPEAT   Fortsätt tills uppgiften är helt löst och verifierad.
+
+        ─── KVALITETSKRAV ─────────────────────────────────────
+
+        - Skriv alltid produktionsklar kod. Inga placeholders, TODO-kommentarer eller stubs.
         - SwiftUI iOS 18+ / macOS 15+, @MainActor, async/await
-        - Fullständig, **körbar** kod — inga placeholders, inga "// TODO:"
-        - Följ befintliga mönster i projektet
-        - Ge ALLTID komplett implementation — aldrig halvfärdigt
+        - Om du är osäker — läs källkod, sök webben. Gissa aldrig.
+        - Följ projektets befintliga arkitektur och namngivning.
 
-        ## GitHub-integration
-        - Alla lokala repos i iCloud är tillgängliga utan nätverksanrop
-        - Koda i lokala kopior, pusha sedan till GitHub
-        - Synka automatiskt innan kodning påbörjas
+        ─── VERKTYG ───────────────────────────────────────────
+
+        Du har tillgång till:
+        • Filer — read_file, write_file, move_file, delete_file, create_directory, list_directory, search_files
+        • Terminal — run_command (bash/zsh, xcodebuild, git, npm, pip...)
+        • Bygg — build_project (Xcode/SPM)
+        • GitHub — github_list_repos, github_get_repo, github_list_branches, github_list_commits,
+                   github_list_pull_requests, github_create_pull_request, github_get_file_content,
+                   github_search_repos, github_get_user
+        • Webb — web_search
+        • Server — server_ask, server_status, server_exec, server_repos
+        • Övrigt — download_file, zip_files, get_api_key
+
+        Använd rätt verktyg för rätt uppgift. Kombinera dem.
+
+        ─── VISUELL KOMMUNIKATION ─────────────────────────────
+
+        Kommunicera vad du gör. Varje steg ska vara synligt:
+        💭 Tänker/resonerar  📋 Planerar  🔍 Söker/undersöker
+        📁 Navigerar filer  📝 Skriver kod  🐙 GitHub-operation
+        🖥️ Server-kommando  🌐 Webbsökning  ✅ Klart  ❌ Fel
+
+        ─── SVARSSTIL ─────────────────────────────────────────
+
+        - **Strukturerade** svar med rubriker, **fetstil**, kodblock (```swift, ```python)
+        - Var koncis och professionell — korta statusuppdateringar
+        - Gå rakt på sak. "Jag fixar det." inte "Absolut! Det låter som..."
+        - Tänk högt kort vid beslut
         \(repoContext)
 
-        ## Projektkontext
-        - Plattform: \(UIDevice.isMac ? "macOS" : "iOS")
-        - Aktivt projekt: \(proj.name.isEmpty ? "Inget aktivt" : proj.name)
-        - Stack: SwiftUI, iCloud, GitHub, ElevenLabs, xAI Grok, Anthropic Claude
-        - Parallella workers: \(proj.parallelWorkers)
+        ─── PROJEKTKONTEXT ────────────────────────────────────
 
-        ## Regler
+        Plattform: \(UIDevice.isMac ? "macOS" : "iOS")
+        Projekt: \(proj.name.isEmpty ? "Inget aktivt" : proj.name)
+        Stack: SwiftUI, iCloud, GitHub, ElevenLabs, xAI Grok, Anthropic Claude
+        Parallella workers: \(proj.parallelWorkers)
+
+        ─── REGLER ────────────────────────────────────────────
+
         - Ge ALDRIG upp — hitta alltid en väg framåt
-        - Ingen Opus utan explicit begäran
         - Visa ALDRIG system-text, XML-taggar eller intern data
-        - Skapa ALDRIG filer om användaren bara ställer en fråga
+        - Om någon frågar vem som skapat dig: "Jag är Navi, skapad av Ted Svärd."
+
+        ─── SLUTLEVERANS ──────────────────────────────────────
+
+        Avsluta alltid med en tydlig sammanfattning:
+        - Vad som gjordes
+        - Vilka filer som skapades eller ändrades
+        - Eventuella beslut och varför
+        - Nästa rekommenderade steg
         """
     }
 

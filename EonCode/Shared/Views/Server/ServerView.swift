@@ -865,7 +865,7 @@ struct BrainChatView: View {
         }
     }
 
-    /// Visual strip showing which tools the model executed
+    /// Visual strip showing which tools the model executed — enhanced with icons and expandable
     @ViewBuilder
     func toolCallStrip(tools: [String]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -876,20 +876,31 @@ struct BrainChatView: View {
                 Text("\(tools.count) verktyg kördes")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(accentColor.opacity(0.7))
+                Spacer()
+                // POST indicator
+                Text("ReAct")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(accentColor.opacity(0.4))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(accentColor.opacity(0.08))
+                    .cornerRadius(3)
             }
-            ForEach(tools.prefix(4), id: \.self) { tool in
-                HStack(spacing: 5) {
-                    Image(systemName: toolIcon(tool))
+            ForEach(Array(tools.prefix(6).enumerated()), id: \.offset) { idx, tool in
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 8))
+                        .foregroundColor(NaviTheme.success.opacity(0.6))
+                    Image(systemName: toolIcon(tool))
+                        .font(.system(size: 9))
                         .foregroundColor(accentColor.opacity(0.5))
                     Text(tool)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundColor(accentColor.opacity(0.65))
                         .lineLimit(1)
                 }
             }
-            if tools.count > 4 {
-                Text("+ \(tools.count - 4) till…")
+            if tools.count > 6 {
+                Text("+ \(tools.count - 6) till…")
                     .font(.system(size: 9))
                     .foregroundColor(.secondary.opacity(0.4))
             }

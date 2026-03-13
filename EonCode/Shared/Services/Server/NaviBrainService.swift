@@ -335,7 +335,7 @@ final class NaviBrainService: ObservableObject {
     // MARK: - Context Builder (injects GitHub, iCloud, server awareness into brain prompts)
 
     private func buildContextPrefix() -> String {
-        var ctx = ""
+        var ctx = "\n[SYSTEM: Du är Navi Brain — en autonom AI-agent skapad av Ted Svärd. Tänk, agera med verktyg, observera — upprepa tills löst.]\n"
 
         // GitHub repos
         let ghRepos = GitHubManager.shared.repos
