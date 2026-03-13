@@ -19,6 +19,7 @@ final class ToolExecutor {
         case "search_files":     return await searchFiles(query: params["query"] ?? "", projectRoot: projectRoot)
         case "get_api_key":      return getAPIKey(service: params["service"] ?? "")
         case "build_project":    return await buildProject(path: params["path"] ?? "", projectRoot: projectRoot)
+        case "deploy_testflight": return await deployTestFlight(path: params["path"] ?? "", scheme: params["scheme"] ?? "", projectRoot: projectRoot)
         case "download_file":    return await downloadFile(url: params["url"] ?? "", destination: params["destination"] ?? "", projectRoot: projectRoot)
         case "zip_files":        return await zipFiles(source: params["source"] ?? "", destination: params["destination"] ?? "", projectRoot: projectRoot)
             
@@ -317,6 +318,14 @@ final class ToolExecutor {
         await InstructionQueue.shared.enqueue(instruction)
         return "🟡 Byggkommando köat för macOS"
         #endif
+    }
+
+    // MARK: - deploy_testflight (Xcode Cloud via App Store Connect API)
+
+    func deployTestFlight(path: String, scheme: String, projectRoot: URL?) async -> String {
+        // Xcode Cloud: triggers via App Store Connect API — works from any platform
+        let result = await XcodeCloudService.shared.triggerBuild(scheme: scheme)
+        return result
     }
 
     // MARK: - download_file

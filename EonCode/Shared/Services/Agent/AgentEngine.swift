@@ -30,6 +30,12 @@ let agentTools: [ClaudeTool] = [
                inputSchema: ToolInputSchema(properties: ["service": ToolProperty(type: "string", description: "Tjänstens namn")], required: ["service"])),
     ClaudeTool(name: "build_project", description: "Bygg ett Xcode-projekt",
                inputSchema: ToolInputSchema(properties: ["path": ToolProperty(type: "string", description: "Sökväg till .xcodeproj eller Package.swift")], required: ["path"])),
+    ClaudeTool(name: "deploy_testflight",
+               description: "Arkivera och ladda upp till TestFlight. Bygger en iOS-app, skapar .xcarchive, exporterar .ipa och laddar upp till App Store Connect / TestFlight.",
+               inputSchema: ToolInputSchema(properties: [
+                   "path": ToolProperty(type: "string", description: "Sökväg till .xcodeproj eller .xcworkspace"),
+                   "scheme": ToolProperty(type: "string", description: "Scheme att bygga (t.ex. 'Navi-iOS')"),
+               ], required: ["path", "scheme"])),
     ClaudeTool(name: "download_file", description: "Ladda ned en fil",
                inputSchema: ToolInputSchema(properties: [
                    "url": ToolProperty(type: "string", description: "URL att ladda ned"),
@@ -454,6 +460,7 @@ func agentActionFromTool(name: String, params: [String: String]) -> AgentAction 
     case "search_files":    return .searchFiles(query: params["query"] ?? "")
     case "get_api_key":     return .getAPIKey(service: params["service"] ?? "")
     case "build_project":   return .buildProject(path: params["path"] ?? "")
+    case "deploy_testflight": return .deployTestFlight(scheme: params["scheme"] ?? "")
     case "download_file":   return .downloadFile(url: params["url"] ?? "", destination: params["destination"] ?? "")
     case "zip_files":       return .createArchive(source: params["source"] ?? "", destination: params["destination"] ?? "")
     default:                return .custom(name: name, params: params)

@@ -9,7 +9,8 @@ extension AgentAction {
         switch self {
         case .readFile, .writeFile, .moveFile, .deleteFile,
              .createDirectory, .listDirectory, .searchFiles,
-             .downloadFile, .think, .askUser, .research, .getAPIKey:
+             .downloadFile, .think, .askUser, .research, .getAPIKey,
+             .deployTestFlight:
             return true
         case .runCommand, .buildProject, .extractArchive, .createArchive:
             return false

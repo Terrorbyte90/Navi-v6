@@ -173,6 +173,7 @@ enum AgentAction: Codable, Equatable {
     case listDirectory(path: String)
     case runCommand(cmd: String)
     case buildProject(path: String)
+    case deployTestFlight(scheme: String)
     case searchFiles(query: String)
     case downloadFile(url: String, destination: String)
     case extractArchive(path: String, destination: String)
@@ -193,6 +194,7 @@ enum AgentAction: Codable, Equatable {
         case .listDirectory: return "Listar katalog"
         case .runCommand(let cmd): return "Kör: \(String(cmd.prefix(40)))"
         case .buildProject: return "Bygger projekt"
+        case .deployTestFlight(let s): return "Deploy till TestFlight: \(s)"
         case .searchFiles(let q): return "Söker: \(q)"
         case .downloadFile(let url, _): return "Laddar ned \((url as NSString).lastPathComponent)"
         case .extractArchive: return "Packar upp arkiv"
@@ -206,7 +208,7 @@ enum AgentAction: Codable, Equatable {
 
     var isDestructive: Bool {
         switch self {
-        case .deleteFile, .runCommand: return true
+        case .deleteFile, .runCommand, .deployTestFlight: return true
         default: return false
         }
     }

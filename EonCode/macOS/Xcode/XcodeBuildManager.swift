@@ -105,6 +105,14 @@ final class XcodeBuildManager: ObservableObject {
 
         return lastResult
     }
+
+    // MARK: - Archive & Upload to TestFlight (local fallback)
+
+    func archiveAndUpload(projectPath: String, scheme: String) async -> String {
+        // Prefer Xcode Cloud via API — this is the local fallback
+        let result = await XcodeCloudService.shared.triggerBuild(scheme: scheme)
+        return result
+    }
 }
 
 // MARK: - Error parser

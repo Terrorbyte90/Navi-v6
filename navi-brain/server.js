@@ -1,5 +1,5 @@
 // ============================================================
-// Navi Brain v3.2 — Autonomous AI Server
+// Navi Brain v3.3 — Autonomous AI Server
 // ============================================================
 // Models: MiniMax M2.5 (OpenRouter), DeepSeek R1/Qwen3 (OpenRouter), Claude Sonnet 4.6 (Anthropic)
 // Features: ReAct tool loop, persistent tasks, ntfy.sh push, disk persistence
@@ -11,6 +11,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync, exec } = require('child_process');
 
 const app = express();
@@ -24,6 +25,9 @@ const PORT = process.env.PORT || 3001;
 const API_KEY = process.env.API_KEY || 'navi-brain-2026';
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY || '';
 const NTFY_TOPIC = process.env.NTFY_TOPIC || 'navi-brain-' + require('os').hostname();
+const ASC_ISSUER_ID = process.env.ASC_ISSUER_ID || '';
+const ASC_KEY_ID = process.env.ASC_KEY_ID || '';
+const ASC_PRIVATE_KEY_PATH = process.env.ASC_PRIVATE_KEY_PATH || path.join(__dirname, 'AuthKey.p8');
 const DATA_DIR = path.join(__dirname, 'data');
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
@@ -233,6 +237,19 @@ const TOOLS = [
       required: ['path'],
     },
   },
+  {
+    name: 'deploy_testflight',
+    description: 'Trigga en Xcode Cloud-build via App Store Connect API och ladda upp till TestFlight. Pushar först till GitHub och startar sedan en Xcode Cloud workflow.',
+    parameters: {
+      type: 'object',
+      properties: {
+        scheme: { type: 'string', description: 'Scheme att bygga (t.ex. "Navi-iOS")' },
+        branch: { type: 'string', description: 'Git-branch att bygga (standard: aktuell branch)' },
+        commitMessage: { type: 'string', description: 'Commit-meddelande om ändringar ska pushas först' },
+      },
+      required: ['scheme'],
+    },
+  },
 ];
 
 // Convert tools to OpenAI function format (for OpenRouter)
@@ -256,8 +273,149 @@ function toolsToAnthropic() {
   }));
 }
 
+// ============================================================
+// XCODE CLOUD — App Store Connect API (JWT + REST)
+// ============================================================
+
+function generateASCToken() {
+  if (!ASC_ISSUER_ID || !ASC_KEY_ID) {
+    throw new Error('App Store Connect API-nycklar saknas (ASC_ISSUER_ID, ASC_KEY_ID)');
+  }
+
+  let privateKey;
+  try {
+    privateKey = fs.readFileSync(ASC_PRIVATE_KEY_PATH, 'utf8');
+  } catch {
+    throw new Error(`Kan inte läsa privat nyckel: ${ASC_PRIVATE_KEY_PATH}`);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'ES256', kid: ASC_KEY_ID, typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: ASC_ISSUER_ID,
+    iat: now,
+    exp: now + 1200,
+    aud: 'appstoreconnect-v1',
+  })).toString('base64url');
+
+  const signingInput = `${header}.${payload}`;
+  const sign = crypto.createSign('SHA256');
+  sign.update(signingInput);
+  const signature = sign.sign(privateKey, 'base64url');
+
+  return `${header}.${payload}.${signature}`;
+}
+
+async function ascApiRequest(path, method = 'GET', body = null) {
+  const token = generateASCToken();
+  const url = new URL(`https://api.appstoreconnect.apple.com/v1${path}`);
+
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          reject(new Error(`ASC API ${res.statusCode}: ${data.substring(0, 500)}`));
+        } else {
+          try { resolve(JSON.parse(data)); }
+          catch { resolve(data); }
+        }
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+async function triggerXcodeCloudBuild(scheme, branch) {
+  // 1. List CI products → find workflows
+  const products = await ascApiRequest('/ciProducts');
+  if (!products.data || products.data.length === 0) {
+    return '❌ Inga Xcode Cloud-produkter hittades. Konfigurera Xcode Cloud i App Store Connect.';
+  }
+
+  let allWorkflows = [];
+  for (const product of products.data) {
+    const wf = await ascApiRequest(`/ciProducts/${product.id}/workflows`);
+    if (wf.data) allWorkflows.push(...wf.data);
+  }
+
+  if (allWorkflows.length === 0) {
+    return '❌ Inga Xcode Cloud-workflows hittade. Skapa en workflow i Xcode eller App Store Connect.';
+  }
+
+  // Match by scheme name or use first
+  const workflow = allWorkflows.find(w =>
+    w.attributes.name.toLowerCase().includes(scheme.toLowerCase())
+  ) || allWorkflows[0];
+
+  // 2. Trigger build run
+  const buildBody = {
+    data: {
+      type: 'ciBuildRuns',
+      attributes: branch ? { sourceBranchOrTag: { kind: 'BRANCH', name: branch } } : {},
+      relationships: {
+        workflow: { data: { type: 'ciWorkflows', id: workflow.id } },
+      },
+    },
+  };
+
+  const buildRun = await ascApiRequest('/ciBuildRuns', 'POST', buildBody);
+  const buildId = buildRun.data.id;
+
+  addLog('XCODE_CLOUD', `Build startad: workflow=${workflow.attributes.name} id=${buildId}`);
+
+  // 3. Poll for status (max 5 min)
+  const start = Date.now();
+  const maxWait = 300000;
+  let status = 'PENDING';
+
+  while (Date.now() - start < maxWait) {
+    await new Promise(r => setTimeout(r, 15000));
+    try {
+      const check = await ascApiRequest(`/ciBuildRuns/${buildId}`);
+      status = check.data.attributes.executionProgress || 'PENDING';
+      const completion = check.data.attributes.completionStatus;
+
+      if (status === 'COMPLETE' || completion) {
+        if (completion === 'SUCCEEDED') {
+          sendNtfyNotification(
+            '✅ Xcode Cloud Build Klar',
+            `${scheme} har byggts och laddats upp till TestFlight.`,
+            ['white_check_mark', 'rocket'], 4
+          );
+          return `✅ Xcode Cloud build klar!\nWorkflow: ${workflow.attributes.name}\nBuild ID: ${buildId}\nAppen bearbetas av Apple och dyker upp i TestFlight inom kort.`;
+        } else {
+          sendNtfyNotification(
+            '❌ Xcode Cloud Build Misslyckades',
+            `${scheme} build failed: ${completion}`,
+            ['x', 'warning'], 5
+          );
+          return `❌ Xcode Cloud build misslyckades.\nWorkflow: ${workflow.attributes.name}\nBuild ID: ${buildId}\nStatus: ${completion}\nKontrollera loggar i App Store Connect.`;
+        }
+      }
+    } catch (e) {
+      addLog('XCODE_CLOUD', `Status-poll fel: ${e.message}`);
+    }
+  }
+
+  return `🟡 Xcode Cloud build pågår.\nWorkflow: ${workflow.attributes.name}\nBuild ID: ${buildId}\nStatus: ${status}\nBygget körs i bakgrunden — ntfy-notis skickas när det är klart.`;
+}
+
 // Execute a tool call
-function executeTool(name, args) {
+async function executeTool(name, args) {
   try {
     switch (name) {
       case 'run_command': {
@@ -307,6 +465,30 @@ function executeTool(name, args) {
           }
         }
         return fs.readdirSync(dirPath).join('\n');
+      }
+      case 'deploy_testflight': {
+        const scheme = args.scheme || 'Navi-iOS';
+        const branch = args.branch || null;
+        const commitMsg = args.commitMessage || null;
+        addLog('TOOL', `deploy_testflight: scheme=${scheme} branch=${branch}`);
+
+        // Optional: commit and push first
+        if (commitMsg) {
+          try {
+            execSync(`cd /root/repos/Navi-v5 && git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`, {
+              encoding: 'utf8', timeout: 30000,
+            });
+            addLog('TOOL', 'Git push klar innan deploy');
+          } catch (e) {
+            addLog('TOOL', `Git push-varning: ${e.message.substring(0, 200)}`);
+          }
+        }
+
+        try {
+          return await triggerXcodeCloudBuild(scheme, branch);
+        } catch (e) {
+          return `❌ Xcode Cloud-fel: ${e.message}`;
+        }
       }
       default:
         return `Okänt verktyg: ${name}`;
@@ -468,7 +650,7 @@ async function reactLoop(prompt, model, sessionHistory, maxIter = 15) {
         liveStatus.tool = `${name}(${JSON.stringify(args).substring(0, 60)})`;
         toolCallNames.push(name);
 
-        const result = executeTool(name, args);
+        const result = await executeTool(name, args);
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
@@ -540,7 +722,7 @@ async function reactLoopAnthropic(prompt, anthropicKey, sessionHistory, maxIter 
         liveStatus.tool = `${name}(${JSON.stringify(args).substring(0, 60)})`;
         toolCallNames.push(name);
 
-        const toolResult = executeTool(name, args);
+        const toolResult = await executeTool(name, args);
         toolResults.push({
           type: 'tool_result',
           tool_use_id: block.id,
@@ -629,7 +811,7 @@ app.get('/', (req, res) => {
   const activeTaskCount = Object.values(activeTasks).filter(t => t.status === 'running').length;
   res.json({
     status: 'online',
-    version: '3.2.0',
+    version: '3.3.0',
     uptime,
     model: MODELS.minimax,
     activeTasks: activeTaskCount,
@@ -644,7 +826,7 @@ app.get('/health', (req, res) => {
   const memUsage = process.memoryUsage();
   res.json({
     status: 'ok',
-    version: '3.2.0',
+    version: '3.3.0',
     uptime: formatUptime(Date.now() - startTime),
     memory: {
       rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
@@ -1032,6 +1214,26 @@ app.post('/task/cancel/:taskId', auth, (req, res) => {
   res.json({ ok: true, status: 'cancelled' });
 });
 
+// ============================================================
+// ROUTES — Xcode Cloud Build
+// ============================================================
+
+app.post('/build/xcode-cloud', auth, async (req, res) => {
+  const { scheme, branch } = req.body;
+  if (!scheme) {
+    return res.status(400).json({ error: 'scheme krävs' });
+  }
+
+  try {
+    addLog('BUILD', `Xcode Cloud triggas: scheme=${scheme} branch=${branch || 'default'}`);
+    const result = await triggerXcodeCloudBuild(scheme, branch || null);
+    res.json({ ok: true, result });
+  } catch (e) {
+    addLog('BUILD', `Xcode Cloud-fel: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // List all tasks
 app.get('/tasks', auth, (req, res) => {
   const tasks = Object.values(activeTasks).sort((a, b) =>
@@ -1050,11 +1252,11 @@ loadTasks();
 loadSessions();
 
 app.listen(PORT, '0.0.0.0', () => {
-  addLog('BOOT', `Navi Brain v3.2 startad på port ${PORT}`);
+  addLog('BOOT', `Navi Brain v3.3 startad på port ${PORT}`);
   addLog('BOOT', `Modeller: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
   addLog('BOOT', `ntfy.sh topic: ${NTFY_TOPIC}`);
   addLog('BOOT', `Persistens: ${DATA_DIR}`);
-  console.log(`\n🧠 Navi Brain v3.2 running on port ${PORT}`);
+  console.log(`\n🧠 Navi Brain v3.3 running on port ${PORT}`);
   console.log(`   ntfy topic: ${NTFY_TOPIC}`);
   console.log(`   Models: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
   console.log(`   Data dir: ${DATA_DIR}\n`);

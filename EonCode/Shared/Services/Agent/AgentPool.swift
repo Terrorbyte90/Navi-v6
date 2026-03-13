@@ -200,7 +200,8 @@ final class ProjectAgent: ObservableObject, Identifiable {
     /// Parse agent update text to extract current status, file names, code snippets and TODO items.
     private func parseStatusAndFiles(_ update: String) {
         let toolNames = ["read_file", "write_file", "move_file", "delete_file", "create_directory",
-                         "list_directory", "run_command", "search_files", "build_project", "download_file"]
+                         "list_directory", "run_command", "search_files", "build_project", "download_file",
+                         "deploy_testflight"]
 
         var detectedStatus = ""
         var detectedFiles: [String] = []
@@ -218,6 +219,7 @@ final class ProjectAgent: ObservableObject, Identifiable {
                 case "list_directory": detectedStatus = "Listar katalog…"
                 case "create_directory": detectedStatus = "Skapar mapp…"
                 case "download_file": detectedStatus = "Laddar ned…"
+                case "deploy_testflight": detectedStatus = "Deploying till TestFlight…"
                 default: break
                 }
 
