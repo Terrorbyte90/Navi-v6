@@ -15,6 +15,7 @@ struct SidebarView: View {
     @StateObject private var statusBroadcaster = DeviceStatusBroadcaster.shared
     @StateObject private var ghManager = GitHubManager.shared
     @StateObject private var mediaManager = MediaGenerationManager.shared
+    @StateObject private var callsService = CallsService.shared
 
     @State private var searchText = ""
     @State private var showSettings = false
@@ -138,6 +139,7 @@ struct SidebarView: View {
         case .media:     return "Sök media…"
         case .profile:   return "Profil"
         case .voice:     return "Röst"
+        case .samtal:    return "Sök samtal…"
         case .server:    return "Server"
         }
     }
@@ -155,6 +157,8 @@ struct SidebarView: View {
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
             navItem(icon: "person.crop.circle",           label: "Profil",     target: .profile)
             navItem(icon: "waveform",                     label: "Röst",       target: .voice)
+            navItem(icon: "phone.fill",                   label: "Samtal",     target: .samtal,
+                    badge: samtalBadge)
             navItem(icon: "server.rack",                  label: "Server",     target: .server,
                     badge: serverBadge)
         }
@@ -163,6 +167,11 @@ struct SidebarView: View {
 
     private var serverBadge: String? {
         NaviBrainService.shared.isConnected ? nil : "!"
+    }
+
+    private var samtalBadge: String? {
+        let live = CallsService.shared.liveCalls.count
+        return live > 0 ? "\(live)" : nil
     }
 
     private var mediaBadge: String? {
@@ -216,7 +225,69 @@ struct SidebarView: View {
         case .media:     mediaHistoryList
         case .profile:   emptyHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
         case .voice:     emptyHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
+        case .samtal:    samtalSidebarList
         case .server:    serverSidebarList
+        }
+    }
+
+    var samtalSidebarList: some View {
+        let svc = CallsService.shared
+        return VStack(alignment: .leading, spacing: 0) {
+            listSectionHeader("Telefoni")
+
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(svc.isConfigured ? NaviTheme.success : NaviTheme.error)
+                    .frame(width: 7, height: 7)
+                Text(svc.isConfigured ? "Konfigurerat" : "Ej konfigurerat")
+                    .font(.system(size: 12))
+                    .foregroundColor(svc.isConfigured ? NaviTheme.success : NaviTheme.error)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+
+            if let stats = svc.stats {
+                listSectionHeader("Idag")
+                HStack(spacing: 16) {
+                    VStack(spacing: 2) {
+                        Text("\(stats.today.total)").font(.system(size: 16, weight: .bold, design: .rounded))
+                        Text("Totalt").font(.system(size: 9)).foregroundColor(.secondary.opacity(0.5))
+                    }
+                    VStack(spacing: 2) {
+                        Text("\(stats.today.active)").font(.system(size: 16, weight: .bold, design: .rounded)).foregroundColor(.green)
+                        Text("Live").font(.system(size: 9)).foregroundColor(.secondary.opacity(0.5))
+                    }
+                    VStack(spacing: 2) {
+                        Text("\(stats.today.goalsAchieved)").font(.system(size: 16, weight: .bold, design: .rounded)).foregroundColor(.orange)
+                        Text("Mål").font(.system(size: 9)).foregroundColor(.secondary.opacity(0.5))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+            }
+
+            if !svc.scheduled.isEmpty {
+                listSectionHeader("Schemalagda")
+                ForEach(svc.scheduled.prefix(5)) { sc in
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.4))
+                        Text(sc.to)
+                            .font(.system(size: 12))
+                            .foregroundColor(.primary.opacity(0.7))
+                            .lineLimit(1)
+                        Spacer()
+                        Text(sc.statusLabel)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.5))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                }
+            }
         }
     }
 

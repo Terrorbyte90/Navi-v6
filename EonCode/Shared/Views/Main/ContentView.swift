@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppSection: String, Hashable { case pureChat, code, artifacts, github, media, profile, voice, server }
+enum AppSection: String, Hashable { case pureChat, code, artifacts, github, media, profile, voice, server, samtal }
 
 struct ContentView: View {
     @StateObject private var projectStore = ProjectStore.shared
@@ -71,6 +71,7 @@ struct ContentView: View {
         case .profile:   ProfileView()
         case .voice:     VoiceView()
         case .server:    ServerView()
+        case .samtal:    SamtalView()
         }
     }
     #endif
@@ -144,6 +145,7 @@ struct ContentView: View {
         case .profile:   viewName = "Profil"; viewPurpose = "AI-syntetiserad användarprofil baserad på minnen."
         case .voice:     viewName = "Röst"; viewPurpose = "Text-till-tal, ljudgenerering och röstdesign via ElevenLabs."
         case .server:    viewName = "Server"; viewPurpose = "Navi Brain: Terminal, Minimax och Qwen på din server."
+        case .samtal:    viewName = "Samtal"; viewPurpose = "Telefonväxel: samtalshistorik, statistik, schemaläggning och live-vy."
         }
         MessageBuilder.currentViewContext = "\(viewName) — \(viewPurpose)"
     }
@@ -202,6 +204,7 @@ struct ContentView: View {
         case .profile:   return "Profil"
         case .voice:     return "Röst"
         case .server:    return "Server"
+        case .samtal:    return "Samtal"
         }
     }
 
@@ -232,6 +235,7 @@ struct ContentView: View {
         case .profile:   ProfileView()
         case .voice:     VoiceView()
         case .server:    ServerView()
+        case .samtal:    SamtalView()
         }
     }
 
@@ -245,6 +249,7 @@ struct ContentView: View {
         case .profile:   return .profile
         case .voice:     return .voice
         case .server:    return .server
+        case .samtal:    return .samtal
         }
     }
 
@@ -352,7 +357,7 @@ private struct ChatNavTitle: View {
 // MARK: - Tabs
 
 enum AppTab: Int, Hashable {
-    case chat, code, artifacts, github, media, profile, voice, server
+    case chat, code, artifacts, github, media, profile, voice, server, samtal
 }
 
 // MARK: - macOS Main View

@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execSync, exec } = require('child_process');
+const telephony = require('./telephony');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -29,6 +30,10 @@ const ASC_ISSUER_ID = process.env.ASC_ISSUER_ID || '';
 const ASC_KEY_ID = process.env.ASC_KEY_ID || '';
 const ASC_PRIVATE_KEY_PATH = process.env.ASC_PRIVATE_KEY_PATH || path.join(__dirname, 'AuthKey.p8');
 const DATA_DIR = path.join(__dirname, 'data');
+process.env.DATA_DIR   = DATA_DIR;
+process.env.SERVER_URL = process.env.SERVER_URL || 'http://209.38.98.107:3001';
+process.env.ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_acaf2ca0405eb4966a7ca9494dc36fe15c8f38b3484f740d';
+process.env.FORTYSIX_ELKS_NUMBER = process.env.FORTYSIX_ELKS_NUMBER || '+4600110357';
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const COSTS_FILE = path.join(DATA_DIR, 'costs.json');
@@ -811,7 +816,7 @@ app.get('/', (req, res) => {
   const activeTaskCount = Object.values(activeTasks).filter(t => t.status === 'running').length;
   res.json({
     status: 'online',
-    version: '3.3.0',
+    version: '3.4.0',
     uptime,
     model: MODELS.minimax,
     activeTasks: activeTaskCount,
@@ -826,7 +831,7 @@ app.get('/health', (req, res) => {
   const memUsage = process.memoryUsage();
   res.json({
     status: 'ok',
-    version: '3.3.0',
+    version: '3.4.0',
     uptime: formatUptime(Date.now() - startTime),
     memory: {
       rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
@@ -1250,6 +1255,13 @@ app.get('/tasks', auth, (req, res) => {
 loadCosts();
 loadTasks();
 loadSessions();
+telephony.loadAll();
+
+// Register telephony routes
+telephony.register(app, auth, addLog);
+
+// Telephony scheduler — check every 30 seconds
+setInterval(() => telephony.runScheduler(addLog), 30000);
 
 app.listen(PORT, '0.0.0.0', () => {
   addLog('BOOT', `Navi Brain v3.3 startad på port ${PORT}`);

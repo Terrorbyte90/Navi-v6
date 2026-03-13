@@ -131,6 +131,10 @@ struct ChatHistorySidebar: View {
             navItem(icon: "waveform", label: "Röst", isActive: selectedTab == .voice) {
                 selectedTab = .voice; showSidebar = false
             }
+            navItem(icon: "phone.fill", label: "Samtal", isActive: selectedTab == .samtal,
+                    badge: { let n = CallsService.shared.liveCalls.count; return n > 0 ? "\(n)" : nil }()) {
+                selectedTab = .samtal; showSidebar = false
+            }
             navItem(icon: "server.rack", label: "Server", isActive: selectedTab == .server,
                     badge: serverBadge) {
                 selectedTab = .server; showSidebar = false
@@ -163,8 +167,33 @@ struct ChatHistorySidebar: View {
             emptyHistoryHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
         case .voice:
             emptyHistoryHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
+        case .samtal:
+            samtalHistory
         case .server:
             serverHistory
+        }
+    }
+
+    @ViewBuilder
+    var samtalHistory: some View {
+        let svc = CallsService.shared
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader("Samtal idag")
+            if let stats = svc.stats {
+                serverStatRow(icon: "phone", iconColor: .secondary,
+                              label: "Totalt", value: "\(stats.today.total)")
+                serverStatRow(icon: "antenna.radiowaves.left.and.right", iconColor: .green,
+                              label: "Pågående", value: "\(stats.today.active)")
+                serverStatRow(icon: "target", iconColor: .orange,
+                              label: "Mål uppnådda", value: "\(stats.today.goalsAchieved)")
+            }
+            if !svc.scheduled.isEmpty {
+                sectionHeader("Schemalagda")
+                ForEach(svc.scheduled.prefix(3)) { sc in
+                    serverStatRow(icon: "clock", iconColor: .secondary,
+                                  label: sc.to, value: sc.statusLabel)
+                }
+            }
         }
     }
 
