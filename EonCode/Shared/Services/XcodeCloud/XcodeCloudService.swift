@@ -24,10 +24,31 @@ final class XcodeCloudService: ObservableObject {
 
     // MARK: - Credential Management
 
+    // Default credentials — saved to Keychain on first run
+    private static let defaultIssuerID = "fb59f25a-5a3a-4916-87b7-060b28804bff"
+    private static let defaultKeyID = "JW787K8PY2"
+    private static let defaultPrivateKey = """
+    -----BEGIN PRIVATE KEY-----
+    MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgSQVMqg2QJOew0sG7
+    WiGMPXxeAzpAkscK9Sewo/WuBtqgCgYIKoZIzj0DAQehRANCAAQ/xrgQx+QiEkyu
+    pN6sNpcuYGR/vqKGS/eiJlTPcsMyCZtBRsE9cDUieFCD0Q/CQKOgLWcXRswWjoZ5
+    Tf+gETv0
+    -----END PRIVATE KEY-----
+    """
+
     private func loadCredentials() {
         issuerID = (try? KeychainManager.shared.get(key: "appstoreconnect_issuer_id")) ?? ""
         keyID = (try? KeychainManager.shared.get(key: "appstoreconnect_key_id")) ?? ""
         privateKey = (try? KeychainManager.shared.get(key: "appstoreconnect_private_key")) ?? ""
+
+        // Auto-configure with defaults if not yet in Keychain
+        if issuerID.isEmpty || keyID.isEmpty || privateKey.isEmpty {
+            configure(
+                issuerID: Self.defaultIssuerID,
+                keyID: Self.defaultKeyID,
+                privateKey: Self.defaultPrivateKey
+            )
+        }
     }
 
     var isConfigured: Bool {
