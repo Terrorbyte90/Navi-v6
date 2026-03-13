@@ -166,10 +166,15 @@ final class NaviBrainService: ObservableObject {
     /// ntfy.sh topic for push notifications from Brain
     @Published var ntfyTopic: String? = nil
 
+    // MARK: - Server Tasks (persist when app closes)
+    @Published var serverTasks: [ServerTask] = []
+    @Published var isStartingTask = false
+
     // MARK: - Private
     private var statusTimer: Timer?
     private var logsTimer: Timer?
     private var liveStatusTimer: Timer?
+    private var taskPollTimer: Timer?
     private let urlSession = URLSession(configuration: .default)
 
     private init() {}
@@ -198,6 +203,8 @@ final class NaviBrainService: ObservableObject {
         statusTimer = nil
         logsTimer?.invalidate()
         logsTimer = nil
+        taskPollTimer?.invalidate()
+        taskPollTimer = nil
     }
 
     // MARK: - Live Status Polling (while any model is sending)
@@ -485,5 +492,257 @@ final class NaviBrainService: ObservableObject {
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         req.setValue(sessionId, forHTTPHeaderField: "x-session-id")
         _ = try await urlSession.data(for: req)
+    }
+
+    // MARK: - Server Tasks (persistent — runs even when app is closed)
+
+    /// Start a task on the server. The server executes autonomously and sends
+    /// a notification via ntfy.sh when complete. The app can be closed.
+    func startServerTask(prompt: String, model: ServerTaskModel, anthropicKey: String? = nil) async {
+        guard !isStartingTask else { return }
+        isStartingTask = true
+        defer { isStartingTask = false }
+
+        let taskId = UUID().uuidString
+        let endpoint: String
+        switch model {
+        case .minimax: endpoint = "/task/start"
+        case .qwen:    endpoint = "/task/start"
+        case .opus:    endpoint = "/task/start"
+        }
+
+        guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 30)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(sessionId, forHTTPHeaderField: "x-session-id")
+        if let key = anthropicKey {
+            req.setValue(key, forHTTPHeaderField: "x-anthropic-key")
+        }
+
+        let enrichedPrompt = buildContextPrefix() + prompt
+        var body: [String: Any] = [
+            "prompt": enrichedPrompt,
+            "taskId": taskId,
+            "model": model.rawValue,
+            "sessionId": sessionId,
+            "notify": true
+        ]
+        if let key = anthropicKey {
+            body["anthropicKey"] = key
+        }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let task = ServerTask(
+            id: taskId,
+            prompt: prompt,
+            model: model,
+            status: .starting
+        )
+        serverTasks.insert(task, at: 0)
+
+        do {
+            let (data, resp) = try await urlSession.data(for: req)
+            if let http = resp as? HTTPURLResponse, http.statusCode == 200 {
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let serverId = json["taskId"] as? String {
+                    if let idx = serverTasks.firstIndex(where: { $0.id == taskId }) {
+                        serverTasks[idx].serverTaskId = serverId
+                        serverTasks[idx].status = .running
+                    }
+                } else {
+                    if let idx = serverTasks.firstIndex(where: { $0.id == taskId }) {
+                        serverTasks[idx].status = .running
+                    }
+                }
+                startTaskPolling()
+            } else {
+                let msg = String(data: data, encoding: .utf8) ?? "Okänt fel"
+                if let idx = serverTasks.firstIndex(where: { $0.id == taskId }) {
+                    serverTasks[idx].status = .failed
+                    serverTasks[idx].error = msg
+                }
+            }
+        } catch {
+            if let idx = serverTasks.firstIndex(where: { $0.id == taskId }) {
+                serverTasks[idx].status = .failed
+                serverTasks[idx].error = error.localizedDescription
+            }
+        }
+    }
+
+    /// Poll for server task status updates
+    func startTaskPolling() {
+        guard taskPollTimer == nil else { return }
+        taskPollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.pollTaskStatuses()
+            }
+        }
+    }
+
+    private func pollTaskStatuses() async {
+        let activeTasks = serverTasks.filter { $0.status == .running }
+        guard !activeTasks.isEmpty else {
+            taskPollTimer?.invalidate()
+            taskPollTimer = nil
+            return
+        }
+
+        for task in activeTasks {
+            let queryId = task.serverTaskId ?? task.id
+            guard let url = URL(string: "\(Self.baseURL)/task/status/\(queryId)") else { continue }
+            var req = URLRequest(url: url, timeoutInterval: 10)
+            req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+
+            do {
+                let (data, resp) = try await urlSession.data(for: req)
+                guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let status = json["status"] as? String
+                else { continue }
+
+                if let idx = serverTasks.firstIndex(where: { $0.id == task.id }) {
+                    switch status {
+                    case "completed":
+                        serverTasks[idx].status = .completed
+                        serverTasks[idx].result = json["result"] as? String
+                        serverTasks[idx].completedAt = Date()
+                        // Send notification
+                        let duration = serverTasks[idx].durationString
+                        await MainActor.run {
+                            NotificationManager.shared.notifyTaskCompleted(
+                                taskDescription: task.prompt.prefix(60).description,
+                                model: task.model.displayName,
+                                duration: duration
+                            )
+                        }
+                    case "failed":
+                        serverTasks[idx].status = .failed
+                        serverTasks[idx].error = json["error"] as? String
+                        await MainActor.run {
+                            NotificationManager.shared.notifyServerError(
+                                error: json["error"] as? String ?? "Uppgiften misslyckades"
+                            )
+                        }
+                    case "running":
+                        if let progress = json["progress"] as? String {
+                            serverTasks[idx].progressInfo = progress
+                        }
+                        if let toolCalls = json["toolCalls"] as? Int {
+                            serverTasks[idx].toolCallCount = toolCalls
+                        }
+                    default:
+                        break
+                    }
+                }
+            } catch {
+                // Silent fail — we'll try again next poll
+            }
+        }
+
+        // Refresh logs after checking tasks
+        await fetchLogs()
+    }
+
+    func cancelServerTask(_ taskId: String) async {
+        guard let url = URL(string: "\(Self.baseURL)/task/cancel/\(taskId)") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        _ = try? await urlSession.data(for: req)
+
+        if let idx = serverTasks.firstIndex(where: { $0.id == taskId || $0.serverTaskId == taskId }) {
+            serverTasks[idx].status = .cancelled
+        }
+    }
+
+    func clearCompletedTasks() {
+        serverTasks.removeAll { $0.status == .completed || $0.status == .failed || $0.status == .cancelled }
+    }
+}
+
+// MARK: - Server Task Model
+
+enum ServerTaskModel: String, CaseIterable {
+    case minimax = "minimax"
+    case qwen = "qwen"
+    case opus = "opus"
+
+    var displayName: String {
+        switch self {
+        case .minimax: return "MiniMax M2.5"
+        case .qwen: return "DeepSeek R1 / Qwen3"
+        case .opus: return "Claude Sonnet 4.6"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .minimax: return "sparkles"
+        case .qwen: return "bolt.fill"
+        case .opus: return "cpu.fill"
+        }
+    }
+
+    var accentColor: String {
+        switch self {
+        case .minimax: return "da7756"
+        case .qwen: return "5B8DEF"
+        case .opus: return "B06AFF"
+        }
+    }
+}
+
+enum ServerTaskStatus: String {
+    case starting
+    case running
+    case completed
+    case failed
+    case cancelled
+
+    var displayName: String {
+        switch self {
+        case .starting: return "Startar..."
+        case .running: return "Kör"
+        case .completed: return "Klar"
+        case .failed: return "Misslyckad"
+        case .cancelled: return "Avbruten"
+        }
+    }
+
+    var isActive: Bool { self == .starting || self == .running }
+}
+
+struct ServerTask: Identifiable {
+    let id: String
+    let prompt: String
+    let model: ServerTaskModel
+    var status: ServerTaskStatus
+    var serverTaskId: String?
+    var result: String?
+    var error: String?
+    var progressInfo: String?
+    var toolCallCount: Int = 0
+    let startedAt: Date = Date()
+    var completedAt: Date?
+
+    var durationString: String? {
+        guard let end = completedAt else {
+            let elapsed = Date().timeIntervalSince(startedAt)
+            return formatDuration(elapsed)
+        }
+        return formatDuration(end.timeIntervalSince(startedAt))
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return "\(Int(seconds))s"
+        } else if seconds < 3600 {
+            return "\(Int(seconds / 60))m \(Int(seconds.truncatingRemainder(dividingBy: 60)))s"
+        } else {
+            return "\(Int(seconds / 3600))h \(Int((seconds / 60).truncatingRemainder(dividingBy: 60)))m"
+        }
     }
 }

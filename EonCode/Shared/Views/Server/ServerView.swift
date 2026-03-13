@@ -4,10 +4,11 @@ import SwiftUI
 
 struct ServerView: View {
     @StateObject private var brain = NaviBrainService.shared
-    @State private var selectedTab: ServerTab = .minimax
+    @State private var selectedTab: ServerTab = .tasks
     @State private var showInfo = false
 
     enum ServerTab: String, CaseIterable {
+        case tasks    = "Uppgifter"
         case terminal = "Terminal"
         case minimax  = "Minimax"
         case qwen     = "Qwen"
@@ -16,6 +17,7 @@ struct ServerView: View {
 
         var icon: String {
             switch self {
+            case .tasks:    return "play.circle.fill"
             case .terminal: return "terminal.fill"
             case .minimax:  return "sparkles"
             case .qwen:     return "bolt.fill"
@@ -25,6 +27,7 @@ struct ServerView: View {
         }
         var accentColor: Color {
             switch self {
+            case .tasks:    return Color(naviHex: "4CAF50")
             case .terminal: return Color(naviHex: "a8ff78")
             case .minimax:  return NaviTheme.accent
             case .qwen:     return Color(naviHex: "5B8DEF")
@@ -190,6 +193,7 @@ struct ServerView: View {
 
     private func isTabBusy(_ tab: ServerTab) -> Bool {
         switch tab {
+        case .tasks:    return brain.serverTasks.contains { $0.status.isActive }
         case .terminal: return brain.isTerminalSending
         case .minimax:  return brain.isSendingMinimax
         case .qwen:     return brain.isSendingQwen
@@ -203,6 +207,7 @@ struct ServerView: View {
     @ViewBuilder
     var tabContent: some View {
         switch selectedTab {
+        case .tasks:    ServerTasksView()
         case .terminal: TerminalView()
         case .minimax:  BrainChatView(mode: .minimax)
         case .qwen:     BrainChatView(mode: .qwen)
@@ -1259,6 +1264,293 @@ struct LogsView: View {
             return String(after.prefix(8))
         }
         return String(ts.suffix(8))
+    }
+}
+
+// MARK: - ServerTasksView (launch & monitor persistent server tasks)
+
+struct ServerTasksView: View {
+    @StateObject private var brain = NaviBrainService.shared
+    @State private var taskInput = ""
+    @State private var selectedModel: ServerTaskModel = .minimax
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            taskList
+            Divider().opacity(0.1)
+            taskInputBar
+        }
+    }
+
+    // MARK: - Task List
+
+    var taskList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if brain.serverTasks.isEmpty {
+                    emptyState
+                } else {
+                    ForEach(brain.serverTasks) { task in
+                        taskRow(task)
+                        Divider().opacity(0.06).padding(.horizontal, 14)
+                    }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    var emptyState: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color(naviHex: "4CAF50").opacity(0.1))
+                    .frame(width: 64, height: 64)
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundColor(Color(naviHex: "4CAF50").opacity(0.8))
+            }
+            VStack(spacing: 5) {
+                Text("Serveruppgifter")
+                    .font(NaviTheme.heading(16))
+                    .foregroundColor(.primary)
+                Text("Starta en uppgift som kör på servern.\nDu kan stänga appen — servern arbetar vidare.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                if !brain.isConnected {
+                    Text("Servern är offline")
+                        .font(.system(size: 12))
+                        .foregroundColor(NaviTheme.warning)
+                        .padding(.top, 4)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 64)
+        .padding(.horizontal, 28)
+    }
+
+    @ViewBuilder
+    func taskRow(_ task: ServerTask) -> some View {
+        let color = Color(naviHex: task.model.accentColor)
+
+        HStack(alignment: .top, spacing: 10) {
+            // Status indicator
+            ZStack {
+                Circle()
+                    .fill(statusColor(task.status).opacity(0.12))
+                    .frame(width: 32, height: 32)
+                if task.status.isActive {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                        .tint(color)
+                } else {
+                    Image(systemName: statusIcon(task.status))
+                        .font(.system(size: 13))
+                        .foregroundColor(statusColor(task.status))
+                }
+            }
+            .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 5) {
+                // Model + status
+                HStack(spacing: 6) {
+                    Image(systemName: task.model.icon)
+                        .font(.system(size: 10))
+                        .foregroundColor(color)
+                    Text(task.model.displayName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(color)
+                    Spacer()
+                    Text(task.status.displayName)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(statusColor(task.status))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(statusColor(task.status).opacity(0.1))
+                        .cornerRadius(4)
+                }
+
+                // Prompt
+                Text(task.prompt)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary.opacity(0.85))
+                    .lineLimit(3)
+
+                // Progress info
+                HStack(spacing: 8) {
+                    if let dur = task.durationString {
+                        Text(dur)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.5))
+                    }
+                    if task.toolCallCount > 0 {
+                        Text("\(task.toolCallCount) verktyg")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.4))
+                    }
+                    if let progress = task.progressInfo {
+                        Text(progress)
+                            .font(.system(size: 10))
+                            .foregroundColor(color.opacity(0.7))
+                    }
+                    Spacer()
+
+                    // Cancel button for active tasks
+                    if task.status.isActive {
+                        Button {
+                            Task { await brain.cancelServerTask(task.serverTaskId ?? task.id) }
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Result or error
+                if let result = task.result, !result.isEmpty {
+                    Text(result)
+                        .font(.system(size: 12))
+                        .foregroundColor(NaviTheme.success.opacity(0.8))
+                        .lineLimit(5)
+                        .padding(.top, 2)
+                }
+                if let error = task.error, !error.isEmpty {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundColor(NaviTheme.error.opacity(0.8))
+                        .lineLimit(3)
+                        .padding(.top, 2)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func statusColor(_ status: ServerTaskStatus) -> Color {
+        switch status {
+        case .starting: return NaviTheme.warning
+        case .running:  return Color(naviHex: "5B8DEF")
+        case .completed: return NaviTheme.success
+        case .failed:   return NaviTheme.error
+        case .cancelled: return .secondary
+        }
+    }
+
+    private func statusIcon(_ status: ServerTaskStatus) -> String {
+        switch status {
+        case .starting:  return "hourglass"
+        case .running:   return "play.fill"
+        case .completed: return "checkmark.circle.fill"
+        case .failed:    return "xmark.circle.fill"
+        case .cancelled: return "stop.circle.fill"
+        }
+    }
+
+    // MARK: - Input Bar
+
+    var taskInputBar: some View {
+        VStack(spacing: 8) {
+            // Model picker
+            HStack(spacing: 0) {
+                ForEach(ServerTaskModel.allCases, id: \.self) { model in
+                    Button {
+                        withAnimation(NaviTheme.Spring.quick) { selectedModel = model }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: model.icon)
+                                .font(.system(size: 10))
+                            Text(model.displayName)
+                                .font(.system(size: 11, weight: selectedModel == model ? .semibold : .regular))
+                        }
+                        .foregroundColor(selectedModel == model
+                                         ? Color(naviHex: model.accentColor)
+                                         : .secondary.opacity(0.5))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(selectedModel == model
+                                    ? Color(naviHex: model.accentColor).opacity(0.1)
+                                    : Color.clear)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+
+                if !brain.serverTasks.filter({ !$0.status.isActive }).isEmpty {
+                    Button {
+                        withAnimation { brain.clearCompletedTasks() }
+                    } label: {
+                        Text("Rensa")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.4))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.05))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+
+            // Input field + send
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("Beskriv uppgiften...", text: $taskInput, axis: .vertical)
+                    .font(NaviTheme.body(15))
+                    .lineLimit(1...4)
+                    .focused($focused)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(Color.primary.opacity(0.05))
+                    .cornerRadius(NaviTheme.Radius.md)
+
+                Button {
+                    Task { await startTask() }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(canStart
+                                  ? Color(naviHex: selectedModel.accentColor)
+                                  : Color.primary.opacity(0.08))
+                            .frame(width: 36, height: 36)
+                        if brain.isStartingTask {
+                            ProgressView()
+                                .scaleEffect(0.55)
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(canStart ? .white : .secondary.opacity(0.25))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canStart)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 10)
+        }
+        .padding(.top, 8)
+        .background(Color.chatBackground)
+    }
+
+    private var canStart: Bool {
+        !taskInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !brain.isStartingTask
+            && brain.isConnected
+    }
+
+    private func startTask() async {
+        let text = taskInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        taskInput = ""
+        focused = false
+
+        let anthropicKey = selectedModel == .opus ? KeychainManager.shared.anthropicAPIKey : nil
+        await brain.startServerTask(prompt: text, model: selectedModel, anthropicKey: anthropicKey)
     }
 }
 
