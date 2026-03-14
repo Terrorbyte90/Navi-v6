@@ -1300,14 +1300,66 @@ struct ServerTasksView: View {
     @StateObject private var brain = NaviBrainService.shared
     @State private var taskInput = ""
     @State private var selectedModel: ServerTaskModel = .minimax
+    @State private var showBatchPanel = false
+    @State private var batchInput = ""
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
+            // Pending queue strip
+            if !brain.pendingTaskQueue.isEmpty {
+                pendingQueueStrip
+                Divider().opacity(0.08)
+            }
             taskList
             Divider().opacity(0.1)
             taskInputBar
         }
+    }
+
+    // MARK: - Pending Queue Strip
+
+    var pendingQueueStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Image(systemName: "list.number")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.5))
+                Text("\(brain.pendingTaskQueue.count) köade")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.7))
+                Divider().frame(height: 12).opacity(0.3)
+                ForEach(brain.pendingTaskQueue) { item in
+                    HStack(spacing: 4) {
+                        Image(systemName: item.model.icon)
+                            .font(.system(size: 9))
+                        Text(item.prompt.prefix(30).description + (item.prompt.count > 30 ? "…" : ""))
+                            .font(.system(size: 10))
+                        Button {
+                            brain.removeQueuedPrompt(item.id)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .semibold))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .foregroundColor(Color(naviHex: item.model.accentColor).opacity(0.8))
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Color(naviHex: item.model.accentColor).opacity(0.08))
+                    .cornerRadius(5)
+                }
+                Button {
+                    brain.clearPendingQueue()
+                } label: {
+                    Text("Rensa kö")
+                        .font(.system(size: 10))
+                        .foregroundColor(NaviTheme.error.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 7)
+        }
+        .background(Color.primary.opacity(0.03))
     }
 
     // MARK: - Task List
@@ -1481,87 +1533,223 @@ struct ServerTasksView: View {
     // MARK: - Input Bar
 
     var taskInputBar: some View {
-        VStack(spacing: 8) {
-            // Model picker
-            HStack(spacing: 0) {
-                ForEach(ServerTaskModel.allCases, id: \.self) { model in
-                    Button {
-                        withAnimation(NaviTheme.Spring.quick) { selectedModel = model }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: model.icon)
-                                .font(.system(size: 10))
-                            Text(model.displayName)
-                                .font(.system(size: 11, weight: selectedModel == model ? .semibold : .regular))
+        VStack(spacing: 0) {
+            // Batch queue panel (collapsible)
+            if showBatchPanel {
+                batchQueuePanel
+                Divider().opacity(0.08)
+            }
+
+            VStack(spacing: 8) {
+                // Model picker + controls
+                HStack(spacing: 0) {
+                    ForEach(ServerTaskModel.allCases, id: \.self) { model in
+                        Button {
+                            withAnimation(NaviTheme.Spring.quick) { selectedModel = model }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: model.icon)
+                                    .font(.system(size: 10))
+                                Text(model.displayName)
+                                    .font(.system(size: 11, weight: selectedModel == model ? .semibold : .regular))
+                            }
+                            .foregroundColor(selectedModel == model
+                                             ? Color(naviHex: model.accentColor)
+                                             : .secondary.opacity(0.5))
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(selectedModel == model
+                                        ? Color(naviHex: model.accentColor).opacity(0.1)
+                                        : Color.clear)
+                            .cornerRadius(8)
                         }
-                        .foregroundColor(selectedModel == model
-                                         ? Color(naviHex: model.accentColor)
-                                         : .secondary.opacity(0.5))
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(selectedModel == model
-                                    ? Color(naviHex: model.accentColor).opacity(0.1)
-                                    : Color.clear)
-                        .cornerRadius(8)
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+
+                    // Batch queue toggle
+                    Button {
+                        withAnimation(NaviTheme.Spring.quick) { showBatchPanel.toggle() }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "list.bullet.clipboard")
+                                .font(.system(size: 10))
+                            Text("Kö")
+                                .font(.system(size: 10, weight: .medium))
+                            if !brain.pendingTaskQueue.isEmpty {
+                                Text("\(brain.pendingTaskQueue.count)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 14, height: 14)
+                                    .background(Color(naviHex: "4CAF50"))
+                                    .clipShape(Circle())
+                            }
+                        }
+                        .foregroundColor(showBatchPanel ? Color(naviHex: "4CAF50") : .secondary.opacity(0.5))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(showBatchPanel ? Color(naviHex: "4CAF50").opacity(0.1) : Color.clear)
+                        .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
+
+                    if !brain.serverTasks.filter({ !$0.status.isActive }).isEmpty {
+                        Button {
+                            withAnimation { brain.clearCompletedTasks() }
+                        } label: {
+                            Text("Rensa")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.4))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.primary.opacity(0.05))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+
+                // Single-task input field + send
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField("Beskriv uppgiften...", text: $taskInput, axis: .vertical)
+                        .font(NaviTheme.body(15))
+                        .lineLimit(1...4)
+                        .focused($focused)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(Color.primary.opacity(0.05))
+                        .cornerRadius(NaviTheme.Radius.md)
+
+                    Button {
+                        Task { await startTask() }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(canStart
+                                      ? Color(naviHex: selectedModel.accentColor)
+                                      : Color.primary.opacity(0.08))
+                                .frame(width: 36, height: 36)
+                            if brain.isStartingTask {
+                                ProgressView()
+                                    .scaleEffect(0.55)
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(canStart ? .white : .secondary.opacity(0.25))
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canStart)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+            }
+            .padding(.top, 8)
+        }
+        .background(Color.chatBackground)
+    }
+
+    // MARK: - Batch Queue Panel
+
+    var batchQueuePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "list.number")
+                    .font(.system(size: 11))
+                Text("Batch-kö")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text("En prompt per rad · separera med ---")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.5))
+            }
+            .foregroundColor(Color(naviHex: "4CAF50"))
+
+            // Multi-line prompt input
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $batchInput)
+                    .font(.system(size: 13))
+                    .frame(height: 120)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color(naviHex: "4CAF50").opacity(0.2), lineWidth: 1)
+                    )
+                if batchInput.isEmpty {
+                    Text("Ange en uppgift per rad.\nAnvänd --- för att separera.\n\nExempel:\nFixa bugg i LoginView\n---\nLägg till dark mode\n---\nSkriv tester för API")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary.opacity(0.3))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+            }
+
+            HStack(spacing: 8) {
+                // Parse and show count
+                let prompts = parseBatchPrompts(batchInput)
+                if !prompts.isEmpty {
+                    Text("\(prompts.count) uppgifter")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(naviHex: "4CAF50").opacity(0.8))
                 }
                 Spacer()
 
-                if !brain.serverTasks.filter({ !$0.status.isActive }).isEmpty {
-                    Button {
-                        withAnimation { brain.clearCompletedTasks() }
-                    } label: {
-                        Text("Rensa")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary.opacity(0.4))
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.05))
-                            .cornerRadius(6)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-
-            // Input field + send
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Beskriv uppgiften...", text: $taskInput, axis: .vertical)
-                    .font(NaviTheme.body(15))
-                    .lineLimit(1...4)
-                    .focused($focused)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(Color.primary.opacity(0.05))
-                    .cornerRadius(NaviTheme.Radius.md)
-
                 Button {
-                    Task { await startTask() }
+                    batchInput = ""
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(canStart
-                                  ? Color(naviHex: selectedModel.accentColor)
-                                  : Color.primary.opacity(0.08))
-                            .frame(width: 36, height: 36)
-                        if brain.isStartingTask {
-                            ProgressView()
-                                .scaleEffect(0.55)
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(canStart ? .white : .secondary.opacity(0.25))
-                        }
-                    }
+                    Text("Rensa")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.5))
                 }
                 .buttonStyle(.plain)
-                .disabled(!canStart)
+                .disabled(batchInput.isEmpty)
+
+                // Queue all button
+                Button {
+                    let prompts = parseBatchPrompts(batchInput)
+                    guard !prompts.isEmpty else { return }
+                    let key = selectedModel == .opus ? KeychainManager.shared.anthropicAPIKey : nil
+                    brain.enqueuePrompts(prompts, model: selectedModel, anthropicKey: key)
+                    batchInput = ""
+                    withAnimation(NaviTheme.Spring.quick) { showBatchPanel = false }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 12))
+                        Text("Köa alla (\(parseBatchPrompts(batchInput).count))")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(parseBatchPrompts(batchInput).isEmpty ? .secondary : .white)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(parseBatchPrompts(batchInput).isEmpty
+                                ? Color.primary.opacity(0.08)
+                                : Color(naviHex: "4CAF50"))
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                .disabled(parseBatchPrompts(batchInput).isEmpty || !brain.isConnected)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 10)
         }
-        .padding(.top, 8)
-        .background(Color.chatBackground)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(naviHex: "4CAF50").opacity(0.04))
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    /// Parse a multi-line text into individual prompts (split by blank lines or "---")
+    private func parseBatchPrompts(_ text: String) -> [String] {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return [] }
+        // Split on "---" separator (full line) or double newlines
+        let parts = cleaned
+            .components(separatedBy: "\n---\n")
+            .flatMap { $0.components(separatedBy: "\n\n") }
+        return parts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private var canStart: Bool {

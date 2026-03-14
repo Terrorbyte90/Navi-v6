@@ -137,6 +137,23 @@ enum BrainSessionMode: String, CaseIterable {
         }
     }
 
+    /// Ordered fallback OpenRouter model IDs tried when the primary endpoint fails.
+    /// Passed as `model` in the request body so the server can override its default.
+    var fallbackModelChain: [(endpoint: String, modelId: String, label: String)] {
+        switch self {
+        case .minimax:
+            return [] // MiniMax has its own API, no OpenRouter fallback
+        case .qwen:
+            return [
+                ("/qwen/ask", "xiaomi/mimo-v2-flash:free",                  "MiMo-V2-Flash"),
+                ("/qwen/ask", "mistralai/devstral-2512:free",               "Devstral-2512"),
+                ("/qwen/ask", "meta-llama/llama-3.3-70b-instruct:free",     "Llama 3.3 70B"),
+            ]
+        case .opus:
+            return [] // Opus uses Anthropic directly, no OpenRouter fallback
+        }
+    }
+
     var clearEndpoint: String {
         switch self {
         case .minimax: return "/minimax/history/clear"
@@ -236,6 +253,10 @@ final class NaviBrainService: ObservableObject {
     // MARK: - Server Tasks (persist when app closes)
     @Published var serverTasks: [ServerTask] = []
     @Published var isStartingTask = false
+
+    // MARK: - Sequential Task Queue (up to 100 prompts executed in order)
+    @Published var pendingTaskQueue: [QueuedServerPrompt] = []
+    @Published var isProcessingQueue = false
 
     // MARK: - Private
     private var statusTimer: Timer?
@@ -484,8 +505,8 @@ final class NaviBrainService: ObservableObject {
             extraHeaders["x-anthropic-key"] = key
         }
 
+        let enrichedPrompt = buildContextPrefix() + prompt
         do {
-            let enrichedPrompt = buildContextPrefix() + prompt
             let r = try await postAskWithRetry(prompt: enrichedPrompt,
                                                endpoint: session.mode.endpoint,
                                                sessionId: session.sessionId,
@@ -503,10 +524,45 @@ final class NaviBrainService: ObservableObject {
                 duration: nil
             )
         } catch {
-            session.messages.append(BrainMessage(role: .assistant,
-                                                 content: "Fel: \(error.localizedDescription)"))
-            NotificationManager.shared.notifyServerError(
-                error: "\(session.mode.displayName): \(error.localizedDescription)")
+            // Primary endpoint failed — try fallback model chain (qwen only)
+            let chain = session.mode.fallbackModelChain
+            var succeeded = false
+            for (fbEndpoint, fbModelId, fbLabel) in chain {
+                do {
+                    var fbHeaders = extraHeaders
+                    fbHeaders["x-model-override"] = fbModelId
+                    let fbBody: [String: Any] = ["prompt": enrichedPrompt,
+                                                  "sessionId": session.sessionId,
+                                                  "model": fbModelId]
+                    let r = try await postAskRaw(body: fbBody,
+                                                 endpoint: fbEndpoint,
+                                                 extraHeaders: fbHeaders)
+                    session.messages.append(BrainMessage(
+                        role: .assistant,
+                        content: r.response,
+                        model: fbLabel,
+                        tokens: r.tokens,
+                        cost: r.cost,
+                        toolCalls: r.toolCalls
+                    ))
+                    succeeded = true
+                    NotificationManager.shared.notifyTaskCompleted(
+                        taskDescription: prompt.prefix(60).description,
+                        model: fbLabel,
+                        duration: nil
+                    )
+                    break
+                } catch {
+                    // Try next fallback
+                    continue
+                }
+            }
+            if !succeeded {
+                session.messages.append(BrainMessage(role: .assistant,
+                                                     content: "Fel: \(error.localizedDescription)"))
+                NotificationManager.shared.notifyServerError(
+                    error: "\(session.mode.displayName): \(error.localizedDescription)")
+            }
         }
         Task { await fetchLogs() }
         if session.mode == .opus { Task { await fetchCosts() } }
@@ -618,6 +674,26 @@ final class NaviBrainService: ObservableObject {
         let body: [String: Any] = ["prompt": prompt, "sessionId": effectiveSessionId]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        let (data, resp) = try await urlSession.data(for: req)
+        if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
+            let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+            throw NSError(domain: "NaviBrain", code: http.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+        return try JSONDecoder().decode(BrainAskResponse.self, from: data)
+    }
+
+    /// Post with a fully custom body dict — used by fallback model chain
+    private func postAskRaw(body: [String: Any],
+                             endpoint: String,
+                             extraHeaders: [String: String] = [:]) async throws -> BrainAskResponse {
+        guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url, timeoutInterval: 300)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, resp) = try await urlSession.data(for: req)
         if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
             let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
@@ -760,6 +836,8 @@ final class NaviBrainService: ObservableObject {
                                 model: task.model.displayName,
                                 duration: duration
                             )
+                            // Kick off next queued prompt (if any)
+                            Task { await self.processNextQueued() }
                         }
                     case "failed":
                         serverTasks[idx].status = .failed
@@ -768,6 +846,8 @@ final class NaviBrainService: ObservableObject {
                             NotificationManager.shared.notifyServerError(
                                 error: json["error"] as? String ?? "Uppgiften misslyckades"
                             )
+                            // Also advance queue on failure so we don't block
+                            Task { await self.processNextQueued() }
                         }
                     case "running":
                         if let progress = json["progress"] as? String {
@@ -801,9 +881,70 @@ final class NaviBrainService: ObservableObject {
         }
     }
 
+    // MARK: - GitHub → Server Sync
+
+    /// Tell the server to pull the latest changes for all known repos.
+    /// Runs a git pull on each cloned repo on the server side.
+    func triggerServerGitSync() async {
+        guard isConnected else { return }
+        // Build a shell command that pulls all repos found in /root (up to 20)
+        let repoNames = GitHubManager.shared.repos.prefix(20).map { $0.name }
+        guard !repoNames.isEmpty else { return }
+        let pullCmds = repoNames
+            .map { "git -C /root/repos/\($0) pull --ff-only 2>/dev/null || true" }
+            .joined(separator: " && ")
+        let cmd = "(\(pullCmds)) && echo 'NAVI_GIT_SYNC_OK'"
+        guard let url = URL(string: "\(Self.baseURL)/exec") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 60)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["cmd": cmd])
+        _ = try? await urlSession.data(for: req)
+        NaviLog.info("NaviBrainService: GitHub→Server git sync triggered")
+    }
+
     func clearCompletedTasks() {
         serverTasks.removeAll { $0.status == .completed || $0.status == .failed || $0.status == .cancelled }
     }
+
+    // MARK: - Sequential Prompt Queue
+
+    /// Add multiple prompts to the sequential queue and start processing.
+    func enqueuePrompts(_ prompts: [String], model: ServerTaskModel, anthropicKey: String? = nil) {
+        let items = prompts.map { QueuedServerPrompt(prompt: $0, model: model, anthropicKey: anthropicKey) }
+        pendingTaskQueue.append(contentsOf: items)
+        Task { await processNextQueued() }
+    }
+
+    func removeQueuedPrompt(_ id: UUID) {
+        pendingTaskQueue.removeAll { $0.id == id }
+    }
+
+    func clearPendingQueue() {
+        pendingTaskQueue.removeAll()
+    }
+
+    /// Called whenever a task finishes — kicks off the next queued prompt.
+    func processNextQueued() async {
+        guard !pendingTaskQueue.isEmpty else { isProcessingQueue = false; return }
+        let hasActive = serverTasks.contains { $0.status.isActive }
+        guard !hasActive else { return } // Wait for running task before starting next
+        isProcessingQueue = true
+        let next = pendingTaskQueue.removeFirst()
+        await startServerTask(prompt: next.prompt, model: next.model, anthropicKey: next.anthropicKey)
+        // Note: after startServerTask the server-side task runs async — processNextQueued is
+        // called again from pollTaskStatuses when the task completes.
+    }
+}
+
+// MARK: - Queued Server Prompt (lightweight input for the sequential queue)
+
+struct QueuedServerPrompt: Identifiable {
+    let id = UUID()
+    let prompt: String
+    let model: ServerTaskModel
+    let anthropicKey: String?
 }
 
 // MARK: - Server Task Model

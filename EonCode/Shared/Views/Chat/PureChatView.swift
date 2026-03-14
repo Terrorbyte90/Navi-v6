@@ -141,9 +141,12 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
-                                // Single unified activity visual — priority: live tool > thinking phase
+                                // Exactly ONE visual at a time.
+                                // Priority: streaming text > live tool > thinking phase > default thinking
                                 if !manager.streamingText.isEmpty {
-                                    // Model is writing text — no extra visual, StreamingBubble handles it
+                                    // Text is flowing — StreamingBubble is the only thing shown
+                                    StreamingBubble(text: manager.streamingText)
+                                        .id("streaming")
                                 } else if let liveToolName = manager.liveToolCall {
                                     NaviVisualActivity.forTool(liveToolName)
                                         .padding(.horizontal, 16)
@@ -154,10 +157,12 @@ struct PureChatView: View {
                                         .padding(.horizontal, 16)
                                         .id("activityPill")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                } else {
+                                    // No tool call, no explicit phase — default to "Tänker"
+                                    Visual1_TerminalPulse()
+                                        .padding(.horizontal, 16)
+                                        .id("activityPill")
                                 }
-
-                                StreamingBubble(text: manager.streamingText)
-                                    .id("streaming")
                             }
 
                             // Completion indicator
@@ -580,7 +585,7 @@ struct PureChatBubble: View, Equatable {
     }
 }
 
-// MARK: - Streaming Bubble — glass orb breathing animation
+// MARK: - Streaming Bubble — smooth buffered text rendering
 
 struct StreamingBubble: View {
     let text: String
@@ -589,24 +594,76 @@ struct StreamingBubble: View {
     var codeSnippet: String = ""
     var todoItems: [ProjectAgent.AgentTodoItem] = []
 
+    /// Smooth character-by-character buffer — eliminates stutter when large chunks arrive
+    @StateObject private var buffer = PureStreamingBuffer()
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             ThinkingOrb(size: 24, isAnimating: true)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
-                if text.isEmpty {
-                    Visual1_TerminalPulse()
-                } else {
+                if !buffer.displayText.isEmpty {
+                    MarkdownTextView(text: buffer.displayText)
+                        .textSelection(.enabled)
+                } else if !text.isEmpty {
+                    // Buffer catching up — show raw text to avoid blank flash
                     MarkdownTextView(text: text)
                         .textSelection(.enabled)
                 }
+                // No visual here — the caller shows exactly one visual before this
             }
 
             Spacer(minLength: 40)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .onChange(of: text) { newText in
+            buffer.update(newText)
+        }
+        .onDisappear {
+            buffer.flush()
+        }
+    }
+}
+
+/// Smooth 30fps character-by-character reveal buffer for PureChatView streaming.
+@MainActor
+final class PureStreamingBuffer: ObservableObject {
+    @Published private(set) var displayText: String = ""
+
+    private var targetText: String = ""
+    private var timer: Timer?
+    private let charsPerTick: Int = 32   // ~960 chars/sec at 30fps — smooth but not instant
+    private let fps: Double = 30.0
+
+    func update(_ newText: String) {
+        targetText = newText
+        if timer == nil {
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0 / fps, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.tick() }
+            }
+        }
+    }
+
+    func flush() {
+        displayText = targetText
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func tick() {
+        guard displayText.count < targetText.count else {
+            if displayText != targetText { displayText = targetText }
+            timer?.invalidate()
+            timer = nil
+            return
+        }
+        let end = targetText.index(
+            targetText.startIndex,
+            offsetBy: min(displayText.count + charsPerTick, targetText.count)
+        )
+        displayText = String(targetText[..<end])
     }
 }
 
