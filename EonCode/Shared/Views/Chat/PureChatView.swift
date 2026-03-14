@@ -141,16 +141,10 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
-                                // API call info card — shows provider, model, tool count
-                                if let apiInfo = manager.currentAPIInfo {
-                                    APICallInfoCard(info: apiInfo)
-                                        .id("apiInfo-\(apiInfo.iteration)")
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                }
-
-                                // Thinking phase indicator — always visible while streaming
+                                // Thinking phase pill — "Tänker", "Förbereder", "Ansluter"
                                 if manager.thinkingPhase != .idle && manager.thinkingPhase != .responding {
-                                    ThinkingPhaseCard(phase: manager.thinkingPhase)
+                                    NaviActivityPill(statusText: manager.thinkingPhase.pillText)
+                                        .padding(.horizontal, 16)
                                         .id("thinkingPhase")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
@@ -162,11 +156,15 @@ struct PureChatView: View {
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
 
-                                // Live tool call card shown while tool is executing
+                                // Live tool call pill — "Letar", "Skriver kod", "Kör kommando"
                                 if let liveToolName = manager.liveToolCall {
-                                    LiveToolCallCard(toolName: liveToolName)
-                                        .id("liveToolCall")
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                    NaviActivityPill(
+                                        statusText: liveToolName.liveToolPillText,
+                                        items: [liveToolName]
+                                    )
+                                    .padding(.horizontal, 16)
+                                    .id("liveToolCall")
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
 
                                 StreamingBubble(text: manager.streamingText)
@@ -605,7 +603,7 @@ struct StreamingBubble: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if text.isEmpty {
-                    TypingIndicator()
+                    NaviActivityPill(statusText: "Tänker")
                 } else {
                     MarkdownTextView(text: text)
                         .textSelection(.enabled)
@@ -1129,10 +1127,14 @@ struct InputImageThumb: View {
 // MARK: - Agent Activity Overlay
 
 struct AgentActivityOverlay: View {
+    @ObservedObject private var activity = NaviOrchestrator.shared.activity
+
     var body: some View {
-        AgentActivityView(activity: NaviOrchestrator.shared.activity, compact: true)
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
+        if activity.isActive {
+            NaviActivityPill(statusText: activity.phase.displayText)
+                .padding(.horizontal, 4)
+                .padding(.top, 4)
+        }
     }
 }
 

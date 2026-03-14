@@ -44,12 +44,11 @@ struct ChatView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 AssistantAvatar()
                                     .padding(.top, 2)
-                                VStack(alignment: .leading, spacing: 6) {
-                                    if !agent.currentStatus.isEmpty {
-                                        ActivityStatusBar(status: agent.currentStatus, files: agent.activeFileNames)
-                                    }
-                                    TypingIndicator()
-                                }
+                                NaviActivityPill(
+                                    statusText: agent.currentStatus.isEmpty
+                                        ? "Tänker"
+                                        : agent.currentStatus.liveToolPillText
+                                )
                                 Spacer(minLength: 40)
                             }
                             .padding(.horizontal, 16)
@@ -608,29 +607,20 @@ struct AgentStreamingBubble: View {
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
-                // Activity status bar — shows what the agent is doing
-                if !statusMessage.isEmpty || !activeFiles.isEmpty {
-                    ActivityStatusBar(status: statusMessage, files: activeFiles)
-                }
-
-                // File activity card — shows file being edited with code preview
+                // Activity pill — shows what the agent is doing
                 if let file = activeFiles.first, !codeSnippet.isEmpty {
-                    FileActivityCard(
+                    NaviCodeLiveCard(
                         fileName: file,
-                        status: statusMessage.isEmpty ? "Redigerar…" : statusMessage,
-                        codeSnippet: codeSnippet
+                        liveCode: codeSnippet
                     )
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-
-                // TODO list card — shows agent task checklist
-                if !todoItems.isEmpty {
-                    AgentTodoCard(items: todoItems.map { .init(text: $0.text, isDone: $0.isDone) })
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                } else if !statusMessage.isEmpty {
+                    NaviActivityPill(statusText: statusMessage.liveToolPillText)
+                        .transition(.opacity)
                 }
 
                 if text.isEmpty && buffer.displayText.isEmpty {
-                    TypingIndicator()
+                    NaviActivityPill(statusText: "Tänker")
                         .padding(.top, 4)
                 } else {
                     VStack(alignment: .leading, spacing: 4) {

@@ -231,15 +231,10 @@ struct CodeView: View {
                                 CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
                                     .id("streaming")
                             }
-                            // API call info card — shows current model request
-                            if agent.isRunning, let apiInfo = agent.currentAPIInfo {
-                                CodeAPIInfoCard(info: apiInfo)
-                                    .id("apiInfo-\(apiInfo.iteration)")
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            }
-                            // Thinking phase indicator
+                            // Thinking phase pill — "Tänker", "Undersöker" etc.
                             if agent.isRunning, !agent.thinkingPhase.isEmpty, agent.streamingText.isEmpty {
-                                CodeThinkingCard(phase: agent.thinkingPhase)
+                                NaviActivityPill(statusText: agent.thinkingPhase)
+                                    .padding(.horizontal, 16)
                                     .id("thinking")
                                     .transition(.opacity)
                             }
@@ -252,16 +247,47 @@ struct CodeView: View {
                                         removal: .opacity
                                     ))
                             }
-                            // Live tool call card — shown when agent is executing a tool
+                            // Live tool call pill — "Letar", "Skriver kod", "Kör kommando"
                             if agent.isRunning, let toolName = agent.liveToolCall {
-                                LiveToolCallCard(toolName: toolName)
-                                    .id("liveToolCall")
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                NaviActivityPill(
+                                    statusText: toolName.liveToolPillText,
+                                    items: [toolName]
+                                )
+                                .padding(.horizontal, 16)
+                                .id("liveToolCall")
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
+                            // Progress pill + live code card
                             if agent.isRunning && agent.phase != .idle && agent.phase != .done {
-                                CodeProgressCard(agent: agent)
-                                    .id("progressCard")
-                                    .transition(.opacity)
+                                VStack(alignment: .leading, spacing: 6) {
+                                    NaviActivityPill(
+                                        statusText: agent.phase.pillText,
+                                        items: PipelinePhase.activePhasesOrdered.map { $0.displayName }
+                                    )
+                                    // Live code writing card — shown during build phase
+                                    if agent.phase == .build,
+                                       let status = agent.workerStatuses.first(where: { $0.isActive && $0.currentFile != nil }),
+                                       let file = status.currentFile {
+                                        NaviCodeLiveCard(
+                                            fileName: file,
+                                            liveCode: status.liveCode
+                                        )
+                                        .transition(.asymmetric(
+                                            insertion: .move(edge: .top).combined(with: .opacity),
+                                            removal: .opacity
+                                        ))
+                                    }
+                                    if !agent.quietLog.isEmpty {
+                                        Text(agent.quietLog)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(.secondary.opacity(0.5))
+                                            .lineLimit(1)
+                                            .padding(.horizontal, 2)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .id("progressCard")
+                                .transition(.opacity)
                             }
                             // Completion state
                             if !agent.isRunning && agent.phase == .done {
@@ -611,11 +637,8 @@ struct CodeStreamingRow: View {
             ThinkingOrb(size: 24, isAnimating: true)
 
             VStack(alignment: .leading, spacing: 6) {
-                // Phase badge with pulse indicator
-                PhasePill(phase: phase)
-
                 if text.isEmpty {
-                    TypingIndicator()
+                    NaviActivityPill(statusText: phase.pillText)
                 } else {
                     MarkdownTextView(text: text)
                 }

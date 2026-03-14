@@ -97,6 +97,7 @@
 		52C39ED17C5CD0B069B46D79 /* ScheduledTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA46077E6EF10F3DD954F280 /* ScheduledTaskManager.swift */; };
 		54B8F9A68B6D484F62052B27 /* NaviApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B074907A2FB58C840C223A /* NaviApp.swift */; };
 		5604A70C387F52B83EA0ED36 /* CodeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83122D995DEC960E5E3D0D7B /* CodeEditorView.swift */; };
+		5696D38180FA99ECE548B266 /* NaviActivityPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */; };
 		57F0EEFB742FD4D9671F5A3D /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D37A1D74CF78B28BDF48081 /* KeychainManager.swift */; };
 		5936A65132C1A0A73A43EC62 /* DeviceStatusBroadcaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215B5630F5C90A41A92CEE6E /* DeviceStatusBroadcaster.swift */; };
 		5D51EA6A5201CCB284E302E1 /* CodeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83122D995DEC960E5E3D0D7B /* CodeEditorView.swift */; };
@@ -153,6 +154,7 @@
 		95F91F1D19BA90AA0A79436F /* MarkdownPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B112A1A381A48BE71E8F958 /* MarkdownPreview.swift */; };
 		983E3EEDE32FC204F3D13DDA /* BrowserAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377C48BE8E59272A9F8CCC22 /* BrowserAgent.swift */; };
 		98B8DF00784FF65EAF88A672 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81AB7E8B7FB42687CBD3D91 /* BrowserView.swift */; };
+		9A63C510FD4CBB1F38E7BD0C /* NaviActivityPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */; };
 		9BEBC654F5C68DF9D33D4721 /* CheckpointManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E0F32117BD899767E725C6 /* CheckpointManager.swift */; };
 		9E42BEE7328C4D3D9AE198B2 /* VoiceModeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */; };
 		9E4952BBF146103DA9C6E684 /* ExchangeRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433D65180DC56EA603F1EBFB /* ExchangeRate.swift */; };
@@ -360,6 +362,7 @@
 		C68851252A8669B23C61EFFD /* MediaGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaGeneration.swift; sourceTree = "<group>"; };
 		CA5507FA5239C43E26C9AD52 /* WorkerAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkerAgent.swift; sourceTree = "<group>"; };
 		CA7B0E1D043971209D35C110 /* AgentAction+Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AgentAction+Platform.swift"; sourceTree = "<group>"; };
+		CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviActivityPill.swift; sourceTree = "<group>"; };
 		D0EA62515E12ADF0F1A12C14 /* PlanManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanManager.swift; sourceTree = "<group>"; };
 		D27D316CBFB44553F01589B0 /* PromptQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptQueue.swift; sourceTree = "<group>"; };
 		D282B7114280AA5F0CC2581D /* XcodeCrashHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeCrashHandler.swift; sourceTree = "<group>"; };
@@ -793,6 +796,7 @@
 			isa = PBXGroup;
 			children = (
 				06075E83F58D9C6DB461B918 /* GlassCard.swift */,
+				CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */,
 				75E16C42F31EA3521A28B103 /* PremiumComponents.swift */,
 			);
 			path = Components;
@@ -1089,6 +1093,7 @@
 				CD88A300E4EDBD9AE21036C4 /* MemoryManager.swift in Sources */,
 				003FF25E8EBBA9158882BDA3 /* MemoryView.swift in Sources */,
 				F29300BED422E8A21EA499DF /* ModelRouter.swift in Sources */,
+				5696D38180FA99ECE548B266 /* NaviActivityPill.swift in Sources */,
 				467E34FCAD9A24DBE9E8A3D6 /* NaviApp.swift in Sources */,
 				B87077F40C6321BFFC1B0D7F /* NaviBrainService.swift in Sources */,
 				EA96CBA653E94ED559CD73D8 /* NaviOrchestrator.swift in Sources */,
@@ -1217,6 +1222,7 @@
 				B889ECA84F989A2B95D2F125 /* MemoryManager.swift in Sources */,
 				0A7324C6891D7E86E33380E2 /* MemoryView.swift in Sources */,
 				E18153B47A196DEDB259EF28 /* ModelRouter.swift in Sources */,
+				9A63C510FD4CBB1F38E7BD0C /* NaviActivityPill.swift in Sources */,
 				54B8F9A68B6D484F62052B27 /* NaviApp.swift in Sources */,
 				ACADB3EA59F3521FED3FB7B3 /* NaviBrainService.swift in Sources */,
 				E2A3E9DC5D13A81DB17598FE /* NaviOrchestrator.swift in Sources */,
