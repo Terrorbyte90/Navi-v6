@@ -149,11 +149,18 @@ struct PureChatView: View {
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
 
-                                // Completed tool call events — show results of executed tools
-                                ForEach(manager.toolCallEvents) { event in
-                                    ToolCallEventCard(event: event)
-                                        .id("toolEvent-\(event.id)")
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                // Completed tool call events — single pill with list
+                                if !manager.toolCallEvents.isEmpty {
+                                    NaviActivityPill(
+                                        statusText: manager.toolCallEvents.count == 1
+                                            ? "1 verktyg kördes"
+                                            : "\(manager.toolCallEvents.count) verktyg kördes",
+                                        items: manager.toolCallEvents.map { $0.toolName },
+                                        isLive: false
+                                    )
+                                    .padding(.horizontal, 16)
+                                    .id("toolEvents")
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
 
                                 // Live tool call pill — "Letar", "Skriver kod", "Kör kommando"
@@ -504,9 +511,13 @@ struct PureChatBubble: View, Equatable {
                     .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    // Tool call strip — shown when model executed tools
+                    // Tool call pill — shown when model executed tools
                     if let tools = message.toolCallNames, !tools.isEmpty {
-                        ChatToolCallStrip(tools: tools)
+                        NaviActivityPill(
+                            statusText: tools.count == 1 ? "1 verktyg" : "\(tools.count) verktyg",
+                            items: tools,
+                            isLive: false
+                        )
                     }
 
                     MarkdownTextView(text: message.content)

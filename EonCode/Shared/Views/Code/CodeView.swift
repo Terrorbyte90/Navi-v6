@@ -238,14 +238,18 @@ struct CodeView: View {
                                     .id("thinking")
                                     .transition(.opacity)
                             }
-                            // Completed tool call events — visual feedback
-                            ForEach(agent.toolCallEvents.filter { $0.isComplete }) { event in
-                                CodeToolCallCard(event: event)
-                                    .id("tool-\(event.id)")
-                                    .transition(.asymmetric(
-                                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                                        removal: .opacity
-                                    ))
+                            // Completed tool call events — single pill with list
+                            let completedTools = agent.toolCallEvents.filter { $0.isComplete }
+                            if !completedTools.isEmpty {
+                                NaviActivityPill(
+                                    statusText: completedTools.count == 1
+                                        ? "1 verktyg kördes"
+                                        : "\(completedTools.count) verktyg kördes",
+                                    items: completedTools.map { $0.toolName },
+                                    isLive: false
+                                )
+                                .padding(.horizontal, 16)
+                                .transition(.opacity)
                             }
                             // Live tool call pill — "Letar", "Skriver kod", "Kör kommando"
                             if agent.isRunning, let toolName = agent.liveToolCall {
@@ -597,9 +601,13 @@ struct CodeMessageRow: View, Equatable {
             ThinkingOrb(size: 24, isAnimating: false)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 6) {
-                // Tool call visual strip
+                // Tool call pill — shown when model executed tools
                 if let tools = message.toolCallNames, !tools.isEmpty {
-                    ChatToolCallStrip(tools: tools)
+                    NaviActivityPill(
+                        statusText: tools.count == 1 ? "1 verktyg" : "\(tools.count) verktyg",
+                        items: tools,
+                        isLive: false
+                    )
                 }
                 MarkdownTextView(text: message.content)
                     .equatable()
