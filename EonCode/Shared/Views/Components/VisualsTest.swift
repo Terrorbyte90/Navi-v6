@@ -856,6 +856,12 @@ struct Visual6_ParticleSwarm: View {
         ("folder", "Listar filer"),
     ]
 
+    private func particleOffset(index i: Int) -> CGSize {
+        let angle = phase + Double(i) * (.pi * 2 / Double(tools.count))
+        let radius: CGFloat = 32
+        return CGSize(width: cos(angle) * Double(radius), height: sin(angle) * Double(radius) * 0.5)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
@@ -875,11 +881,6 @@ struct Visual6_ParticleSwarm: View {
             ZStack {
                 // Orbital paths
                 ForEach(0..<tools.count, id: \.self) { i in
-                    let angle = phase + Double(i) * (.pi * 2 / Double(tools.count))
-                    let radius: CGFloat = 32
-                    let x = cos(angle) * Double(radius)
-                    let y = sin(angle) * Double(radius) * 0.5
-
                     VStack(spacing: 2) {
                         Image(systemName: tools[i].0)
                             .font(.system(size: 11, weight: .semibold))
@@ -894,7 +895,7 @@ struct Visual6_ParticleSwarm: View {
                             .fill(Color.accentNavi.opacity(0.08))
                             .frame(width: 38, height: 38)
                     )
-                    .offset(x: CGFloat(x), y: CGFloat(y))
+                    .offset(particleOffset(index: i))
                 }
 
                 // Center dot
@@ -1376,20 +1377,6 @@ struct Visual10_GlitchRetry: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Color helper
-
-private extension Color {
-    init(naviHex hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let r = Double((int >> 16) & 0xFF) / 255.0
-        let g = Double((int >> 8) & 0xFF) / 255.0
-        let b = Double(int & 0xFF) / 255.0
-        self.init(red: r, green: g, blue: b)
     }
 }
 

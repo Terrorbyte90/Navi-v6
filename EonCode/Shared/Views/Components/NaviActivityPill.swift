@@ -314,6 +314,134 @@ extension String {
     }
 }
 
+// MARK: - ActivityState
+// Maps the current model state to one of the 10 visual designs from VisualsTest.
+// Each case corresponds precisely to a Visual1–Visual10 struct.
+
+enum ActivityState {
+    case thinking           // Visual 1: Terminal Pulse  — Tänker / resonerar
+    case writingCode        // Visual 2: Streaming Code  — Skriver kod
+    case searching          // Visual 3: Glass Orb       — Söker
+    case building           // Visual 4: Waveform Bar    — Bygger / kompilerar
+    case scanningFiles      // Visual 5: Scanning Lines  — Läser / skannar filer
+    case multipleTools      // Visual 6: Particle Swarm  — Flera verktyg
+    case fetchingData       // Visual 7: Neon Ring       — Hämtar data
+    case analyzing          // Visual 8: Matrix Rain     — Analyserar resultat
+    case waiting            // Visual 9: Breathing Dot   — Väntar / idle
+    case error              // Visual 10: Glitch Retry   — Fel / försöker igen
+
+    // MARK: Derive from raw tool name
+
+    static func fromTool(_ toolName: String, toolCount: Int = 1) -> ActivityState {
+        if toolCount > 2 { return .multipleTools }
+        let t = toolName.lowercased()
+        if t.hasPrefix("write_file") || t.hasPrefix("create_file") { return .writingCode }
+        if t.hasPrefix("read_file")                                 { return .scanningFiles }
+        if t.hasPrefix("list_files") || t.hasPrefix("list_dir")    { return .searching }
+        if t.hasPrefix("web_search") || t.hasPrefix("search")      { return .searching }
+        if t.hasPrefix("bash") || t.hasPrefix("run_command") || t.hasPrefix("execute") { return .building }
+        if t.hasPrefix("github_list") || t.hasPrefix("github_get") { return .fetchingData }
+        if t.hasPrefix("github_create_pull")                       { return .fetchingData }
+        if t.hasPrefix("github")                                    { return .fetchingData }
+        if t.hasPrefix("server_exec")                               { return .building }
+        if t.hasPrefix("server_ask")                                { return .fetchingData }
+        if t.hasPrefix("server")                                    { return .fetchingData }
+        if t.hasPrefix("image")                                     { return .analyzing }
+        if t.hasPrefix("memory")                                    { return .analyzing }
+        return .thinking
+    }
+
+    // MARK: Derive from Swedish/English status text
+
+    static func fromStatus(_ text: String) -> ActivityState {
+        let s = text.lowercased()
+        if s.contains("skriver kod") || s.contains("write") || s.contains("skapar fil") { return .writingCode }
+        if s.contains("kör verktyg") || s.contains("flera verktyg")                     { return .multipleTools }
+        if s.contains("letar") || s.contains("söker") || s.contains("search")          { return .searching }
+        if s.contains("läser") || s.contains("skannar")                                 { return .scanningFiles }
+        if s.contains("bygger") || s.contains("kompilerar") || s.contains("kör kommando") ||
+           s.contains("pushar") || s.contains("konfigurerar")                           { return .building }
+        if s.contains("hämtar") || s.contains("github") || s.contains("brain") ||
+           s.contains("frågar") || s.contains("ansluter")                               { return .fetchingData }
+        if s.contains("analyserar")                                                      { return .analyzing }
+        if s.contains("väntar") || s.contains("förbereder")                             { return .waiting }
+        if s.contains("fel") || s.contains("error") || s.contains("retry")             { return .error }
+        // covers "Tänker", "Planerar", "Undersöker", "Slutför",
+        // "Opus tänker", "Qwen tänker", "Minimax tänker" …
+        return .thinking
+    }
+}
+
+// MARK: - PipelinePhase → ActivityState
+
+extension PipelinePhase {
+    var activityState: ActivityState {
+        switch self {
+        case .idle:     return .waiting
+        case .spec:     return .thinking
+        case .research: return .searching
+        case .setup:    return .building
+        case .plan:     return .thinking
+        case .build:    return .writingCode
+        case .push:     return .building
+        case .done:     return .waiting
+        }
+    }
+}
+
+// MARK: - ChatManager.ThinkingPhase → ActivityState
+
+extension ChatManager.ThinkingPhase {
+    var activityState: ActivityState {
+        switch self {
+        case .idle:           return .waiting
+        case .preparing:      return .waiting
+        case .connecting:     return .fetchingData
+        case .thinking:       return .thinking
+        case .responding:     return .thinking
+        case .executingTools: return .multipleTools
+        case .finishing:      return .thinking
+        }
+    }
+}
+
+// MARK: - NaviVisualActivity
+// The single entry-point for live model-activity visuals.
+// Renders Visual1–Visual10 based on the resolved ActivityState.
+
+struct NaviVisualActivity: View {
+    let state: ActivityState
+
+    var body: some View {
+        switch state {
+        case .thinking:      Visual1_TerminalPulse()
+        case .writingCode:   Visual2_StreamingCode()
+        case .searching:     Visual3_GlassOrb()
+        case .building:      Visual4_WaveformBar()
+        case .scanningFiles: Visual5_ScanningLines()
+        case .multipleTools: Visual6_ParticleSwarm()
+        case .fetchingData:  Visual7_NeonRing()
+        case .analyzing:     Visual8_MatrixRain()
+        case .waiting:       Visual9_BreathingDot()
+        case .error:         Visual10_GlitchRetry()
+        }
+    }
+
+    // MARK: Convenience constructors
+
+    static func forTool(_ toolName: String, count: Int = 1) -> NaviVisualActivity {
+        NaviVisualActivity(state: .fromTool(toolName, toolCount: count))
+    }
+
+    static func forStatus(_ statusText: String) -> NaviVisualActivity {
+        NaviVisualActivity(state: .fromStatus(statusText))
+    }
+
+    static func forPhase(_ phase: PipelinePhase) -> NaviVisualActivity {
+        NaviVisualActivity(state: phase.activityState)
+    }
+}
+
 // MARK: - Previews
 
 #Preview("NaviActivityPill") {

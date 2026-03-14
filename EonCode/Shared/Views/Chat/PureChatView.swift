@@ -141,19 +141,16 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
-                                // Single unified activity pill — priority: live tool > thinking phase
+                                // Single unified activity visual — priority: live tool > thinking phase
                                 if !manager.streamingText.isEmpty {
-                                    // Model is writing text — no extra pill, StreamingBubble handles it
+                                    // Model is writing text — no extra visual, StreamingBubble handles it
                                 } else if let liveToolName = manager.liveToolCall {
-                                    NaviActivityPill(
-                                        statusText: liveToolName.liveToolPillText,
-                                        items: [liveToolName]
-                                    )
-                                    .padding(.horizontal, 16)
-                                    .id("activityPill")
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                    NaviVisualActivity.forTool(liveToolName)
+                                        .padding(.horizontal, 16)
+                                        .id("activityPill")
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 } else if manager.thinkingPhase != .idle && manager.thinkingPhase != .responding {
-                                    NaviActivityPill(statusText: manager.thinkingPhase.pillText)
+                                    NaviVisualActivity(state: manager.thinkingPhase.activityState)
                                         .padding(.horizontal, 16)
                                         .id("activityPill")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -599,7 +596,7 @@ struct StreamingBubble: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if text.isEmpty {
-                    NaviActivityPill(statusText: "Tänker")
+                    Visual1_TerminalPulse()
                 } else {
                     MarkdownTextView(text: text)
                         .textSelection(.enabled)
@@ -1127,7 +1124,7 @@ struct AgentActivityOverlay: View {
 
     var body: some View {
         if activity.isActive {
-            NaviActivityPill(statusText: activity.phase.displayText)
+            NaviVisualActivity.forStatus(activity.phase.displayText)
                 .padding(.horizontal, 4)
                 .padding(.top, 4)
         }

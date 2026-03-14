@@ -240,27 +240,21 @@ struct CodeView: View {
                                 Group {
                                     if agent.phase == .build,
                                        let status = agent.workerStatuses.first(where: { $0.isActive && $0.currentFile != nil }),
-                                       let file = status.currentFile {
-                                        // Large code writing card
-                                        NaviCodeLiveCard(
-                                            fileName: file,
-                                            liveCode: status.liveCode
-                                        )
-                                        .transition(.asymmetric(
-                                            insertion: .move(edge: .top).combined(with: .opacity),
-                                            removal: .opacity
-                                        ))
+                                       let _ = status.currentFile {
+                                        // Visual 2: Streaming Code — skriver kod aktivt
+                                        Visual2_StreamingCode()
+                                            .transition(.asymmetric(
+                                                insertion: .move(edge: .top).combined(with: .opacity),
+                                                removal: .opacity
+                                            ))
                                     } else if let toolName = agent.liveToolCall {
-                                        NaviActivityPill(
-                                            statusText: toolName.liveToolPillText,
-                                            items: [toolName]
-                                        )
+                                        NaviVisualActivity.forTool(toolName)
                                     } else if agent.phase != .idle && agent.phase != .done {
-                                        NaviActivityPill(statusText: agent.phase.pillText)
+                                        NaviVisualActivity.forPhase(agent.phase)
                                     } else if !agent.thinkingPhase.isEmpty {
-                                        NaviActivityPill(statusText: agent.thinkingPhase)
+                                        NaviVisualActivity.forStatus(agent.thinkingPhase)
                                     } else {
-                                        NaviActivityPill(statusText: "Tänker")
+                                        Visual1_TerminalPulse()
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -622,7 +616,7 @@ struct CodeStreamingRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if text.isEmpty {
-                    NaviActivityPill(statusText: phase.pillText)
+                    NaviVisualActivity.forPhase(phase)
                 } else {
                     MarkdownTextView(text: text)
                 }

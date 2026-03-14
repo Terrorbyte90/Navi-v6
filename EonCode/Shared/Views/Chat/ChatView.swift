@@ -44,8 +44,8 @@ struct ChatView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 AssistantAvatar()
                                     .padding(.top, 2)
-                                NaviActivityPill(
-                                    statusText: agent.currentStatus.isEmpty
+                                NaviVisualActivity.forStatus(
+                                    agent.currentStatus.isEmpty
                                         ? "Tänker"
                                         : agent.currentStatus.liveToolPillText
                                 )
@@ -608,20 +608,18 @@ struct AgentStreamingBubble: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 // Single unified activity visual — only ONE at a time
-                if let file = activeFiles.first, !codeSnippet.isEmpty {
-                    NaviCodeLiveCard(
-                        fileName: file,
-                        liveCode: codeSnippet
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                if !codeSnippet.isEmpty {
+                    // Writing code → Visual 2
+                    Visual2_StreamingCode()
+                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
                 } else if text.isEmpty && buffer.displayText.isEmpty {
-                    // No text yet — show status or "Tänker"
-                    NaviActivityPill(
-                        statusText: statusMessage.isEmpty ? "Tänker" : statusMessage.liveToolPillText
+                    // No text yet — pick visual from current status
+                    NaviVisualActivity.forStatus(
+                        statusMessage.isEmpty ? "Tänker" : statusMessage.liveToolPillText
                     )
                     .transition(.opacity)
                 } else if !statusMessage.isEmpty {
-                    NaviActivityPill(statusText: statusMessage.liveToolPillText)
+                    NaviVisualActivity.forStatus(statusMessage.liveToolPillText)
                         .transition(.opacity)
                 }
 

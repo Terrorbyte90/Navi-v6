@@ -1035,28 +1035,17 @@ struct BrainChatView: View {
             .textSelection(.enabled)
     }
 
-    // MARK: - Thinking indicator (single pill visual)
+    // MARK: - Thinking indicator — uses one of the 10 VisualsTest designs
 
     var thinkingIndicator: some View {
         let live = brain.liveStatus
         let hasLiveTool = live?.active == true && live?.tool != nil
-        let statusText: String = {
-            if hasLiveTool, let tool = live?.tool {
-                return tool.liveToolPillText
-            }
-            switch mode {
-            case .opus:    return "Opus tänker"
-            case .qwen:    return "Qwen tänker"
-            case .minimax: return "Minimax tänker"
-            }
-        }()
-        let items: [String] = hasLiveTool ? [live?.tool ?? ""] : []
 
-        return NaviActivityPill(
-            statusText: statusText,
-            items: items,
-            accentColor: accentColor
-        )
+        if hasLiveTool, let tool = live?.tool {
+            return AnyView(NaviVisualActivity.forTool(tool))
+        }
+        // Default per brain model: all map to "tänker" → Visual 1
+        return AnyView(Visual1_TerminalPulse())
     }
 
     // MARK: - Input bar
