@@ -228,6 +228,7 @@ struct Visual1_TerminalPulse: View {
     @State private var lineWidth: CGFloat = 0
     @State private var dotScale: CGFloat = 0.6
     @State private var phase: Double = 0
+    @State private var phaseTimer: Timer?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -305,11 +306,16 @@ struct Visual1_TerminalPulse: View {
             }
             startPhaseTimer()
         }
+        .onDisappear {
+            phaseTimer?.invalidate()
+            phaseTimer = nil
+        }
     }
 
     private func startPhaseTimer() {
-        Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { _ in
-            phase += 0.08
+        phaseTimer?.invalidate()
+        phaseTimer = Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { _ in
+            Task { @MainActor in phase += 0.08 }
         }
     }
 }

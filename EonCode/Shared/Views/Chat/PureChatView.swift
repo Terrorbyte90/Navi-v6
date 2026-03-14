@@ -121,8 +121,6 @@ struct PureChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            macModelBar
-
             if let conv = conversation {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -363,6 +361,37 @@ struct PureChatView: View {
 
     var chatInputBar: some View {
         VStack(spacing: 0) {
+            // Clear conversation strip — only when there are messages
+            if let conv = conversation, !conv.messages.filter({ $0.role != .system }).isEmpty {
+                HStack(spacing: 6) {
+                    Button {
+                        Task { await manager.delete(conv) }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10))
+                            Text("Rensa chatt")
+                                .font(.system(size: 11))
+                        }
+                        .foregroundColor(.secondary.opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                    // Model name chip
+                    Text(conv.model.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.4))
+                    Button { _ = manager.newConversation() } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary.opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 5)
+            }
+
             // Error banner
             if let error = manager.lastError {
                 HStack(spacing: 6) {

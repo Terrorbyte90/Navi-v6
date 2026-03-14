@@ -124,7 +124,7 @@ enum BrainSessionMode: String, CaseIterable {
     var displayName: String {
         switch self {
         case .minimax: return "MiniMax M2.5"
-        case .qwen:    return "DeepSeek R1 / Qwen3"
+        case .qwen:    return "MiMo-V2 / Devstral / Llama"
         case .opus:    return "Claude Sonnet 4.6"
         }
     }
@@ -906,6 +906,11 @@ final class NaviBrainService: ObservableObject {
 
     func clearCompletedTasks() {
         serverTasks.removeAll { $0.status == .completed || $0.status == .failed || $0.status == .cancelled }
+    }
+
+    /// Remove a single task by ID (for swipe-to-delete / dismiss button in UI)
+    func dismissTask(_ id: String) {
+        serverTasks.removeAll { $0.id == id }
     }
 
     // MARK: - Sequential Prompt Queue

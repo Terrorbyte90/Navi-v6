@@ -54,6 +54,9 @@ enum Constants {
         static let minimaxM25 = "minimax/minimax-m2.5"
         static let kimiK25 = "moonshotai/kimi-k2.5"
         static let qwen3CoderFree = "qwen/qwen3-coder:free"
+        static let mimoV2Flash = "xiaomi/mimo-v2-flash:free"
+        static let devstral2512 = "mistralai/devstral-2512:free"
+        static let llama33_70B = "meta-llama/llama-3.3-70b-instruct:free"
 
         // Price per million tokens (USD)
         static let prices: [String: (input: Double, output: Double)] = [
@@ -67,6 +70,9 @@ enum Constants {
             minimaxM25:     (0.30,  1.20),
             kimiK25:        (0.45,  2.20),
             qwen3CoderFree: (0.0,   0.0),
+            mimoV2Flash:    (0.0,   0.0),
+            devstral2512:   (0.0,   0.0),
+            llama33_70B:    (0.0,   0.0),
         ]
     }
 
@@ -119,6 +125,9 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
     case minimaxM25 = "minimax/minimax-m2.5"
     case kimiK25 = "moonshotai/kimi-k2.5"
     case qwen3CoderFree = "qwen/qwen3-coder:free"
+    case mimoV2Flash = "xiaomi/mimo-v2-flash:free"
+    case devstral2512 = "mistralai/devstral-2512:free"
+    case llama33_70B = "meta-llama/llama-3.3-70b-instruct:free"
 
     var id: String { rawValue }
 
@@ -126,22 +135,26 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .haiku, .sonnet45, .sonnet46, .opus46: return .anthropic
         case .grok4, .grok41Fast, .grok3Mini: return .xai
-        case .minimaxM25, .kimiK25, .qwen3CoderFree: return .openRouter
+        case .minimaxM25, .kimiK25, .qwen3CoderFree,
+             .mimoV2Flash, .devstral2512, .llama33_70B: return .openRouter
         }
     }
 
     var displayName: String {
         switch self {
-        case .haiku:      return "Haiku 4.5"
-        case .sonnet45:   return "Sonnet 4.5"
-        case .sonnet46:   return "Sonnet 4.6"
-        case .opus46:     return "Opus 4.6"
+        case .haiku:          return "Haiku 4.5"
+        case .sonnet45:       return "Sonnet 4.5"
+        case .sonnet46:       return "Sonnet 4.6"
+        case .opus46:         return "Opus 4.6"
         case .grok4:          return "Grok 4"
         case .grok41Fast:     return "Grok 4.1 Fast"
         case .grok3Mini:      return "Grok 3 Mini"
         case .minimaxM25:     return "MiniMax M2.5"
         case .kimiK25:        return "Kimi K2.5"
         case .qwen3CoderFree: return "Qwen3 Coder (gratis)"
+        case .mimoV2Flash:    return "MiMo-V2-Flash"
+        case .devstral2512:   return "Devstral-2512"
+        case .llama33_70B:    return "Llama 3.3 70B"
         }
     }
 
@@ -155,16 +168,19 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
 
     var description: String {
         switch self {
-        case .haiku:      return "Snabbast & billigast · $1/$5/MTok"
-        case .sonnet45:   return "Balanserad · $3/$15/MTok"
-        case .sonnet46:   return "Senaste Sonnet · $3/$15/MTok"
-        case .opus46:     return "Kraftfullast · $5/$25/MTok"
+        case .haiku:          return "Snabbast & billigast · $1/$5/MTok"
+        case .sonnet45:       return "Balanserad · $3/$15/MTok"
+        case .sonnet46:       return "Senaste Sonnet · $3/$15/MTok"
+        case .opus46:         return "Kraftfullast · $5/$25/MTok"
         case .grok4:          return "Mest kapabel · $3/$15/MTok"
         case .grok41Fast:     return "Snabb & billig · $0.20/$0.50/MTok"
         case .grok3Mini:      return "Liten & effektiv · $0.30/$0.50/MTok"
         case .minimaxM25:     return "80% SWE-Bench · $0.30/$1.20/MTok"
         case .kimiK25:        return "Agentisk kodning · $0.45/$2.20/MTok"
         case .qwen3CoderFree: return "480B MoE · GRATIS · 262K context"
+        case .mimoV2Flash:    return "Xiaomi MiMo · GRATIS · snabb reasoning"
+        case .devstral2512:   return "Mistral kodmodell · GRATIS · agentic"
+        case .llama33_70B:    return "Meta Llama 3.3 · GRATIS · 128K context"
         }
     }
 
@@ -180,7 +196,9 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
     /// Models grouped by provider for the model picker
     static var anthropicModels: [ClaudeModel] { [.haiku, .sonnet45, .sonnet46, .opus46] }
     static var xaiModels: [ClaudeModel] { [.grok4, .grok41Fast, .grok3Mini] }
-    static var openRouterModels: [ClaudeModel] { [.minimaxM25, .kimiK25, .qwen3CoderFree] }
+    static var openRouterModels: [ClaudeModel] {
+        [.minimaxM25, .kimiK25, .qwen3CoderFree, .mimoV2Flash, .devstral2512, .llama33_70B]
+    }
 
     // Safe Codable: fall back to .haiku for unknown raw values
     init(from decoder: Decoder) throws {

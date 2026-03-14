@@ -4,15 +4,15 @@ import SwiftUI
 
 struct ServerView: View {
     @StateObject private var brain = NaviBrainService.shared
-    @State private var selectedTab: ServerTab = .tasks
+    @State private var selectedTab: ServerTab = .minimax
     @State private var showInfo = false
 
     enum ServerTab: String, CaseIterable {
-        case tasks    = "Uppgifter"
-        case terminal = "Terminal"
         case minimax  = "Minimax"
         case qwen     = "Qwen"
         case opus     = "Opus"
+        case tasks    = "Uppgifter"
+        case terminal = "Terminal"
         case logs     = "Loggar"
 
         var icon: String {
@@ -252,7 +252,7 @@ struct ServerView: View {
 
                     infoCard("Brain-modeller") {
                         InfoRow(label: "Minimax",  value: "MiniMax M2.5 (OpenRouter)")
-                        InfoRow(label: "Qwen",     value: "DeepSeek R1 / Qwen3 (gratis)")
+                        InfoRow(label: "Qwen",     value: "MiMo-V2-Flash / Devstral-2512 (gratis)")
                         InfoRow(label: "Opus",     value: "Claude Sonnet 4.6 (Anthropic)")
                     }
 
@@ -672,16 +672,26 @@ struct BrainSessionsView: View {
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
-                        if sessions.count > 1 {
-                            Button(role: .destructive) {
-                                let id = session.id
-                                if activeSessionId == id {
-                                    activeSessionId = sessions.first { $0.id != id }?.id
-                                }
-                                brain.removeBrainSession(id)
-                            } label: {
-                                Label("Ta bort session", systemImage: "trash")
+                        Button(role: .destructive) {
+                            let id = session.id
+                            if activeSessionId == id {
+                                activeSessionId = sessions.first { $0.id != id }?.id
                             }
+                            brain.removeBrainSession(id)
+                            // If we removed the last session, create a fresh one
+                            if brain.sessionsFor(mode).isEmpty {
+                                let fresh = brain.createBrainSession(mode: mode)
+                                activeSessionId = fresh.id
+                            }
+                        } label: {
+                            Label("Ta bort session", systemImage: "trash")
+                        }
+                        Button {
+                            withAnimation(NaviTheme.Spring.quick) {
+                                brain.clearSession(session)
+                            }
+                        } label: {
+                            Label("Rensa historik", systemImage: "eraser")
                         }
                     }
                 }
@@ -857,7 +867,7 @@ struct BrainChatView: View {
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 } else if mode == .qwen {
-                    Text("Gratis kodningsmodell via OpenRouter")
+                    Text("MiMo-V2-Flash, Devstral-2512, Llama 3.3 70B (gratis)")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 } else if mode == .opus {
@@ -1498,16 +1508,38 @@ struct ServerTasksView: View {
                         .padding(.top, 2)
                 }
                 if let error = task.error, !error.isEmpty {
-                    Text(error)
-                        .font(.system(size: 12))
-                        .foregroundColor(NaviTheme.error.opacity(0.8))
-                        .lineLimit(3)
-                        .padding(.top, 2)
+                    HStack(alignment: .top, spacing: 6) {
+                        Text(error)
+                            .font(.system(size: 12))
+                            .foregroundColor(NaviTheme.error.opacity(0.8))
+                            .lineLimit(3)
+                        Spacer()
+                        Button {
+                            withAnimation { brain.dismissTask(task.id) }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(NaviTheme.error.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 2)
                 }
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        #if os(iOS)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if !task.status.isActive {
+                Button(role: .destructive) {
+                    withAnimation { brain.dismissTask(task.id) }
+                } label: {
+                    Label("Ta bort", systemImage: "trash")
+                }
+            }
+        }
+        #endif
     }
 
     private func statusColor(_ status: ServerTaskStatus) -> Color {
