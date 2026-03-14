@@ -40,6 +40,23 @@ struct NaviActivityPill: View {
 
                     Spacer(minLength: 0)
 
+                    // Three animated dots — visible when live
+                    if isLive {
+                        HStack(spacing: 3) {
+                            ForEach(0..<3, id: \.self) { i in
+                                Circle()
+                                    .fill(accentColor.opacity(pulse ? 0.8 : 0.3))
+                                    .frame(width: 4, height: 4)
+                                    .animation(
+                                        .easeInOut(duration: 0.5)
+                                            .repeatForever(autoreverses: true)
+                                            .delay(Double(i) * 0.15),
+                                        value: pulse
+                                    )
+                            }
+                        }
+                    }
+
                     if !items.isEmpty {
                         Image(systemName: expanded ? "chevron.up" : "chevron.down")
                             .font(.system(size: 9, weight: .semibold))
@@ -159,6 +176,23 @@ struct NaviCodeLiveCard: View {
                     Text("Skriver kod")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(accentColor.opacity(0.75))
+
+                    // Three animated dots
+                    if isActive {
+                        HStack(spacing: 3) {
+                            ForEach(0..<3, id: \.self) { i in
+                                Circle()
+                                    .fill(accentColor.opacity(pulse ? 0.8 : 0.3))
+                                    .frame(width: 4, height: 4)
+                                    .animation(
+                                        .easeInOut(duration: 0.5)
+                                            .repeatForever(autoreverses: true)
+                                            .delay(Double(i) * 0.15),
+                                        value: pulse
+                                    )
+                            }
+                        }
+                    }
 
                     Spacer(minLength: 0)
 

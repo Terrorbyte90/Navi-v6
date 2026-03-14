@@ -231,47 +231,17 @@ struct CodeView: View {
                                 CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
                                     .id("streaming")
                             }
-                            // Thinking phase pill — "Tänker", "Undersöker" etc.
-                            if agent.isRunning, !agent.thinkingPhase.isEmpty, agent.streamingText.isEmpty {
-                                NaviActivityPill(statusText: agent.thinkingPhase)
-                                    .padding(.horizontal, 16)
-                                    .id("thinking")
-                                    .transition(.opacity)
-                            }
-                            // Completed tool call events — single pill with list
-                            let completedTools = agent.toolCallEvents.filter { $0.isComplete }
-                            if !completedTools.isEmpty {
-                                NaviActivityPill(
-                                    statusText: completedTools.count == 1
-                                        ? "1 verktyg kördes"
-                                        : "\(completedTools.count) verktyg kördes",
-                                    items: completedTools.map { $0.toolName },
-                                    isLive: false
-                                )
-                                .padding(.horizontal, 16)
-                                .transition(.opacity)
-                            }
-                            // Live tool call pill — "Letar", "Skriver kod", "Kör kommando"
-                            if agent.isRunning, let toolName = agent.liveToolCall {
-                                NaviActivityPill(
-                                    statusText: toolName.liveToolPillText,
-                                    items: [toolName]
-                                )
-                                .padding(.horizontal, 16)
-                                .id("liveToolCall")
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            }
-                            // Progress pill + live code card
-                            if agent.isRunning && agent.phase != .idle && agent.phase != .done {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    NaviActivityPill(
-                                        statusText: agent.phase.pillText,
-                                        items: PipelinePhase.activePhasesOrdered.map { $0.displayName }
-                                    )
-                                    // Live code writing card — shown during build phase
+                            // Single unified activity visual — priority:
+                            // 1. Code writing card (build phase)
+                            // 2. Live tool call pill
+                            // 3. Pipeline phase pill
+                            // 4. Thinking phase pill
+                            if agent.isRunning && agent.streamingText.isEmpty {
+                                Group {
                                     if agent.phase == .build,
                                        let status = agent.workerStatuses.first(where: { $0.isActive && $0.currentFile != nil }),
                                        let file = status.currentFile {
+                                        // Large code writing card
                                         NaviCodeLiveCard(
                                             fileName: file,
                                             liveCode: status.liveCode
@@ -280,18 +250,24 @@ struct CodeView: View {
                                             insertion: .move(edge: .top).combined(with: .opacity),
                                             removal: .opacity
                                         ))
-                                    }
-                                    if !agent.quietLog.isEmpty {
-                                        Text(agent.quietLog)
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .foregroundColor(.secondary.opacity(0.5))
-                                            .lineLimit(1)
-                                            .padding(.horizontal, 2)
+                                    } else if let toolName = agent.liveToolCall {
+                                        NaviActivityPill(
+                                            statusText: toolName.liveToolPillText,
+                                            items: [toolName]
+                                        )
+                                    } else if agent.phase != .idle && agent.phase != .done {
+                                        NaviActivityPill(statusText: agent.phase.pillText)
+                                    } else if !agent.thinkingPhase.isEmpty {
+                                        NaviActivityPill(statusText: agent.thinkingPhase)
+                                    } else {
+                                        NaviActivityPill(statusText: "Tänker")
                                     }
                                 }
                                 .padding(.horizontal, 16)
-                                .id("progressCard")
-                                .transition(.opacity)
+                                .id("activityPill")
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                .animation(.easeInOut(duration: 0.25), value: agent.liveToolCall ?? "")
+                                .animation(.easeInOut(duration: 0.25), value: agent.phase)
                             }
                             // Completion state
                             if !agent.isRunning && agent.phase == .done {

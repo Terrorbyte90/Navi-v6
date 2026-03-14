@@ -141,37 +141,22 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
-                                // Thinking phase pill — "Tänker", "Förbereder", "Ansluter"
-                                if manager.thinkingPhase != .idle && manager.thinkingPhase != .responding {
-                                    NaviActivityPill(statusText: manager.thinkingPhase.pillText)
-                                        .padding(.horizontal, 16)
-                                        .id("thinkingPhase")
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                }
-
-                                // Completed tool call events — single pill with list
-                                if !manager.toolCallEvents.isEmpty {
-                                    NaviActivityPill(
-                                        statusText: manager.toolCallEvents.count == 1
-                                            ? "1 verktyg kördes"
-                                            : "\(manager.toolCallEvents.count) verktyg kördes",
-                                        items: manager.toolCallEvents.map { $0.toolName },
-                                        isLive: false
-                                    )
-                                    .padding(.horizontal, 16)
-                                    .id("toolEvents")
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                }
-
-                                // Live tool call pill — "Letar", "Skriver kod", "Kör kommando"
-                                if let liveToolName = manager.liveToolCall {
+                                // Single unified activity pill — priority: live tool > thinking phase
+                                if !manager.streamingText.isEmpty {
+                                    // Model is writing text — no extra pill, StreamingBubble handles it
+                                } else if let liveToolName = manager.liveToolCall {
                                     NaviActivityPill(
                                         statusText: liveToolName.liveToolPillText,
                                         items: [liveToolName]
                                     )
                                     .padding(.horizontal, 16)
-                                    .id("liveToolCall")
+                                    .id("activityPill")
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                } else if manager.thinkingPhase != .idle && manager.thinkingPhase != .responding {
+                                    NaviActivityPill(statusText: manager.thinkingPhase.pillText)
+                                        .padding(.horizontal, 16)
+                                        .id("activityPill")
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
 
                                 StreamingBubble(text: manager.streamingText)
@@ -1233,107 +1218,6 @@ struct ChatToolCallStrip: View {
     }
 }
 
-// MARK: - Live Tool Call Card (shown during streaming while tool executes)
-
-struct LiveToolCallCard: View {
-    let toolName: String
-    @State private var pulse = false
-
-    private var icon: String { ChatToolCallStrip.toolIconStatic(toolName) }
-    private var label: String {
-        let t = toolName.lowercased()
-        if t == "web_search" { return "Söker på webben…" }
-        if t == "server_ask" { return "Frågar Brain…" }
-        if t == "server_exec" { return "Kör kommando…" }
-        if t == "server_status" { return "Hämtar serverstatus…" }
-        if t == "server_repos" { return "Listar repos…" }
-        if t.hasPrefix("github_list") { return "Hämtar från GitHub…" }
-        if t.hasPrefix("github_get") { return "Läser GitHub…" }
-        if t.hasPrefix("github_create") { return "Skapar på GitHub…" }
-        if t.hasPrefix("github") { return "GitHub…" }
-        if t.hasPrefix("read_file") { return "Läser fil…" }
-        if t.hasPrefix("write_file") { return "Skriver fil…" }
-        if t.hasPrefix("search") { return "Söker…" }
-        if t.hasPrefix("bash") || t.hasPrefix("run_command") { return "Kör kommando…" }
-        return "\(toolName)…"
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
-                .padding(.top, 2)
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.accentNavi)
-                    .scaleEffect(pulse ? 1.1 : 0.95)
-                Text(label)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.primary.opacity(0.7))
-                Spacer(minLength: 0)
-                // Animated dots
-                HStack(spacing: 3) {
-                    ForEach(0..<3) { i in
-                        Circle()
-                            .fill(Color.accentNavi.opacity(pulse ? 0.8 : 0.3))
-                            .frame(width: 4, height: 4)
-                            .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: pulse)
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(Color.accentNavi.opacity(0.06))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.accentNavi.opacity(0.18), lineWidth: 1))
-            .cornerRadius(12)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
-        .onAppear { withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) { pulse = true } }
-    }
-}
-
-// MARK: - Thinking Phase Card — shows what the model is doing (preparing, connecting, thinking, etc.)
-
-struct ThinkingPhaseCard: View {
-    let phase: ChatManager.ThinkingPhase
-    @State private var pulse = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
-                .padding(.top, 2)
-            HStack(spacing: 8) {
-                Image(systemName: phase.icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.accentNavi)
-                    .rotationEffect(.degrees(pulse ? 360 : 0))
-                    .animation(.linear(duration: 2.0).repeatForever(autoreverses: false), value: pulse)
-                Text(phase.label)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.primary.opacity(0.7))
-                Spacer(minLength: 0)
-                HStack(spacing: 3) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Circle()
-                            .fill(Color.accentNavi.opacity(pulse ? 0.8 : 0.3))
-                            .frame(width: 4, height: 4)
-                            .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: pulse)
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(Color.accentNavi.opacity(0.06))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.accentNavi.opacity(0.18), lineWidth: 1))
-            .cornerRadius(12)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
-        .onAppear { pulse = true }
-    }
-}
-
 // MARK: - Completion Indicator — shows when model is done with a task
 
 struct CompletionIndicator: View {
@@ -1359,149 +1243,6 @@ struct CompletionIndicator: View {
                 appeared = true
             }
         }
-    }
-}
-
-// MARK: - API Call Info Card — shows provider, model, tool count during streaming
-
-struct APICallInfoCard: View {
-    let info: ChatManager.APICallInfo
-    @State private var pulse = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.accentNavi.opacity(0.7))
-                    Text("POST")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.accentNavi.opacity(0.7))
-                    Text(info.provider)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary.opacity(0.7))
-                    if info.iteration > 1 {
-                        Text("(iteration \(info.iteration))")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.orange.opacity(0.7))
-                    }
-                }
-                HStack(spacing: 12) {
-                    HStack(spacing: 4) {
-                        Text("model:")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        Text(info.model)
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.primary.opacity(0.6))
-                    }
-                    HStack(spacing: 4) {
-                        Text("tools:")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        Text("\(info.toolCount)")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.primary.opacity(0.6))
-                    }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color.primary.opacity(0.03))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.accentNavi.opacity(0.12), lineWidth: 0.5)
-            )
-            .cornerRadius(10)
-            Spacer(minLength: 40)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 2)
-    }
-}
-
-// MARK: - Tool Call Event Card — shows completed tool call with result
-
-struct ToolCallEventCard: View {
-    let event: ChatManager.ToolCallEvent
-    @State private var expanded = false
-
-    private var icon: String { ChatToolCallStrip.toolIconStatic(event.toolName) }
-
-    private var statusColor: Color {
-        event.isError ? NaviTheme.error : NaviTheme.success
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: false)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: event.isComplete ? (event.isError ? "xmark.circle.fill" : "checkmark.circle.fill") : "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10))
-                            .foregroundColor(event.isComplete ? statusColor : .accentNavi)
-                        Image(systemName: icon)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.accentNavi.opacity(0.7))
-                        Text(event.toolName)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.primary.opacity(0.75))
-
-                        // Show key params inline
-                        if let firstParam = event.params.first {
-                            Text(firstParam.value.prefix(40).description)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.secondary.opacity(0.5))
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: 0)
-
-                        if let dur = event.duration {
-                            Text(String(format: "%.1fs", dur))
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(.secondary.opacity(0.45))
-                        }
-
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.35))
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if expanded, let result = event.result {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        Text(result)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(event.isError ? NaviTheme.error.opacity(0.8) : .secondary.opacity(0.7))
-                            .lineLimit(8)
-                            .padding(8)
-                    }
-                    .background(Color.primary.opacity(0.02))
-                    .cornerRadius(6)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(event.isError ? NaviTheme.error.opacity(0.04) : Color.accentNavi.opacity(0.04))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(event.isError ? NaviTheme.error.opacity(0.15) : Color.accentNavi.opacity(0.12), lineWidth: 0.5)
-            )
-            .cornerRadius(10)
-            Spacer(minLength: 40)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 2)
     }
 }
 

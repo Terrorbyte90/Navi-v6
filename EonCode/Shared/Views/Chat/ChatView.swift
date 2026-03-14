@@ -607,22 +607,25 @@ struct AgentStreamingBubble: View {
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
-                // Activity pill — shows what the agent is doing
+                // Single unified activity visual — only ONE at a time
                 if let file = activeFiles.first, !codeSnippet.isEmpty {
                     NaviCodeLiveCard(
                         fileName: file,
                         liveCode: codeSnippet
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                } else if text.isEmpty && buffer.displayText.isEmpty {
+                    // No text yet — show status or "Tänker"
+                    NaviActivityPill(
+                        statusText: statusMessage.isEmpty ? "Tänker" : statusMessage.liveToolPillText
+                    )
+                    .transition(.opacity)
                 } else if !statusMessage.isEmpty {
                     NaviActivityPill(statusText: statusMessage.liveToolPillText)
                         .transition(.opacity)
                 }
 
-                if text.isEmpty && buffer.displayText.isEmpty {
-                    NaviActivityPill(statusText: "Tänker")
-                        .padding(.top, 4)
-                } else {
+                if !text.isEmpty || !buffer.displayText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         MarkdownTextView(text: buffer.displayText)
                             .equatable()
