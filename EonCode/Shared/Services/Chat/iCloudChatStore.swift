@@ -129,6 +129,27 @@ final class iCloudChatStore: ObservableObject {
         }
     }
 
+    // MARK: - Delete all
+
+    func deleteAll() async {
+        guard let dir = containerURL else { return }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .utility).async {
+                let files = (try? FileManager.default.contentsOfDirectory(
+                    at: dir, includingPropertiesForKeys: nil
+                )) ?? []
+                for fileURL in files where fileURL.pathExtension == "json" {
+                    let coordinator = NSFileCoordinator()
+                    var coordError: NSError?
+                    coordinator.coordinate(writingItemAt: fileURL, options: .forDeleting, error: &coordError) { url in
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                }
+                cont.resume()
+            }
+        }
+    }
+
     // MARK: - Search
 
     func search(query: String) async -> [ChatConversation] {

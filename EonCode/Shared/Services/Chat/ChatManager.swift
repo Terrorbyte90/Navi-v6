@@ -586,6 +586,12 @@ final class ChatManager: ObservableObject {
         }
     }
 
+    func deleteAll() async {
+        await store.deleteAll()
+        conversations = []
+        activeConversation = nil
+    }
+
     // MARK: - Search
 
     func search(query: String) async -> [ChatConversation] {

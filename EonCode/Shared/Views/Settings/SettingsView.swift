@@ -16,6 +16,8 @@ struct SettingsView: View {
     @State private var saveMessage = ""
     @State private var showAddKeySheet = false
     @State private var showMemoryView = false
+    @State private var showClearHistoryConfirm = false
+    @State private var isClearingHistory = false
 
     var body: some View {
         #if os(macOS)
@@ -57,6 +59,10 @@ struct SettingsView: View {
                 .padding()
             }
             .tabItem { Label("Minnen", systemImage: "brain") }
+
+            clearHistorySection
+                .padding()
+                .tabItem { Label("Data", systemImage: "trash") }
         }
         .frame(width: 560, height: 640)
         .background(Color.chatBackground)
@@ -153,6 +159,7 @@ struct SettingsView: View {
                 .foregroundColor(Color.accentNavi)
             }
             Section("Minnen") { memoriesSection }
+            Section("Data") { clearHistorySection }
         }
         .navigationTitle("Inställningar")
         #if os(iOS)
@@ -454,6 +461,57 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
         }
+    }
+
+    var clearHistorySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            #if os(macOS)
+            Text("Data")
+                .font(.system(size: 16, weight: .bold))
+            #endif
+            Text("Rensa alla konversationer och schemalagda påminnelser från den här enheten och iCloud.")
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+
+            Button(role: .destructive) {
+                showClearHistoryConfirm = true
+            } label: {
+                HStack(spacing: 6) {
+                    if isClearingHistory {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "trash")
+                    }
+                    Text(isClearingHistory ? "Rensar…" : "Rensa all historik")
+                }
+            }
+            .disabled(isClearingHistory)
+            #if os(macOS)
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            #else
+            .foregroundColor(.red)
+            #endif
+        }
+        .confirmationDialog(
+            "Rensa all historik?",
+            isPresented: $showClearHistoryConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Rensa allt", role: .destructive) {
+                Task { await performClearAll() }
+            }
+            Button("Avbryt", role: .cancel) {}
+        } message: {
+            Text("Alla chattar och påminnelser tas bort permanent. Det går inte att ångra.")
+        }
+    }
+
+    private func performClearAll() async {
+        isClearingHistory = true
+        await ChatManager.shared.deleteAll()
+        ScheduledTaskManager.shared.deleteAll()
+        isClearingHistory = false
     }
 
     private func saveKeys() {
