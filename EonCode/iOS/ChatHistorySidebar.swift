@@ -242,7 +242,7 @@ struct ChatHistorySidebar: View {
 
     @ViewBuilder
     var codeHistory: some View {
-        emptyHistoryHint(icon: "chevron.left.forwardslash.chevron.right.circle", text: "Code-projekt visas här")
+        emptyHistoryHint(icon: "chevron.left.forwardslash.chevron.right", text: "Code-projekt visas här")
     }
 
     // MARK: - Chat history

@@ -347,7 +347,7 @@ struct SidebarView: View {
         let agent = CodeAgent.shared
         return Group {
             if agent.projects.isEmpty {
-                emptyHint(icon: "chevron.left.forwardslash.chevron.right.circle", text: "Inga Code-projekt ännu")
+                emptyHint(icon: "chevron.left.forwardslash.chevron.right", text: "Inga Code-projekt ännu")
             } else {
                 ForEach(agent.projects) { proj in
                     Button {

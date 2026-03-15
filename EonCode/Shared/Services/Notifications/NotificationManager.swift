@@ -335,17 +335,24 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
+        let categoryRaw = userInfo["category"] as? String
 
+        // Update badge/unread count immediately on the main actor.
         await MainActor.run {
-            // Mark as read when tapped
             if self.unreadCount > 0 {
                 self.unreadCount -= 1
             }
+        }
 
-            // Handle notification tap based on category
-            if let categoryRaw = userInfo["category"] as? String,
+        // Delay navigation so SwiftUI finishes initialising before we post
+        // the notification (avoids the "Call must be made on main thread"
+        // assertion when the app is cold-launched via a notification tap).
+        try? await Task.sleep(nanoseconds: 600_000_000) // 0.6 s
+
+        await MainActor.run {
+            if let categoryRaw,
                let category = NotificationCategory(rawValue: categoryRaw) {
-                handleNotificationTap(category: category, userInfo: userInfo)
+                self.handleNotificationTap(category: category, userInfo: userInfo)
             }
         }
     }
