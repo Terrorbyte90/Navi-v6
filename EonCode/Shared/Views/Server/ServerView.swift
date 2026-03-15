@@ -8,12 +8,13 @@ struct ServerView: View {
     @State private var showInfo = false
 
     enum ServerTab: String, CaseIterable {
-        case minimax  = "Minimax"
-        case qwen     = "Qwen"
-        case opus     = "Opus"
-        case tasks    = "Uppgifter"
-        case terminal = "Terminal"
-        case logs     = "Loggar"
+        case minimax   = "Minimax"
+        case qwen      = "Qwen"
+        case opus      = "Opus"
+        case tasks     = "Uppgifter"
+        case terminal  = "Terminal"
+        case logs      = "Loggar"
+        case messages  = "Meddelanden"
 
         var icon: String {
             switch self {
@@ -23,6 +24,7 @@ struct ServerView: View {
             case .qwen:     return "bolt.fill"
             case .opus:     return "cpu.fill"
             case .logs:     return "list.bullet.rectangle.fill"
+            case .messages: return "bubble.left.and.bubble.right.fill"
             }
         }
         var accentColor: Color {
@@ -33,6 +35,7 @@ struct ServerView: View {
             case .qwen:     return Color(naviHex: "5B8DEF")
             case .opus:     return Color(naviHex: "B06AFF")
             case .logs:     return Color(naviHex: "94A3B8")
+            case .messages: return Color(naviHex: "FF9F43")
             }
         }
     }
@@ -180,6 +183,20 @@ struct ServerView: View {
                                             .clipShape(Circle())
                                     }
                                 }
+
+                                // Badge for messages tab showing unread count
+                                if tab == .messages {
+                                    let msgCount = brain.serverMessages.count
+                                    if msgCount > 0 {
+                                        Text("\(min(msgCount, 99))")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .frame(minWidth: 16, minHeight: 16)
+                                            .padding(.horizontal, 3)
+                                            .background(tab.accentColor)
+                                            .clipShape(Capsule())
+                                    }
+                                }
                             }
                             .foregroundColor(selectedTab == tab
                                              ? tab.accentColor
@@ -212,6 +229,7 @@ struct ServerView: View {
         case .qwen:     return brain.isSendingQwen
         case .opus:     return brain.isSendingOpus
         case .logs:     return brain.isLoadingLogs
+        case .messages: return brain.isLoadingMessages
         }
     }
 
@@ -226,6 +244,7 @@ struct ServerView: View {
         case .qwen:     BrainSessionsView(mode: .qwen)
         case .opus:     BrainSessionsView(mode: .opus)
         case .logs:     LogsView()
+        case .messages: MessagesView()
         }
     }
 
@@ -1301,6 +1320,246 @@ struct LogsView: View {
             return String(after.prefix(8))
         }
         return String(ts.suffix(8))
+    }
+}
+
+// MARK: - MessagesView
+// Shows messages from the server — autonomous run reports, health alerts, etc.
+// Minimax (server manager) sends these via the /messages endpoint.
+
+struct MessagesView: View {
+    @StateObject private var brain = NaviBrainService.shared
+    @State private var isComposing = false
+    @State private var composeTitle = ""
+    @State private var composeBody = ""
+    @FocusState private var composeFocused: Bool
+
+    private let accentColor = Color(naviHex: "FF9F43")
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if brain.isLoadingMessages && brain.serverMessages.isEmpty {
+                VStack(spacing: 14) {
+                    ProgressView().scaleEffect(0.9)
+                    Text("Hämtar meddelanden…")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if brain.serverMessages.isEmpty {
+                VStack(spacing: 14) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 34))
+                        .foregroundColor(.secondary.opacity(0.2))
+                    Text("Inga meddelanden")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary.opacity(0.4))
+                    Text("Minimax rapporterar autonoma körningar och serverhälsa här")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary.opacity(0.3))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(brain.serverMessages) { msg in
+                                messageRow(msg)
+                                    .id(msg.id)
+                                Divider().opacity(0.07).padding(.horizontal, 14)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        Color.clear.frame(height: 1).id("msgsBottom")
+                    }
+                }
+            }
+
+            // Compose panel (for manual notes/messages to server)
+            if isComposing {
+                Divider().opacity(0.1)
+                VStack(spacing: 8) {
+                    TextField("Titel (valfri)", text: $composeTitle)
+                        .font(.system(size: 12))
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                    TextEditor(text: $composeBody)
+                        .font(.system(size: 12))
+                        .frame(height: 80)
+                        .focused($composeFocused)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(accentColor.opacity(0.3), lineWidth: 1)
+                        )
+                        .padding(.horizontal, 12)
+                    HStack(spacing: 8) {
+                        Button("Avbryt") {
+                            isComposing = false
+                            composeTitle = ""
+                            composeBody = ""
+                        }
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        Button("Skicka") {
+                            let title = composeTitle.isEmpty ? "Anteckning" : composeTitle
+                            let body = composeBody
+                            Task { await brain.postServerMessage(title: title, body: body, type: "info") }
+                            isComposing = false
+                            composeTitle = ""
+                            composeBody = ""
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(accentColor)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                        .disabled(composeBody.isEmpty)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                }
+                .background(accentColor.opacity(0.04))
+            }
+
+            Divider().opacity(0.1)
+
+            // Footer bar
+            HStack(spacing: 8) {
+                if brain.isLoadingMessages {
+                    ProgressView().scaleEffect(0.55)
+                } else {
+                    Circle()
+                        .fill(accentColor.opacity(0.4))
+                        .frame(width: 5, height: 5)
+                }
+                Text(brain.isLoadingMessages ? "Uppdaterar…" : "\(brain.serverMessages.count) meddelanden")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.35))
+
+                Spacer()
+
+                // Compose button
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isComposing.toggle()
+                        if isComposing { composeFocused = true }
+                    }
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 11))
+                        .foregroundColor(accentColor.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+
+                // Refresh button
+                Button {
+                    Task { await brain.fetchServerMessages() }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10))
+                        Text("Uppdatera")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundColor(accentColor.opacity(0.6))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(accentColor.opacity(0.08))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .disabled(brain.isLoadingMessages)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.chatBackground)
+        }
+        .onAppear {
+            Task { await brain.fetchServerMessages() }
+        }
+    }
+
+    @ViewBuilder
+    private func messageRow(_ msg: ServerMessage) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            // Type icon
+            Image(systemName: msg.typeIcon)
+                .font(.system(size: 12))
+                .foregroundColor(msgColor(msg.typeColor))
+                .frame(width: 20, alignment: .center)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 5) {
+                // Title + model
+                HStack(spacing: 6) {
+                    Text(msg.displayTitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.primary.opacity(0.85))
+
+                    Text(msg.displayModel)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.45))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.primary.opacity(0.05))
+                        .cornerRadius(3)
+
+                    if !msg.displayProject.isEmpty {
+                        Text(msg.displayProject)
+                            .font(.system(size: 10))
+                            .foregroundColor(accentColor.opacity(0.6))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(accentColor.opacity(0.08))
+                            .cornerRadius(3)
+                    }
+                }
+
+                // Body
+                Text(msg.body)
+                    .font(.system(size: 12))
+                    .foregroundColor(.primary.opacity(0.7))
+                    .lineLimit(10)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 0)
+
+            // Timestamp
+            if let ts = msg.timestamp {
+                Text(formatMsgTimestamp(ts))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.3))
+                    .padding(.top, 3)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func msgColor(_ key: String) -> Color {
+        switch key {
+        case "error":   return Color(naviHex: "ff6b6b")
+        case "warning": return NaviTheme.warning
+        case "minimax": return NaviTheme.accent
+        case "qwen":    return Color(naviHex: "5B8DEF")
+        case "opus":    return Color(naviHex: "B06AFF")
+        default:        return Color(naviHex: "FF9F43")
+        }
+    }
+
+    private func formatMsgTimestamp(_ ts: String) -> String {
+        if let tIdx = ts.firstIndex(of: "T") {
+            let after = ts[ts.index(after: tIdx)...]
+            return String(after.prefix(5))
+        }
+        return String(ts.suffix(5))
     }
 }
 

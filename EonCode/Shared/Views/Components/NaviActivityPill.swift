@@ -407,23 +407,49 @@ extension ChatManager.ThinkingPhase {
 
 // MARK: - NaviVisualActivity
 // The single entry-point for live model-activity visuals.
-// Renders Visual1–Visual10 based on the resolved ActivityState.
+// Simplified: ONLY Visual1 (with dynamic label) and Visual2 (code writing).
+// Visual1 label changes based on what the model is actually doing.
 
 struct NaviVisualActivity: View {
     let state: ActivityState
 
-    var body: some View {
+    // MARK: Label + terminal text for Visual1
+
+    private var visual1Label: String {
         switch state {
-        case .thinking:      Visual1_TerminalPulse()
-        case .writingCode:   Visual2_StreamingCode()
-        case .searching:     Visual3_GlassOrb()
-        case .building:      Visual4_WaveformBar()
-        case .scanningFiles: Visual5_ScanningLines()
-        case .multipleTools: Visual6_ParticleSwarm()
-        case .fetchingData:  Visual7_NeonRing()
-        case .analyzing:     Visual8_MatrixRain()
-        case .waiting:       Visual9_BreathingDot()
-        case .error:         Visual10_GlitchRetry()
+        case .thinking:      return "Tänker…"
+        case .writingCode:   return "Skriver kod…"
+        case .searching:     return "Söker…"
+        case .building:      return "Bygger…"
+        case .scanningFiles: return "Läser…"
+        case .multipleTools: return "Kör verktyg…"
+        case .fetchingData:  return "Hämtar data…"
+        case .analyzing:     return "Analyserar…"
+        case .waiting:       return "Förbereder…"
+        case .error:         return "Försöker igen…"
+        }
+    }
+
+    private var visual1Terminal: String {
+        switch state {
+        case .thinking:      return "resonerar"
+        case .writingCode:   return "skriver"
+        case .searching:     return "söker"
+        case .building:      return "kompilerar"
+        case .scanningFiles: return "skannar filer"
+        case .multipleTools: return "kör verktyg"
+        case .fetchingData:  return "hämtar"
+        case .analyzing:     return "analyserar"
+        case .waiting:       return "förbereder"
+        case .error:         return "retry"
+        }
+    }
+
+    var body: some View {
+        if state == .writingCode {
+            Visual2_StreamingCode()
+        } else {
+            Visual1_TerminalPulse(label: visual1Label, terminalText: visual1Terminal)
         }
     }
 

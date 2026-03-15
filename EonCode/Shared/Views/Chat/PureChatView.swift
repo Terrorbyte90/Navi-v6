@@ -140,24 +140,29 @@ struct PureChatView: View {
                             }
                             if manager.isStreaming {
                                 // Exactly ONE visual at a time.
-                                // Priority: streaming text > live tool > thinking phase > default thinking
-                                if !manager.streamingText.isEmpty {
-                                    // Text is flowing — StreamingBubble is the only thing shown
-                                    StreamingBubble(text: manager.streamingText)
-                                        .id("streaming")
-                                } else if let liveToolName = manager.liveToolCall {
-                                    NaviVisualActivity.forTool(liveToolName)
+                                // Priority: tool execution > active streaming text > thinking phase > default
+                                // Note: tool execution takes priority over old streaming text to prevent
+                                // stale text masking active tool calls.
+                                if manager.thinkingPhase == .executingTools || manager.liveToolCall != nil {
+                                    // Tool is executing — show activity visual regardless of old text
+                                    let toolName = manager.liveToolCall ?? "executing"
+                                    NaviVisualActivity.forTool(toolName)
                                         .padding(.horizontal, 16)
                                         .id("activityPill")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                } else if manager.thinkingPhase != .idle && manager.thinkingPhase != .responding {
+                                } else if !manager.streamingText.isEmpty && manager.thinkingPhase == .responding {
+                                    // Actively streaming text — show streaming bubble
+                                    StreamingBubble(text: manager.streamingText)
+                                        .id("streaming")
+                                } else if manager.thinkingPhase != .idle {
+                                    // Phase-based visual (preparing, connecting, thinking, finishing)
                                     NaviVisualActivity(state: manager.thinkingPhase.activityState)
                                         .padding(.horizontal, 16)
                                         .id("activityPill")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 } else {
-                                    // No tool call, no explicit phase — default to "Tänker"
-                                    Visual1_TerminalPulse()
+                                    // Fallback — default to "Tänker"
+                                    Visual1_TerminalPulse(label: "Tänker…", terminalText: "resonerar")
                                         .padding(.horizontal, 16)
                                         .id("activityPill")
                                 }

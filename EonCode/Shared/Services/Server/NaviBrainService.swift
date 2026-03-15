@@ -91,6 +91,52 @@ struct BrainLogsResponse: Decodable {
     let total: Int?
 }
 
+// MARK: - ServerMessage
+// Messages sent by Minimax (or other server-side agents) about autonomous runs,
+// server health, scheduled actions, and status updates.
+
+struct ServerMessage: Identifiable, Decodable {
+    var id: String
+    let timestamp: String?
+    /// "info", "warn", "error", "autonomous_run", "health", "task_complete"
+    let type: String?
+    let title: String?
+    let body: String
+    let model: String?
+    let project: String?
+
+    var displayType: String { type ?? "info" }
+    var displayTitle: String { title ?? "Meddelande" }
+    var displayModel: String { model ?? "server" }
+    var displayProject: String { project ?? "" }
+
+    var typeIcon: String {
+        switch (type ?? "info") {
+        case "error":         return "exclamationmark.circle.fill"
+        case "warn":          return "exclamationmark.triangle.fill"
+        case "autonomous_run": return "play.circle.fill"
+        case "health":        return "heart.fill"
+        case "task_complete": return "checkmark.circle.fill"
+        default:              return "info.circle.fill"
+        }
+    }
+
+    var typeColor: String {
+        switch (type ?? "info") {
+        case "error":         return "error"
+        case "warn":          return "warning"
+        case "autonomous_run": return "minimax"
+        case "health":        return "qwen"
+        case "task_complete": return "opus"
+        default:              return "default"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, timestamp, type, title, body, model, project
+    }
+}
+
 struct BrainMessage: Identifiable {
     let id    = UUID()
     let role: BrainRole
@@ -245,6 +291,10 @@ final class NaviBrainService: ObservableObject {
     @Published var logs: [BrainLogEntry] = []
     @Published var isLoadingLogs = false
 
+    // MARK: - Server Messages (Minimax sends updates about autonomous runs, health etc.)
+    @Published var serverMessages: [ServerMessage] = []
+    @Published var isLoadingMessages = false
+
     // MARK: - Live Status (real-time tool call progress)
     @Published var liveStatus: BrainLiveStatus?
     /// ntfy.sh topic for push notifications from Brain
@@ -261,6 +311,7 @@ final class NaviBrainService: ObservableObject {
     // MARK: - Private
     private var statusTimer: Timer?
     private var logsTimer: Timer?
+    private var messagesTimer: Timer?
     private var liveStatusTimer: Timer?
     private var taskPollTimer: Timer?
     private let urlSession = URLSession(configuration: .default)
@@ -273,6 +324,7 @@ final class NaviBrainService: ObservableObject {
         Task { await fetchStatus() }
         Task { await fetchCosts() }
         Task { await fetchLogs() }
+        Task { await fetchServerMessages() }
         Task { await fetchNtfyTopic() }
         Task { await fetchPersistedTasks() }
         // Start ntfy push notification polling
@@ -287,6 +339,12 @@ final class NaviBrainService: ObservableObject {
                 await self?.fetchLogs()
             }
         }
+        // Fetch server messages every 30 seconds
+        messagesTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.fetchServerMessages()
+            }
+        }
     }
 
     func stopPolling() {
@@ -294,6 +352,8 @@ final class NaviBrainService: ObservableObject {
         statusTimer = nil
         logsTimer?.invalidate()
         logsTimer = nil
+        messagesTimer?.invalidate()
+        messagesTimer = nil
         taskPollTimer?.invalidate()
         taskPollTimer = nil
         NotificationManager.shared.stopNtfyPolling()
@@ -379,7 +439,7 @@ final class NaviBrainService: ObservableObject {
         }
     }
 
-    func fetchLogs(limit: Int = 30) async {
+    func fetchLogs(limit: Int = 100) async {
         isLoadingLogs = true
         defer { isLoadingLogs = false }
         guard let url = URL(string: "\(Self.baseURL)/logs?limit=\(limit)") else { return }
@@ -389,6 +449,60 @@ final class NaviBrainService: ObservableObject {
            let resp = try? JSONDecoder().decode(BrainLogsResponse.self, from: data) {
             logs = resp.logs
         }
+    }
+
+    /// Fetch server messages from the /messages endpoint (Minimax autonomous run reports, health alerts).
+    /// Falls back gracefully if the endpoint doesn't exist yet.
+    func fetchServerMessages() async {
+        isLoadingMessages = true
+        defer { isLoadingMessages = false }
+        guard let url = URL(string: "\(Self.baseURL)/messages") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        guard let (data, resp) = try? await urlSession.data(for: req),
+              let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        // Try decoding as an array of ServerMessage
+        if let messages = try? JSONDecoder().decode([ServerMessage].self, from: data) {
+            // Merge: keep existing messages, add new ones
+            let existingIDs = Set(serverMessages.map { $0.id })
+            let newMessages = messages.filter { !existingIDs.contains($0.id) }
+            serverMessages = (newMessages + serverMessages).prefix(200).map { $0 }
+        } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let msgs = json["messages"] as? [[String: Any]] {
+            // Alternative: server wraps in { messages: [...] }
+            let decoder = JSONDecoder()
+            for msgDict in msgs {
+                if let msgData = try? JSONSerialization.data(withJSONObject: msgDict),
+                   let msg = try? decoder.decode(ServerMessage.self, from: msgData) {
+                    if !serverMessages.contains(where: { $0.id == msg.id }) {
+                        serverMessages.insert(msg, at: 0)
+                    }
+                }
+            }
+            // Trim to 200 messages
+            if serverMessages.count > 200 { serverMessages = Array(serverMessages.prefix(200)) }
+        }
+    }
+
+    /// Post a message from client to server /messages (e.g. user-generated notes)
+    func postServerMessage(title: String, body: String, type: String = "info") async {
+        guard let url = URL(string: "\(Self.baseURL)/messages") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let msgBody: [String: Any] = [
+            "title": title,
+            "body": body,
+            "type": type,
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "model": "client"
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: msgBody)
+        _ = try? await urlSession.data(for: req)
+        // Refresh messages after posting
+        Task { await fetchServerMessages() }
     }
 
     // MARK: - Terminal (HTTP /exec)

@@ -224,6 +224,11 @@ struct VisualsTest: View {
 // ============================================================
 
 struct Visual1_TerminalPulse: View {
+    /// Dynamic status label — e.g. "Tänker…", "Letar…", "Hämtar data…"
+    var label: String = "Tänker…"
+    /// Terminal sub-text shown below the accent bar
+    var terminalText: String = "resonerar"
+
     @State private var cursorVisible = true
     @State private var lineWidth: CGFloat = 0
     @State private var dotScale: CGFloat = 0.6
@@ -241,9 +246,10 @@ struct Visual1_TerminalPulse: View {
                 Image(systemName: "terminal.fill")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(.accentNavi.opacity(0.7))
-                Text("Tänker…")
+                Text(label)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.accentNavi.opacity(0.75))
+                    .animation(.easeInOut(duration: 0.2), value: label)
                 Spacer()
                 // Three pulsing dots
                 HStack(spacing: 3) {
@@ -277,9 +283,10 @@ struct Visual1_TerminalPulse: View {
                 Text(">")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundColor(.accentNavi.opacity(0.5))
-                Text("resonerar")
+                Text(terminalText)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.6))
+                    .animation(.easeInOut(duration: 0.2), value: terminalText)
                 Rectangle()
                     .fill(Color.accentNavi.opacity(cursorVisible ? 0.8 : 0))
                     .frame(width: 7, height: 14)
