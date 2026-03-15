@@ -315,7 +315,7 @@
 		64B074907A2FB58C840C223A /* NaviApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviApp.swift; sourceTree = "<group>"; };
 		6FD7C47B7A159B2A9A089AB6 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
 		7423689F437F42E5120BB320 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
-		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7547E53210F7158811E0657B /* BrowserAgentLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAgentLogView.swift; sourceTree = "<group>"; };
 		75E16C42F31EA3521A28B103 /* PremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumComponents.swift; sourceTree = "<group>"; };
 		778D08B3D0DD0AD571D93118 /* TerminalExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalExecutor.swift; sourceTree = "<group>"; };
@@ -982,7 +982,6 @@
 						ProvisioningStyle = Automatic;
 					};
 					DAB8911160F888000AB35966 = {
-						DevelopmentTeam = DV646H5VDP;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -1437,7 +1436,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1478,7 +1477,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (

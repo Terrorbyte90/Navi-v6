@@ -1071,10 +1071,11 @@ struct BrainChatView: View {
         let hasLiveTool = live?.active == true && live?.tool != nil
 
         if hasLiveTool, let tool = live?.tool {
+            // Live tool executing → route to correct visual (Visual2–Visual10)
             return AnyView(NaviVisualActivity.forTool(tool))
         }
-        // Default per brain model: all map to "tänker" → Visual 1
-        return AnyView(Visual1_TerminalPulse())
+        // Model is generating a response — Visual1 Terminal Pulse
+        return AnyView(NaviVisualActivity(state: .thinking))
     }
 
     // MARK: - Input bar

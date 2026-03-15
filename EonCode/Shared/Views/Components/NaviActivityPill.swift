@@ -333,22 +333,31 @@ enum ActivityState {
     // MARK: Derive from raw tool name
 
     static func fromTool(_ toolName: String, toolCount: Int = 1) -> ActivityState {
-        if toolCount > 2 { return .multipleTools }
+        if toolCount > 1 { return .multipleTools }          // Visual6: 2+ tools simultaneously
         let t = toolName.lowercased()
-        if t.hasPrefix("write_file") || t.hasPrefix("create_file") { return .writingCode }
-        if t.hasPrefix("read_file")                                 { return .scanningFiles }
-        if t.hasPrefix("list_files") || t.hasPrefix("list_dir")    { return .searching }
-        if t.hasPrefix("web_search") || t.hasPrefix("search")      { return .searching }
+        // Writing / creating files → Visual2
+        if t.hasPrefix("write_file") || t.hasPrefix("create_file") || t.hasPrefix("edit_file") { return .writingCode }
+        // Reading / scanning files → Visual5
+        if t.hasPrefix("read_file") || t.hasPrefix("get_file")     { return .scanningFiles }
+        if t.hasPrefix("list_files") || t.hasPrefix("list_dir")    { return .scanningFiles }
+        // Web / text search → Visual3
+        if t.hasPrefix("web_search") || t.hasPrefix("search_files") || t.hasPrefix("search") { return .searching }
+        // Build / run commands → Visual4
         if t.hasPrefix("bash") || t.hasPrefix("run_command") || t.hasPrefix("execute") { return .building }
+        if t.hasPrefix("zip_") || t.hasPrefix("deploy_") || t.hasPrefix("build_")     { return .building }
+        if t.hasPrefix("server_exec")                               { return .building }
+        // Fetch / download / GitHub / server data → Visual7
+        if t.hasPrefix("download_file") || t.hasPrefix("fetch_")   { return .fetchingData }
         if t.hasPrefix("github_list") || t.hasPrefix("github_get") { return .fetchingData }
         if t.hasPrefix("github_create_pull")                       { return .fetchingData }
         if t.hasPrefix("github")                                    { return .fetchingData }
-        if t.hasPrefix("server_exec")                               { return .building }
         if t.hasPrefix("server_ask")                                { return .fetchingData }
         if t.hasPrefix("server")                                    { return .fetchingData }
+        // Analyze / image / memory → Visual8
         if t.hasPrefix("image")                                     { return .analyzing }
         if t.hasPrefix("memory")                                    { return .analyzing }
-        return .thinking
+        if t.hasPrefix("analyze") || t.hasPrefix("get_api_key")    { return .analyzing }
+        return .thinking                                            // Default → Visual1
     }
 
     // MARK: Derive from Swedish/English status text
@@ -407,49 +416,24 @@ extension ChatManager.ThinkingPhase {
 
 // MARK: - NaviVisualActivity
 // The single entry-point for live model-activity visuals.
-// Simplified: ONLY Visual1 (with dynamic label) and Visual2 (code writing).
-// Visual1 label changes based on what the model is actually doing.
+// Routes each ActivityState to its dedicated visual from VisualsTest (Visual1–Visual10).
+// All models in all views (Chat, Code, Server) route through here.
 
 struct NaviVisualActivity: View {
     let state: ActivityState
 
-    // MARK: Label + terminal text for Visual1
-
-    private var visual1Label: String {
-        switch state {
-        case .thinking:      return "Tänker…"
-        case .writingCode:   return "Skriver kod…"
-        case .searching:     return "Söker…"
-        case .building:      return "Bygger…"
-        case .scanningFiles: return "Läser…"
-        case .multipleTools: return "Kör verktyg…"
-        case .fetchingData:  return "Hämtar data…"
-        case .analyzing:     return "Analyserar…"
-        case .waiting:       return "Förbereder…"
-        case .error:         return "Försöker igen…"
-        }
-    }
-
-    private var visual1Terminal: String {
-        switch state {
-        case .thinking:      return "resonerar"
-        case .writingCode:   return "skriver"
-        case .searching:     return "söker"
-        case .building:      return "kompilerar"
-        case .scanningFiles: return "skannar filer"
-        case .multipleTools: return "kör verktyg"
-        case .fetchingData:  return "hämtar"
-        case .analyzing:     return "analyserar"
-        case .waiting:       return "förbereder"
-        case .error:         return "retry"
-        }
-    }
-
     var body: some View {
-        if state == .writingCode {
-            Visual2_StreamingCode()
-        } else {
-            Visual1_TerminalPulse(label: visual1Label, terminalText: visual1Terminal)
+        switch state {
+        case .thinking:      Visual1_TerminalPulse(label: "Tänker…", terminalText: "resonerar")
+        case .writingCode:   Visual2_StreamingCode()
+        case .searching:     Visual3_GlassOrb()
+        case .building:      Visual4_WaveformBar()
+        case .scanningFiles: Visual5_ScanningLines()
+        case .multipleTools: Visual6_ParticleSwarm()
+        case .fetchingData:  Visual7_NeonRing()
+        case .analyzing:     Visual8_MatrixRain()
+        case .waiting:       Visual9_BreathingDot()
+        case .error:         Visual10_GlitchRetry()
         }
     }
 
