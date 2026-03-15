@@ -139,32 +139,16 @@ struct PureChatView: View {
                                     .id(msg.id)
                             }
                             if manager.isStreaming {
-                                // Exactly ONE visual at a time.
-                                // Priority: tool execution > active streaming text > thinking phase > default
-                                // Note: tool execution takes priority over old streaming text to prevent
-                                // stale text masking active tool calls.
-                                if manager.thinkingPhase == .executingTools || manager.liveToolCall != nil {
-                                    // Tool is executing — show activity visual regardless of old text
-                                    let toolName = manager.liveToolCall ?? "executing"
-                                    NaviVisualActivity.forTool(toolName)
-                                        .padding(.horizontal, 16)
-                                        .id("activityPill")
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                } else if !manager.streamingText.isEmpty && manager.thinkingPhase == .responding {
+                                if !manager.streamingText.isEmpty && manager.thinkingPhase == .responding {
                                     // Actively streaming text — show streaming bubble
                                     StreamingBubble(text: manager.streamingText)
                                         .id("streaming")
-                                } else if manager.thinkingPhase != .idle {
-                                    // Phase-based visual (preparing, connecting, thinking, finishing)
-                                    NaviVisualActivity(state: manager.thinkingPhase.activityState)
+                                } else {
+                                    // Three-dot typing indicator while thinking/connecting/preparing/finishing
+                                    ThinkingDots()
                                         .padding(.horizontal, 16)
                                         .id("activityPill")
                                         .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                } else {
-                                    // Fallback — default to "Tänker"
-                                    Visual1_TerminalPulse(label: "Tänker…", terminalText: "resonerar")
-                                        .padding(.horizontal, 16)
-                                        .id("activityPill")
                                 }
                             }
 
@@ -366,37 +350,6 @@ struct PureChatView: View {
 
     var chatInputBar: some View {
         VStack(spacing: 0) {
-            // Clear conversation strip — only when there are messages
-            if let conv = conversation, !conv.messages.filter({ $0.role != .system }).isEmpty {
-                HStack(spacing: 6) {
-                    Button {
-                        Task { await manager.delete(conv) }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 10))
-                            Text("Rensa chatt")
-                                .font(.system(size: 11))
-                        }
-                        .foregroundColor(.secondary.opacity(0.4))
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                    // Model name chip
-                    Text(conv.model.displayName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary.opacity(0.4))
-                    Button { _ = manager.newConversation() } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary.opacity(0.4))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 5)
-            }
-
             // Error banner
             if let error = manager.lastError {
                 HStack(spacing: 6) {
@@ -830,7 +783,7 @@ struct ProjectContextBanner: View {
 
 struct MarkdownTextView: View, Equatable {
     let text: String
-    private let blocks: [Block]
+    private let blocks: [MDBlock]
 
     init(text: String) {
         self.text = text
@@ -842,67 +795,187 @@ struct MarkdownTextView: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
-                case .text(let t):
-                    Self.renderMarkdownText(t)
+                case .heading(let level, let t):
+                    Self.renderHeading(t, level: level)
                         .fixedSize(horizontal: false, vertical: true)
+                case .paragraph(let t):
+                    Self.renderParagraph(t)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .bulletList(let items):
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("•")
+                                    .font(NaviTheme.bodyFont(size: 16))
+                                    .foregroundColor(.secondary.opacity(0.7))
+                                    .frame(width: 10, alignment: .leading)
+                                Self.renderParagraph(item)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                case .numberedList(let items):
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("\(i + 1).")
+                                    .font(NaviTheme.bodyFont(size: 16))
+                                    .foregroundColor(.secondary.opacity(0.7))
+                                    .frame(width: 22, alignment: .leading)
+                                Self.renderParagraph(item)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
                 case .code(let lang, let code):
                     MarkdownCodeBlock(language: lang, code: code)
+                case .divider:
+                    Divider().opacity(0.15).padding(.vertical, 2)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private static func renderMarkdownText(_ raw: String) -> some View {
+    private static func renderHeading(_ raw: String, level: Int) -> some View {
+        let size: CGFloat = level == 1 ? 20 : level == 2 ? 18 : 16
+        let weight: Font.Weight = level == 1 ? .bold : .semibold
         if let attributed = try? AttributedString(
             markdown: raw,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) {
             Text(attributed)
-                .font(NaviTheme.bodyFont(size: 17))
-                .lineSpacing(6)
+                .font(.system(size: size, weight: weight))
+                .padding(.top, level == 1 ? 6 : 3)
         } else {
             Text(raw)
-                .font(NaviTheme.bodyFont(size: 17))
-                .lineSpacing(6)
+                .font(.system(size: size, weight: weight))
+                .padding(.top, level == 1 ? 6 : 3)
         }
     }
 
+    @ViewBuilder
+    private static func renderParagraph(_ raw: String) -> some View {
+        if let attributed = try? AttributedString(
+            markdown: raw,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            Text(attributed)
+                .font(NaviTheme.bodyFont(size: 16))
+                .lineSpacing(5)
+        } else {
+            Text(raw)
+                .font(NaviTheme.bodyFont(size: 16))
+                .lineSpacing(5)
+        }
+    }
+
+    enum MDBlock {
+        case heading(Int, String)
+        case paragraph(String)
+        case bulletList([String])
+        case numberedList([String])
+        case code(String, String)
+        case divider
+    }
+
+    // Keep legacy type alias for code blocks used in MarkdownCodeBlock
     enum Block { case text(String); case code(String, String) }
 
-    static func parseBlocks(_ raw: String) -> [Block] {
-        var blocks: [Block] = []
+    static func parseBlocks(_ raw: String) -> [MDBlock] {
+        var result: [MDBlock] = []
         let lines = raw.components(separatedBy: "\n")
         var inCode = false
-        var lang = ""
+        var codeLang = ""
         var codeBuf: [String] = []
-        var textBuf: [String] = []
+
+        // Accumulates lines for the current paragraph / list
+        var pendingLines: [String] = []
+
+        func flushPending() {
+            guard !pendingLines.isEmpty else { return }
+            let trimmed = pendingLines.map { $0.trimmingCharacters(in: .whitespaces) }
+            let nonEmpty = trimmed.filter { !$0.isEmpty }
+
+            // Determine if pending block is a list
+            let isBullet = nonEmpty.allSatisfy { $0.hasPrefix("- ") || $0.hasPrefix("* ") || $0.hasPrefix("• ") }
+            let isNumbered = nonEmpty.allSatisfy {
+                guard let first = $0.first, first.isNumber else { return false }
+                return $0.range(of: #"^\d+\.\s"#, options: .regularExpression) != nil
+            }
+
+            if isBullet && !nonEmpty.isEmpty {
+                let items = nonEmpty.map { line -> String in
+                    if line.hasPrefix("- ") { return String(line.dropFirst(2)) }
+                    if line.hasPrefix("* ") { return String(line.dropFirst(2)) }
+                    if line.hasPrefix("• ") { return String(line.dropFirst(2)) }
+                    return line
+                }
+                result.append(.bulletList(items))
+            } else if isNumbered && !nonEmpty.isEmpty {
+                let items = nonEmpty.map { line -> String in
+                    if let range = line.range(of: #"^\d+\.\s"#, options: .regularExpression) {
+                        return String(line[range.upperBound...])
+                    }
+                    return line
+                }
+                result.append(.numberedList(items))
+            } else {
+                // Merge as paragraph — group by blank lines
+                var paragraphs: [[String]] = []
+                var cur: [String] = []
+                for t in trimmed {
+                    if t.isEmpty {
+                        if !cur.isEmpty { paragraphs.append(cur); cur = [] }
+                    } else {
+                        cur.append(t)
+                    }
+                }
+                if !cur.isEmpty { paragraphs.append(cur) }
+
+                for para in paragraphs {
+                    let joined = para.joined(separator: " ")
+                    if !joined.isEmpty { result.append(.paragraph(joined)) }
+                }
+            }
+            pendingLines = []
+        }
 
         for line in lines {
             if line.hasPrefix("```") {
                 if inCode {
-                    blocks.append(.code(lang, codeBuf.joined(separator: "\n")))
-                    codeBuf = []; inCode = false; lang = ""
+                    result.append(.code(codeLang, codeBuf.joined(separator: "\n")))
+                    codeBuf = []; inCode = false; codeLang = ""
                 } else {
-                    if !textBuf.isEmpty {
-                        blocks.append(.text(textBuf.joined(separator: "\n")))
-                        textBuf = []
-                    }
-                    lang = String(line.dropFirst(3))
+                    flushPending()
+                    codeLang = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
                     inCode = true
                 }
-            } else if inCode {
-                codeBuf.append(line)
-            } else {
-                textBuf.append(line)
+                continue
             }
+
+            if inCode { codeBuf.append(line); continue }
+
+            // Headings
+            if line.hasPrefix("### ") { flushPending(); result.append(.heading(3, String(line.dropFirst(4)))); continue }
+            if line.hasPrefix("## ")  { flushPending(); result.append(.heading(2, String(line.dropFirst(3)))); continue }
+            if line.hasPrefix("# ")   { flushPending(); result.append(.heading(1, String(line.dropFirst(2)))); continue }
+
+            // Horizontal rule
+            let stripped = line.trimmingCharacters(in: .whitespaces)
+            if stripped == "---" || stripped == "***" || stripped == "___" {
+                flushPending(); result.append(.divider); continue
+            }
+
+            pendingLines.append(line)
         }
-        if !codeBuf.isEmpty { blocks.append(.code(lang, codeBuf.joined(separator: "\n"))) }
-        if !textBuf.isEmpty { blocks.append(.text(textBuf.joined(separator: "\n"))) }
-        return blocks
+
+        if inCode && !codeBuf.isEmpty { result.append(.code(codeLang, codeBuf.joined(separator: "\n"))) }
+        flushPending()
+        return result
     }
 }
 
@@ -972,7 +1045,7 @@ struct MarkdownCodeBlock: View {
     }
 }
 
-// MARK: - Typing Indicator
+// MARK: - Typing Indicator (legacy, kept for compatibility)
 
 struct TypingIndicator: View {
     @State private var animating = false
@@ -995,6 +1068,44 @@ struct TypingIndicator: View {
         }
         .drawingGroup()
         .onAppear { animating = true }
+    }
+}
+
+// MARK: - ThinkingDots — clean three-dot animation shown while model is active
+
+struct ThinkingDots: View {
+    @State private var phase = false
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            // Navi orb avatar (matches chat bubbles)
+            ThinkingOrb(size: 28, isAnimating: false)
+
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(Color.primary.opacity(0.35))
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(phase ? 1.0 : 0.55)
+                        .opacity(phase ? 1.0 : 0.3)
+                        .animation(
+                            .easeInOut(duration: 0.5)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(i) * 0.18),
+                            value: phase
+                        )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color.surfaceHover.opacity(0.7))
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { phase = true }
+        .onDisappear { phase = false }
     }
 }
 
@@ -1142,7 +1253,7 @@ private struct PureChatInputBar: View {
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .padding(.bottom, 22)
     }
 
     #if os(macOS)

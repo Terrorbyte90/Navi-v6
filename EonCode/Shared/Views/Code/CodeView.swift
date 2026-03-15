@@ -16,6 +16,7 @@ struct CodeView: View {
     @FocusState private var inputFocused: Bool
     #if os(iOS)
     @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
     #endif
 
     /// The model to use — persisted via settings.defaultModel
@@ -237,31 +238,10 @@ struct CodeView: View {
                             // 3. Pipeline phase pill
                             // 4. Thinking phase pill
                             if agent.isRunning && agent.streamingText.isEmpty {
-                                Group {
-                                    if agent.phase == .build,
-                                       let status = agent.workerStatuses.first(where: { $0.isActive && $0.currentFile != nil }),
-                                       let _ = status.currentFile {
-                                        // Visual 2: Streaming Code — skriver kod aktivt
-                                        Visual2_StreamingCode()
-                                            .transition(.asymmetric(
-                                                insertion: .move(edge: .top).combined(with: .opacity),
-                                                removal: .opacity
-                                            ))
-                                    } else if let toolName = agent.liveToolCall {
-                                        NaviVisualActivity.forTool(toolName)
-                                    } else if agent.phase != .idle && agent.phase != .done {
-                                        NaviVisualActivity.forPhase(agent.phase)
-                                    } else if !agent.thinkingPhase.isEmpty {
-                                        NaviVisualActivity.forStatus(agent.thinkingPhase)
-                                    } else {
-                                        Visual1_TerminalPulse()
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .id("activityPill")
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                .animation(.easeInOut(duration: 0.25), value: agent.liveToolCall ?? "")
-                                .animation(.easeInOut(duration: 0.25), value: agent.phase)
+                                ThinkingDots()
+                                    .padding(.horizontal, 16)
+                                    .id("activityPill")
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                             // Completion state
                             if !agent.isRunning && agent.phase == .done {
@@ -407,16 +387,35 @@ struct CodeView: View {
             }
 
             HStack(alignment: .center, spacing: 8) {
-                #if os(iOS)
-                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
+                // Single + menu with both image and file options
+                Menu {
+                    #if os(iOS)
+                    Button {
+                        showPhotoPicker = true
+                    } label: {
+                        Label("Bild", systemImage: "photo")
+                    }
+                    #else
+                    Button { pickImageMacOS() } label: {
+                        Label("Bild", systemImage: "photo")
+                    }
+                    #endif
+                    Button { isShowingFilePicker = true } label: {
+                        Label("Fil", systemImage: "doc")
+                    }
+                } label: {
                     ZStack {
                         Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
-                        Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.checkmark")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.5))
+                        Image(systemName: selectedImages.isEmpty ? "plus" : "plus.circle.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(selectedImages.isEmpty ? .primary.opacity(0.4) : .accentNavi)
                     }
                 }
-                .buttonStyle(.plain)
+                #if os(macOS)
+                .menuStyle(.borderlessButton)
+                #endif
+                #if os(iOS)
+                .photosPicker(isPresented: $showPhotoPicker, selection: $photoPickerItems, maxSelectionCount: 5, matching: .images)
                 .onChange(of: photoPickerItems) { _, items in
                     Task {
                         for item in items {
@@ -427,26 +426,6 @@ struct CodeView: View {
                         await MainActor.run { photoPickerItems = [] }
                     }
                 }
-                #endif
-
-                // Attachment menu
-                Menu {
-                    #if os(macOS)
-                    Button { } label: { Label("Bild", systemImage: "photo") }
-                    #endif
-                    Button { isShowingFilePicker = true } label: {
-                        Label("Fil", systemImage: "doc")
-                    }
-                } label: {
-                    ZStack {
-                        Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.4))
-                    }
-                }
-                #if os(macOS)
-                .menuStyle(.borderlessButton)
                 #endif
 
                 TextField(
@@ -495,7 +474,7 @@ struct CodeView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 16)
+        .padding(.bottom, 24)
         .padding(.top, 8)
     }
 
@@ -526,6 +505,22 @@ struct CodeView: View {
             agent.continueChat(text: text, model: selectedModel)
         }
     }
+
+    #if os(macOS)
+    private func pickImageMacOS() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK {
+            for url in panel.urls {
+                if let data = try? Data(contentsOf: url) {
+                    selectedImages.append(data)
+                }
+            }
+        }
+    }
+    #endif
 }
 
 // MARK: - CodeMessageRow

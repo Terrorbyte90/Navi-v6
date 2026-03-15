@@ -150,17 +150,17 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 2) {
             navItem(icon: "bubble.left.and.bubble.right", label: "Chatt",      target: .pureChat)
             navItem(icon: "terminal.fill",                label: "Kod",        target: .code)
-            navItem(icon: "arrow.triangle.branch",        label: "GitHub",     target: .github)
-            navItem(icon: "photo.stack",                  label: "Media",      target: .media,
-                    badge: mediaBadge)
-            navItem(icon: "tray.2",                       label: "Artefakter", target: .artifacts,
-                    badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
-            navItem(icon: "person.crop.circle",           label: "Profil",     target: .profile)
-            navItem(icon: "waveform",                     label: "Röst",       target: .voice)
-            navItem(icon: "phone.fill",                   label: "Samtal",     target: .samtal,
-                    badge: samtalBadge)
             navItem(icon: "server.rack",                  label: "Server",     target: .server,
                     badge: serverBadge)
+            navItem(icon: "waveform",                     label: "Röst",       target: .voice)
+            navItem(icon: "person.crop.circle",           label: "Profil",     target: .profile)
+            navItem(icon: "photo.stack",                  label: "Media",      target: .media,
+                    badge: mediaBadge)
+            navItem(icon: "phone.fill",                   label: "Samtal",     target: .samtal,
+                    badge: samtalBadge)
+            navItem(icon: "tray.2",                       label: "Artefakter", target: .artifacts,
+                    badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)")
+            navItem(icon: "arrow.triangle.branch",        label: "GitHub",     target: .github)
         }
         .padding(.horizontal, 8)
     }

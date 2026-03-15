@@ -15,6 +15,7 @@ struct ChatHistorySidebar: View {
     @StateObject private var statusBroadcaster = DeviceStatusBroadcaster.shared
     @StateObject private var ghManager = GitHubManager.shared
     @StateObject private var mediaManager = MediaGenerationManager.shared
+    @StateObject private var codeAgent = CodeAgent.shared
 
     @State private var searchText = ""
     @State private var showSettings = false
@@ -114,30 +115,30 @@ struct ChatHistorySidebar: View {
             navItem(icon: "terminal.fill", label: "Code", isActive: selectedTab == .code) {
                 selectedTab = .code; showSidebar = false
             }
+            navItem(icon: "server.rack", label: "Server", isActive: selectedTab == .server,
+                    badge: serverBadge) {
+                selectedTab = .server; showSidebar = false
+            }
+            navItem(icon: "waveform", label: "Röst", isActive: selectedTab == .voice) {
+                selectedTab = .voice; showSidebar = false
+            }
+            navItem(icon: "person.crop.circle.fill", label: "Profil", isActive: selectedTab == .profile) {
+                selectedTab = .profile; showSidebar = false
+            }
+            navItem(icon: "photo.stack.fill", label: "Media", isActive: selectedTab == .media,
+                    badge: { let n = mediaManager.activeGenerations.count; return n > 0 ? "\(n)" : nil }()) {
+                selectedTab = .media; showSidebar = false
+            }
+            navItem(icon: "phone.fill", label: "Samtal", isActive: selectedTab == .samtal,
+                    badge: { let n = CallsService.shared.liveCalls.count; return n > 0 ? "\(n)" : nil }()) {
+                selectedTab = .samtal; showSidebar = false
+            }
             navItem(icon: "tray.2.fill", label: "Artefakter", isActive: selectedTab == .artifacts,
                     badge: artifactStore.artifacts.isEmpty ? nil : "\(artifactStore.artifacts.count)") {
                 selectedTab = .artifacts; showSidebar = false
             }
             navItem(icon: "arrow.triangle.branch", label: "GitHub", isActive: selectedTab == .github) {
                 selectedTab = .github; showSidebar = false
-            }
-            navItem(icon: "photo.stack.fill", label: "Media", isActive: selectedTab == .media,
-                    badge: { let n = mediaManager.activeGenerations.count; return n > 0 ? "\(n)" : nil }()) {
-                selectedTab = .media; showSidebar = false
-            }
-            navItem(icon: "person.crop.circle.fill", label: "Profil", isActive: selectedTab == .profile) {
-                selectedTab = .profile; showSidebar = false
-            }
-            navItem(icon: "waveform", label: "Röst", isActive: selectedTab == .voice) {
-                selectedTab = .voice; showSidebar = false
-            }
-            navItem(icon: "phone.fill", label: "Samtal", isActive: selectedTab == .samtal,
-                    badge: { let n = CallsService.shared.liveCalls.count; return n > 0 ? "\(n)" : nil }()) {
-                selectedTab = .samtal; showSidebar = false
-            }
-            navItem(icon: "server.rack", label: "Server", isActive: selectedTab == .server,
-                    badge: serverBadge) {
-                selectedTab = .server; showSidebar = false
             }
         }
         .padding(.horizontal, 8)
@@ -242,7 +243,45 @@ struct ChatHistorySidebar: View {
 
     @ViewBuilder
     var codeHistory: some View {
-        emptyHistoryHint(icon: "chevron.left.forwardslash.chevron.right", text: "Code-projekt visas här")
+        if codeAgent.projects.isEmpty {
+            emptyHistoryHint(icon: "chevron.left.forwardslash.chevron.right", text: "Inga Code-projekt ännu")
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionHeader("Projekt")
+                ForEach(codeAgent.projects) { proj in
+                    Button {
+                        codeAgent.selectProject(proj)
+                        selectedTab = .code
+                        showSidebar = false
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: proj.currentPhase == .done
+                                  ? "checkmark.circle.fill"
+                                  : proj.currentPhase == .idle ? "circle" : "bolt.circle.fill")
+                                .font(.system(size: 13))
+                                .foregroundColor(proj.currentPhase == .done ? .green
+                                                 : proj.currentPhase == .idle ? .secondary : .orange)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(proj.name)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                Text(proj.currentPhase.displayName)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+                    .background(codeAgent.activeProject?.id == proj.id
+                                ? Color.accentNavi.opacity(0.08) : Color.clear)
+                }
+            }
+        }
     }
 
     // MARK: - Chat history
@@ -436,64 +475,9 @@ struct ChatHistorySidebar: View {
 
     // MARK: - GitHub history
 
-    var filteredGitHubRepos: [GitHubRepo] {
-        let repos = ghManager.repos
-        if searchText.isEmpty { return repos }
-        return repos.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-    }
-
     @ViewBuilder
     var githubHistory: some View {
-        if case .notAuthorized = ghManager.authState {
-            emptyHistoryHint(icon: "chevron.left.forwardslash.chevron.right",
-                             text: "Anslut GitHub i GitHub-vyn")
-        } else if ghManager.isLoadingRepos {
-            VStack(spacing: 8) {
-                ProgressView()
-                Text("Hämtar repos…")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 24)
-        } else if !filteredGitHubRepos.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                sectionHeader("Repos")
-                ForEach(filteredGitHubRepos) { repo in
-                    Button {
-                        selectedTab = .github
-                        showSidebar = false
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: repo.isPrivate ? "lock.fill" : "chevron.left.forwardslash.chevron.right")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                                .frame(width: 18)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(repo.name)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.primary)
-                                    .lineLimit(1)
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.triangle.branch")
-                                        .font(.system(size: 10))
-                                    Text(repo.currentBranch)
-                                        .font(.system(size: 11))
-                                }
-                                .foregroundColor(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        } else {
-            emptyHistoryHint(icon: "chevron.left.forwardslash.chevron.right",
-                             text: searchText.isEmpty ? "Inga repos" : "Inga träffar")
-        }
+        emptyHistoryHint(icon: "arrow.triangle.branch", text: "Repos visas i GitHub-vyn")
     }
 
     // MARK: - Artifact history

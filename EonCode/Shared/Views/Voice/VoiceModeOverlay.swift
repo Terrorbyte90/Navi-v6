@@ -179,21 +179,21 @@ struct VoiceModeOverlay: View {
     }
 
     private var orbColor: Color {
-        if vm.isListening  { return Color(naviHex: "4CAF50") }  // Green
+        if vm.isListening  { return Color(naviHex: "5B8DEF") }  // Soft blue
         if vm.isProcessing { return Color.accentNavi }           // Terra cotta
-        if vm.isSpeaking   { return Color(naviHex: "7C5CBF") }  // Purple
+        if vm.isSpeaking   { return Color(naviHex: "9B6BF5") }  // Soft purple
         return Color.accentNavi.opacity(0.7)
     }
 
     private var orbGradient: [Color] {
         if vm.isListening {
-            return [Color(naviHex: "4CAF50").opacity(0.7), Color(naviHex: "388E3C").opacity(0.5)]
+            return [Color(naviHex: "5B8DEF").opacity(0.75), Color(naviHex: "3B6FDF").opacity(0.55)]
         }
         if vm.isProcessing {
             return [Color.accentNavi.opacity(0.7), Color(naviHex: "c85a3a").opacity(0.5)]
         }
         if vm.isSpeaking {
-            return [Color(naviHex: "7C5CBF").opacity(0.7), Color(naviHex: "5E35B1").opacity(0.5)]
+            return [Color(naviHex: "9B6BF5").opacity(0.75), Color(naviHex: "7C5CBF").opacity(0.55)]
         }
         return [Color.accentNavi.opacity(0.5), Color(naviHex: "c85a3a").opacity(0.3)]
     }
