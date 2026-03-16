@@ -248,6 +248,132 @@ struct NaviCodeLiveCard: View {
     }
 }
 
+// MARK: - NaviThinkingCard
+// Replaces ThinkingDots in ALL views — shows what the model is actually doing.
+// Phase-aware: icon, label, tool name, and elapsed time update as the request progresses.
+// Design: same bubble shape as chat messages so it sits naturally in the flow.
+
+struct NaviThinkingCard: View {
+    let phase: ChatManager.ThinkingPhase
+    var liveToolCall: String? = nil
+    var elapsed: Int = 0
+
+    @State private var dotPhase  = false
+    @State private var iconScale = false
+
+    // MARK: Derived display values
+
+    private var primaryLabel: String {
+        if phase == .executingTools, let tool = liveToolCall {
+            return tool.liveToolPillText
+        }
+        return phase.label
+    }
+
+    private var toolSubLabel: String? {
+        guard phase == .executingTools, let tool = liveToolCall, !tool.isEmpty else { return nil }
+        return tool.replacingOccurrences(of: "_", with: " ")
+    }
+
+    private var iconName: String {
+        if phase == .executingTools, let tool = liveToolCall {
+            return NaviActivityPill.toolIcon(tool)
+        }
+        return phase.icon
+    }
+
+    private var accentColor: Color {
+        switch phase {
+        case .connecting:     return Color.accentNavi.opacity(0.55)
+        case .thinking:       return Color.accentNavi
+        case .executingTools: return Color(naviHex: "68C89A")   // teal-green
+        case .finishing:      return Color(naviHex: "F4A261")   // amber
+        default:              return Color.secondary.opacity(0.8)
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            ThinkingOrb(size: 28, isAnimating: phase != .idle)
+
+            VStack(alignment: .leading, spacing: 4) {
+                // — Main status row: icon + label + animated dots
+                HStack(spacing: 6) {
+                    if !iconName.isEmpty {
+                        Image(systemName: iconName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(accentColor.opacity(0.85))
+                            .scaleEffect(iconScale ? 1.12 : 0.92)
+                            .animation(
+                                .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                                value: iconScale
+                            )
+                    }
+                    Text(primaryLabel)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary.opacity(0.72))
+                        .id(primaryLabel)           // key for implicit transition
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+
+                    // Compact dots — same rhythm as ThinkingDots, smaller
+                    HStack(spacing: 3) {
+                        ForEach(0..<3, id: \.self) { i in
+                            Circle()
+                                .fill(accentColor.opacity(dotPhase ? 0.75 : 0.2))
+                                .frame(width: 4, height: 4)
+                                .scaleEffect(dotPhase ? 1.0 : 0.55)
+                                .animation(
+                                    .easeInOut(duration: 0.52)
+                                        .repeatForever(autoreverses: true)
+                                        .delay(Double(i) * 0.16),
+                                    value: dotPhase
+                                )
+                        }
+                    }
+                }
+
+                // — Sub-row: tool name (monospaced) + elapsed time
+                if toolSubLabel != nil || elapsed > 0 {
+                    HStack(spacing: 5) {
+                        if let sub = toolSubLabel {
+                            Text(sub)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.45))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        if elapsed > 0 {
+                            Text("· \(elapsed < 60 ? "\(elapsed)s" : "\(elapsed / 60)m \(elapsed % 60)s")")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.32))
+                        }
+                    }
+                } else if elapsed > 0 {
+                    Text(elapsed < 60 ? "\(elapsed)s" : "\(elapsed / 60)m \(elapsed % 60)s")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.32))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color.surfaceHover.opacity(0.7))
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            dotPhase  = true
+            iconScale = true
+        }
+        .onDisappear {
+            dotPhase  = false
+            iconScale = false
+        }
+        .animation(.easeInOut(duration: 0.22), value: primaryLabel)
+    }
+}
+
 // MARK: - Status text helpers — ChatManager.ThinkingPhase
 
 extension ChatManager.ThinkingPhase {

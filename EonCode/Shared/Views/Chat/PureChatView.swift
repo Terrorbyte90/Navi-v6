@@ -144,11 +144,15 @@ struct PureChatView: View {
                                     StreamingBubble(text: manager.streamingText)
                                         .id("streaming")
                                 } else {
-                                    // Three-dot typing indicator while thinking/connecting/preparing/finishing
-                                    ThinkingDots()
-                                        .padding(.horizontal, 16)
-                                        .id("activityPill")
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                    // Informative thinking card — shows phase, tool, elapsed time
+                                    NaviThinkingCard(
+                                        phase: manager.thinkingPhase,
+                                        liveToolCall: manager.liveToolCall,
+                                        elapsed: manager.elapsedSeconds
+                                    )
+                                    .padding(.horizontal, 16)
+                                    .id("activityPill")
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 }
                             }
 

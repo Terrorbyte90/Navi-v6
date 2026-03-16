@@ -1069,36 +1069,30 @@ struct BrainChatView: View {
     var thinkingIndicator: some View {
         let tool = brain.liveStatus?.active == true ? brain.liveStatus?.tool : nil
         let elapsed = session.elapsedSeconds
+        // Route to the right visual based on the active tool (or default to .thinking)
+        let state = tool.map { ActivityState.fromTool($0) } ?? .thinking
 
         return AnyView(
-            VStack(alignment: .leading, spacing: 4) {
-                if let tool, tool.contains("write_file") || tool.contains("create_file") {
-                    Visual2_StreamingCode()
-                } else {
-                    ThinkingDots()
-                }
-                // Elapsed time + live tool label
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                NaviVisualActivity(state: state)
+
+                // Elapsed time + human-readable tool label
+                HStack(spacing: 5) {
                     if elapsed > 0 {
-                        Text(elapsedString(elapsed))
+                        Text(elapsed < 60 ? "\(elapsed)s" : "\(elapsed / 60)m \(elapsed % 60)s")
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.45))
+                            .foregroundColor(.secondary.opacity(0.4))
                     }
                     if let tool, !tool.isEmpty {
-                        Text("· \(tool.replacingOccurrences(of: "_", with: " "))")
+                        Text("· \(tool.liveToolPillText)")
                             .font(.system(size: 10))
-                            .foregroundColor(.secondary.opacity(0.35))
+                            .foregroundColor(.secondary.opacity(0.32))
                             .lineLimit(1)
                     }
                 }
                 .padding(.horizontal, 16)
             }
         )
-    }
-
-    private func elapsedString(_ secs: Int) -> String {
-        if secs < 60 { return "\(secs)s" }
-        return "\(secs / 60)m \(secs % 60)s"
     }
 
     // MARK: - Input bar

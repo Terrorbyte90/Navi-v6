@@ -238,14 +238,18 @@ struct CodeView: View {
                             // 3. Pipeline phase pill
                             // 4. Thinking phase pill
                             if agent.isRunning && agent.streamingText.isEmpty {
-                                Group {
-                                    if agent.phase == .build {
-                                        Visual2_StreamingCode()
-                                    } else {
-                                        ThinkingDots()
+                                VStack(alignment: .leading, spacing: 4) {
+                                    // Visual routed through NaviVisualActivity based on pipeline phase
+                                    NaviVisualActivity.forPhase(agent.phase)
+                                    // thinkingPhase gives real-time detail (iteration count, tool name…)
+                                    if !agent.thinkingPhase.isEmpty {
+                                        Text(agent.thinkingPhase)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(.secondary.opacity(0.4))
+                                            .padding(.horizontal, 16)
+                                            .transition(.opacity)
                                     }
                                 }
-                                .padding(.horizontal, 16)
                                 .id("activityPill")
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }

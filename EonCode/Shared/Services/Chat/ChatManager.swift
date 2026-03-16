@@ -24,6 +24,10 @@ final class ChatManager: ObservableObject {
     @Published var thinkingPhase: ThinkingPhase = .idle
     /// Current API call info for visual display
     @Published var currentAPIInfo: APICallInfo? = nil
+    /// Elapsed seconds since the current request started (for UI display)
+    @Published var elapsedSeconds: Int = 0
+
+    private var elapsedTimer: Timer?
 
     enum ThinkingPhase: Equatable {
         case idle
@@ -172,7 +176,14 @@ final class ChatManager: ObservableObject {
         toolCallEvents = []
         thinkingPhase = .preparing
         currentAPIInfo = nil
+        elapsedSeconds = 0
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.elapsedSeconds += 1 }
+        }
         defer {
+            elapsedTimer?.invalidate()
+            elapsedTimer = nil
             isStreaming = false
             streamingText = ""
             liveToolCall = nil
