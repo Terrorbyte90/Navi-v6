@@ -1,8 +1,8 @@
 // ============================================================
-// Navi Brain v3.3 — Autonomous AI Server
+// Navi Brain v3.4 — Autonomous AI Server
 // ============================================================
 // Models: MiniMax M2.5 (OpenRouter), DeepSeek R1/Qwen3 (OpenRouter), Claude Sonnet 4.6 (Anthropic)
-// Features: ReAct tool loop, persistent tasks, ntfy.sh push, disk persistence
+// Features: ReAct tool loop, persistent tasks, ntfy.sh push, disk persistence, Navi Code v1.0
 // ============================================================
 
 const express = require('express');
@@ -37,6 +37,7 @@ process.env.FORTYSIX_ELKS_NUMBER = process.env.FORTYSIX_ELKS_NUMBER || '+4600110
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const COSTS_FILE = path.join(DATA_DIR, 'costs.json');
+const CODE_SESSIONS_FILE = path.join(DATA_DIR, 'code_sessions.json');
 const startTime = Date.now();
 
 // Model IDs
@@ -174,6 +175,7 @@ setInterval(() => {
   saveTasks();
   saveSessions();
   saveCosts();
+  saveCodeSessions();
 }, 60_000);
 
 // ============================================================
@@ -187,6 +189,8 @@ const activeTasks = {};        // taskId → ServerTask
 const logs = [];               // { timestamp, action, details, project, tokens }
 let liveStatus = { active: false, model: null, tool: null, iter: null };
 let costTracker = { total_cost: 0, total_requests: 0 };
+let codeSessions = {};         // { [sessionId]: CodeSession }
+let codeWorkers = {};          // { [sessionId]: { [workerId]: workerInfo } }
 
 // ============================================================
 // LOGGING
@@ -1480,6 +1484,1074 @@ app.get('/tasks', auth, (req, res) => {
 });
 
 // ============================================================
+// CODE AGENT — Persistence
+// ============================================================
+
+function saveCodeSessions() {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(CODE_SESSIONS_FILE, JSON.stringify(codeSessions, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[PERSIST] Failed to save code sessions:', e.message);
+  }
+}
+
+function loadCodeSessions() {
+  try {
+    if (!fs.existsSync(CODE_SESSIONS_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(CODE_SESSIONS_FILE, 'utf8'));
+    codeSessions = data || {};
+    let fixed = 0;
+    for (const session of Object.values(codeSessions)) {
+      if (session.status === 'working') {
+        session.status = 'error';
+        session.messages = session.messages || [];
+        session.messages.push({
+          role: 'assistant',
+          content: 'Servern startades om under körning.',
+          timestamp: new Date().toISOString(),
+        });
+        fixed++;
+      }
+    }
+    addLog('PERSIST', `Laddade ${Object.keys(codeSessions).length} kodsessioner (${fixed} markerade som error)`);
+  } catch (e) {
+    console.error('[PERSIST] Failed to load code sessions:', e.message);
+  }
+}
+
+function updateCodeSession(id, changes) {
+  if (!codeSessions[id]) return;
+  Object.assign(codeSessions[id], changes, { updatedAt: new Date().toISOString() });
+  saveCodeSessions();
+}
+
+// ============================================================
+// CODE AGENT — Tool Definitions
+// ============================================================
+
+function codeAgentToolDefinitions() {
+  return [
+    {
+      type: 'function',
+      function: {
+        name: 'read_file',
+        description: 'Läs fil. MAX 15 000 tecken.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Absolut sökväg till filen' },
+          },
+          required: ['path'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'write_file',
+        description: 'Skriv/ersätt fil. Skapar kataloger automatiskt. Verifiera alltid med read_file efteråt.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Absolut sökväg till filen' },
+            content: { type: 'string', description: 'Fullständigt filinnehåll' },
+          },
+          required: ['path', 'content'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'list_directory',
+        description: 'Lista katalog (exkl. node_modules/.git/dist).',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Katalogväg (absolut)' },
+            recursive: { type: 'boolean', description: 'Rekursiv listning (max djup 3, standard: false)' },
+          },
+          required: ['path'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'search_files',
+        description: 'Sök i filer med grep/regex.',
+        parameters: {
+          type: 'object',
+          properties: {
+            pattern: { type: 'string', description: 'Söksträngen (regex stöds)' },
+            path: { type: 'string', description: 'Katalog att söka i' },
+            file_pattern: { type: 'string', description: 'Filnamnsmönster, t.ex. "*.js"' },
+            case_sensitive: { type: 'boolean', description: 'Skiftlägeskänslig sökning (standard: false)' },
+          },
+          required: ['pattern', 'path'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'run_command',
+        description: 'Kör bash-kommando med full root-access.',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'Shell-kommandot att köra (bash)' },
+            cwd: { type: 'string', description: 'Arbetskatalog (standard: /root)' },
+            timeout_seconds: { type: 'number', description: 'Timeout i sekunder (standard: 60)' },
+          },
+          required: ['command'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'create_directory',
+        description: 'Skapa katalog rekursivt.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Katalogväg att skapa' },
+          },
+          required: ['path'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'delete_file',
+        description: 'Ta bort fil.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Absolut sökväg till filen att ta bort' },
+          },
+          required: ['path'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'web_search',
+        description: 'Sök på internet.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Sökfråga' },
+          },
+          required: ['query'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'github_list_repos',
+        description: 'Lista GitHub-repos för Terrorbyte90.',
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'github_read_file',
+        description: 'Läs fil direkt från GitHub utan att klona.',
+        parameters: {
+          type: 'object',
+          properties: {
+            repo: { type: 'string', description: 'Repo-namn (t.ex. "Navi-v6")' },
+            path: { type: 'string', description: 'Filsökväg i repot' },
+            ref: { type: 'string', description: 'Branch eller commit (standard: main)' },
+          },
+          required: ['repo', 'path'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'github_write_file',
+        description: 'Skapa/uppdatera fil på GitHub med commit.',
+        parameters: {
+          type: 'object',
+          properties: {
+            repo: { type: 'string', description: 'Repo-namn' },
+            file_path: { type: 'string', description: 'Filsökväg i repot' },
+            content: { type: 'string', description: 'Filinnehåll (klartext)' },
+            commit_message: { type: 'string', description: 'Commit-meddelande' },
+          },
+          required: ['repo', 'file_path', 'content', 'commit_message'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'github_create_branch',
+        description: 'Skapa ny branch.',
+        parameters: {
+          type: 'object',
+          properties: {
+            repo: { type: 'string', description: 'Repo-namn' },
+            branch: { type: 'string', description: 'Ny branch-namn' },
+            from_branch: { type: 'string', description: 'Bas-branch (standard: main)' },
+          },
+          required: ['repo', 'branch'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'github_list_files',
+        description: 'Lista filer i GitHub-repo.',
+        parameters: {
+          type: 'object',
+          properties: {
+            repo: { type: 'string', description: 'Repo-namn' },
+            path: { type: 'string', description: 'Sökväg i repot (standard: rot)' },
+            ref: { type: 'string', description: 'Branch eller commit (standard: main)' },
+          },
+          required: ['repo'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'github_create_pr',
+        description: 'Skapa pull request.',
+        parameters: {
+          type: 'object',
+          properties: {
+            repo: { type: 'string', description: 'Repo-namn' },
+            title: { type: 'string', description: 'PR-titel' },
+            body: { type: 'string', description: 'PR-beskrivning' },
+            head: { type: 'string', description: 'Källbranch (head)' },
+            base: { type: 'string', description: 'Målbranch (standard: main)' },
+          },
+          required: ['repo', 'title', 'body', 'head'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'todo_write',
+        description: 'Uppdatera todo-listan som syns i appen.',
+        parameters: {
+          type: 'object',
+          properties: {
+            todos: {
+              type: 'array',
+              description: 'Lista av todos',
+              items: {
+                type: 'object',
+                properties: {
+                  text: { type: 'string' },
+                  done: { type: 'boolean' },
+                },
+                required: ['text', 'done'],
+              },
+            },
+          },
+          required: ['todos'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'spawn_worker',
+        description: 'Starta parallell worker-agent. Max 8 st. Ger tillbaka workerId.',
+        parameters: {
+          type: 'object',
+          properties: {
+            task: { type: 'string', description: 'Uppgiften som workern ska utföra' },
+            context: { type: 'string', description: 'Relevant kontext för workern' },
+            worker_index: { type: 'number', description: 'Worker-index 0-7 (valfritt)' },
+          },
+          required: ['task', 'context'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'worker_status',
+        description: 'Hämta status/resultat för en worker.',
+        parameters: {
+          type: 'object',
+          properties: {
+            worker_id: { type: 'string', description: 'Worker-ID returnerat av spawn_worker' },
+          },
+          required: ['worker_id'],
+        },
+      },
+    },
+  ];
+}
+
+// ============================================================
+// CODE AGENT — GitHub Helper
+// ============================================================
+
+async function githubFetch(method, apiPath, body, githubToken) {
+  return new Promise((resolve, reject) => {
+    const bodyData = body ? JSON.stringify(body) : null;
+    const req = https.request({
+      hostname: 'api.github.com',
+      path: apiPath,
+      method: method.toUpperCase(),
+      headers: {
+        'Authorization': `Bearer ${githubToken}`,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'Navi-Brain/3.4',
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...(bodyData ? {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(bodyData),
+        } : {}),
+      },
+      timeout: 30000,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve({ status: res.statusCode, data: json });
+        } catch {
+          resolve({ status: res.statusCode, data });
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('GitHub API timeout')); });
+    if (bodyData) req.write(bodyData);
+    req.end();
+  });
+}
+
+// ============================================================
+// CODE AGENT — Tool Executor
+// ============================================================
+
+async function executeCodeTool(name, args, session, githubToken) {
+  try {
+    switch (name) {
+
+      case 'read_file': {
+        const filePath = args.path || '';
+        addLog('CODE_TOOL', `read_file: ${filePath}`);
+        if (!fs.existsSync(filePath)) return `Filen finns inte: ${filePath}`;
+        const content = fs.readFileSync(filePath, 'utf8');
+        return content.substring(0, 15000);
+      }
+
+      case 'write_file': {
+        const filePath = args.path || '';
+        const content = args.content || '';
+        addLog('CODE_TOOL', `write_file: ${filePath} (${content.length} tecken)`);
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(filePath, content, 'utf8');
+        return `Filen skriven: ${filePath} (${content.length} tecken)`;
+      }
+
+      case 'list_directory': {
+        const dirPath = args.path || '/root';
+        const recursive = args.recursive || false;
+        addLog('CODE_TOOL', `list_directory: ${dirPath} recursive=${recursive}`);
+        if (!fs.existsSync(dirPath)) return `Katalogen finns inte: ${dirPath}`;
+        try {
+          const maxDepth = recursive ? 3 : 1;
+          const output = execSync(
+            `find "${dirPath}" -maxdepth ${maxDepth} -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" 2>/dev/null | head -200`,
+            { encoding: 'utf8', timeout: 10000 }
+          );
+          return output || '(tom katalog)';
+        } catch {
+          return fs.readdirSync(dirPath).join('\n') || '(tom katalog)';
+        }
+      }
+
+      case 'search_files': {
+        const pattern = args.pattern || '';
+        const searchPath = args.path || '/root';
+        const safePattern = pattern.replace(/"/g, '\\"');
+        const safeSearchPath = searchPath.replace(/"/g, '\\"').replace(/`/g, '\\`');
+        const filePattern = args.file_pattern ? `--include="${args.file_pattern.replace(/"/g, '')}"` : '';
+        const caseFlag = args.case_sensitive ? '' : '-i';
+        addLog('CODE_TOOL', `search_files: "${pattern}" in ${searchPath}`);
+        try {
+          const cmd = `grep -r ${caseFlag} --line-number ${filePattern} "${safePattern}" "${safeSearchPath}" 2>/dev/null | head -100`;
+          const output = execSync(cmd, { encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024 });
+          return output || `Inga matchningar för "${pattern}" i ${searchPath}`;
+        } catch (e) {
+          if (e.status === 1) return `Inga matchningar för "${pattern}" i ${searchPath}`;
+          return `Sökfel: ${e.message.substring(0, 500)}`;
+        }
+      }
+
+      case 'run_command': {
+        const cmd = args.command || '';
+        const cwd = args.cwd || '/root';
+        const timeoutSec = Math.min(args.timeout_seconds || 60, 300); // Max 5 minutes
+        addLog('CODE_TOOL', `run_command: ${cmd.substring(0, 100)}`);
+        try {
+          const env = { ...process.env };
+          if (githubToken) {
+            env.GIT_ASKPASS = 'echo';
+            env.GITHUB_TOKEN = githubToken;
+            // Use env var based credential helper, not inline token in shell
+            env.GIT_TERMINAL_PROMPT = '0';
+          }
+          const output = execSync(cmd, {
+            timeout: timeoutSec * 1000,
+            maxBuffer: 2 * 1024 * 1024,
+            encoding: 'utf8',
+            cwd,
+            env,
+          });
+          return output.substring(0, 10000) || '(tom utdata — kommandot lyckades)';
+        } catch (e) {
+          const errOut = ((e.stderr || '') + ' ' + (e.stdout || '') + ' ' + e.message).trim();
+          return `Fel (exit ${e.status ?? '?'}): ${errOut.substring(0, 5000)}`;
+        }
+      }
+
+      case 'create_directory': {
+        const dirPath = args.path || '';
+        addLog('CODE_TOOL', `create_directory: ${dirPath}`);
+        fs.mkdirSync(dirPath, { recursive: true });
+        return `Katalog skapad: ${dirPath}`;
+      }
+
+      case 'delete_file': {
+        const filePath = args.path || '';
+        addLog('CODE_TOOL', `delete_file: ${filePath}`);
+        if (!fs.existsSync(filePath)) return `Filen finns inte: ${filePath}`;
+        fs.unlinkSync(filePath);
+        return `Filen borttagen: ${filePath}`;
+      }
+
+      case 'web_search': {
+        const query = args.query || '';
+        addLog('CODE_TOOL', `web_search: ${query}`);
+        return `Web search inte tillgänglig direkt — använd run_command med curl för att söka. Exempel: curl -s "https://ddg.gg/search?q=${encodeURIComponent(query)}&format=json" | head -2000`;
+      }
+
+      case 'github_list_repos': {
+        if (!githubToken) return 'Ingen GitHub-token tillgänglig.';
+        addLog('CODE_TOOL', 'github_list_repos');
+        // Paginate up to 5 pages (max 500 repos)
+        let allRepos = [];
+        for (let page = 1; page <= 5; page++) {
+          const resp = await githubFetch('GET', `/user/repos?per_page=100&page=${page}&sort=updated`, null, githubToken);
+          if (resp.status >= 400) return `GitHub API-fel ${resp.status}: ${JSON.stringify(resp.data).substring(0, 500)}`;
+          const batch = Array.isArray(resp.data) ? resp.data : [];
+          allRepos.push(...batch);
+          if (batch.length < 100) break; // No more pages
+        }
+        return allRepos.map(r => `${r.full_name} (${r.private ? 'privat' : 'publik'}) — ${r.description || 'ingen beskrivning'}`).join('\n') || '(inga repos hittades)';
+      }
+
+      case 'github_read_file': {
+        if (!githubToken) return 'Ingen GitHub-token tillgänglig.';
+        const repo = args.repo || '';
+        const filePath = args.path || '';
+        const ref = args.ref || 'main';
+        addLog('CODE_TOOL', `github_read_file: ${repo}/${filePath}@${ref}`);
+        const apiPath = `/repos/Terrorbyte90/${repo}/contents/${filePath}?ref=${ref}`;
+        const resp = await githubFetch('GET', apiPath, null, githubToken);
+        if (resp.status >= 400) return `GitHub API-fel ${resp.status}: ${JSON.stringify(resp.data).substring(0, 500)}`;
+        if (resp.data.content) {
+          const decoded = Buffer.from(resp.data.content, 'base64').toString('utf8');
+          return decoded.substring(0, 15000);
+        }
+        return JSON.stringify(resp.data).substring(0, 5000);
+      }
+
+      case 'github_write_file': {
+        if (!githubToken) return 'Ingen GitHub-token tillgänglig.';
+        const repo = args.repo || '';
+        const filePath = args.file_path || '';
+        const content = args.content || '';
+        const commitMessage = args.commit_message || 'Update via Navi Code';
+        addLog('CODE_TOOL', `github_write_file: ${repo}/${filePath}`);
+        // Get current SHA if file exists
+        let sha;
+        try {
+          const getResp = await githubFetch('GET', `/repos/Terrorbyte90/${repo}/contents/${filePath}`, null, githubToken);
+          if (getResp.status === 200 && getResp.data.sha) sha = getResp.data.sha;
+        } catch {}
+        const putBody = {
+          message: commitMessage,
+          content: Buffer.from(content).toString('base64'),
+        };
+        if (sha) putBody.sha = sha;
+        const resp = await githubFetch('PUT', `/repos/Terrorbyte90/${repo}/contents/${filePath}`, putBody, githubToken);
+        if (resp.status >= 400) return `GitHub API-fel ${resp.status}: ${JSON.stringify(resp.data).substring(0, 500)}`;
+        return `Filen uppdaterad på GitHub: ${repo}/${filePath} — commit: ${resp.data.commit?.sha?.substring(0, 8) || 'ok'}`;
+      }
+
+      case 'github_create_branch': {
+        if (!githubToken) return 'Ingen GitHub-token tillgänglig.';
+        const repo = args.repo || '';
+        const branch = args.branch || '';
+        const fromBranch = args.from_branch || 'main';
+        addLog('CODE_TOOL', `github_create_branch: ${repo} ${fromBranch} -> ${branch}`);
+        // Get sha of from_branch
+        const refResp = await githubFetch('GET', `/repos/Terrorbyte90/${repo}/git/ref/heads/${fromBranch}`, null, githubToken);
+        if (refResp.status >= 400) return `Kunde inte hämta ref för ${fromBranch}: ${JSON.stringify(refResp.data).substring(0, 300)}`;
+        const sha = refResp.data.object?.sha;
+        if (!sha) return `Ingen SHA hittad för branch ${fromBranch}`;
+        const createResp = await githubFetch('POST', `/repos/Terrorbyte90/${repo}/git/refs`, {
+          ref: `refs/heads/${branch}`,
+          sha,
+        }, githubToken);
+        if (createResp.status >= 400) return `GitHub API-fel ${createResp.status}: ${JSON.stringify(createResp.data).substring(0, 500)}`;
+        return `Branch skapad: ${branch} (från ${fromBranch}, sha: ${sha.substring(0, 8)})`;
+      }
+
+      case 'github_list_files': {
+        if (!githubToken) return 'Ingen GitHub-token tillgänglig.';
+        const repo = args.repo || '';
+        const filePath = args.path || '';
+        const ref = args.ref || 'main';
+        addLog('CODE_TOOL', `github_list_files: ${repo}/${filePath}@${ref}`);
+        const apiPath = `/repos/Terrorbyte90/${repo}/contents/${filePath}?ref=${ref}`;
+        const resp = await githubFetch('GET', apiPath, null, githubToken);
+        if (resp.status >= 400) return `GitHub API-fel ${resp.status}: ${JSON.stringify(resp.data).substring(0, 500)}`;
+        const items = Array.isArray(resp.data) ? resp.data : [resp.data];
+        return items.map(i => `${i.type === 'dir' ? '[DIR]' : '[FIL]'} ${i.path} (${i.size || 0} bytes)`).join('\n');
+      }
+
+      case 'github_create_pr': {
+        if (!githubToken) return 'Ingen GitHub-token tillgänglig.';
+        const repo = args.repo || '';
+        const title = args.title || '';
+        const body = args.body || '';
+        const head = args.head || '';
+        const base = args.base || 'main';
+        addLog('CODE_TOOL', `github_create_pr: ${repo} ${head} -> ${base}`);
+        const resp = await githubFetch('POST', `/repos/Terrorbyte90/${repo}/pulls`, {
+          title, body, head, base,
+        }, githubToken);
+        if (resp.status >= 400) return `GitHub API-fel ${resp.status}: ${JSON.stringify(resp.data).substring(0, 500)}`;
+        return `PR skapad: #${resp.data.number} — ${resp.data.html_url}`;
+      }
+
+      case 'todo_write': {
+        const todos = args.todos || [];
+        addLog('CODE_TOOL', `todo_write: ${todos.length} todos`);
+        if (session) {
+          session.todos = todos;
+          updateCodeSession(session.id, { todos });
+        }
+        return `Todos uppdaterade: ${todos.length} st`;
+      }
+
+      case 'spawn_worker': {
+        const task = args.task || '';
+        const context = args.context || '';
+        const workerIndex = args.worker_index !== undefined ? args.worker_index : 0;
+        if (!session) return 'Ingen aktiv session för worker.';
+        const sessionId = session.id;
+        // Count active workers
+        const activeWorkerCount = Object.values(codeWorkers[sessionId] || {})
+          .filter(w => w.status === 'running').length;
+        if (activeWorkerCount >= 8) return 'Max 8 aktiva workers. Vänta tills en är klar.';
+        const workerId = uuidv4();
+        addLog('CODE_TOOL', `spawn_worker: #${workerIndex} — ${task.substring(0, 60)}`);
+        spawnCodeWorker(sessionId, workerId, workerIndex, task, context, githubToken);
+        return JSON.stringify({ workerId, workerIndex, status: 'started' });
+      }
+
+      case 'worker_status': {
+        const workerId = args.worker_id || '';
+        if (!session) return 'Ingen aktiv session.';
+        const sessionId = session.id;
+        const worker = (codeWorkers[sessionId] || {})[workerId];
+        if (!worker) return `Ingen worker med id ${workerId} hittad.`;
+        return JSON.stringify({
+          workerId,
+          index: worker.index,
+          status: worker.status,
+          task: worker.task,
+          output: worker.output ? worker.output.substring(0, 3000) : null,
+          filesModified: worker.filesModified || [],
+          startedAt: worker.startedAt,
+          completedAt: worker.completedAt,
+        });
+      }
+
+      default:
+        return `Okänt verktyg: ${name}`;
+    }
+  } catch (e) {
+    return `Verktygsfel (${name}): ${e.message}`;
+  }
+}
+
+// ============================================================
+// CODE AGENT — System Prompt
+// ============================================================
+
+function buildCodeAgentSystemPrompt(session, githubToken) {
+  const githubSection = githubToken
+    ? `\nDu har full admin-åtkomst till github.com/Terrorbyte90.
+- Klona repo: run_command("git clone https://github.com/Terrorbyte90/REPO.git /root/repos/REPO")
+- Läs filer: github_read_file(repo, path) — läser direkt från GitHub utan att klona
+- Skriv: github_write_file(repo, path, content, "feat: beskrivning") — auto-committar
+- Skapa PR: github_create_pr(repo, title, body, head_branch)
+- Lista repos: github_list_repos()
+- ALLTID konfigurera git: git config user.email "navi@brain.ai" && git config user.name "Navi Brain"`
+    : `\nOBS: Ingen GitHub-token skickades med denna förfrågan. Be användaren konfigurera token i appen.`;
+
+  return `Du är Navi Code — ett fullt autonomt multi-agent kodningssystem som körs på Navi Brain-servern.
+Du drivs av MiniMax M2.5 (1M kontextfönster) och är modellerad efter Claude Code.
+
+## DINA FÖRMÅGOR
+- Du körs dygnet runt på servern — användaren kan stänga appen och du FORTSÄTTER JOBBA
+- Full filsystemsåtkomst på /root/repos/ — läsa, skriva, ta bort, söka
+- Full GitHub-åtkomst (Terrorbyte90-kontot) — klona, pusha, skapa PRs
+- Shell-åtkomst med root — npm, pip, git, node, python3, curl, alla standardverktyg
+- Upp till 8 parallella workers — starta dem för oberoende deluppgifter
+- 1M kontextfönster — kan bearbeta hela kodbaser på en gång
+
+## ARBETSMETOD (OBLIGATORISK — HOPPA ALDRIG ÖVER)
+1. UTFORSKA: Läs ALLA relevanta filer innan du skriver något. list_directory → read_file.
+2. PLANERA: Skriv todos med todo_write. Var specifik: "Skriv auth-middleware i middleware/auth.js"
+3. EXEKVERA: Arbeta metodiskt genom todos. En uppgift åt gången (eller starta workers för parallellism).
+4. VERIFIERA: Efter varje write_file — läs filen direkt med read_file för att bekräfta. Kör tester om tillgängligt.
+5. COMMITTA: git commit + push efter varje stor funktion. Lämna aldrig ocommittad kod.
+
+## PARALLELLA WORKERS (Använd för stora projekt)
+För 5+ oberoende filer/funktioner, starta workers:
+- spawn_worker("Implementera auth-routes i /root/repos/app/routes/auth.js", kontext)
+- Workers kör simultant — snabbar upp stora projekt 4-8x
+- Hämta resultat med worker_status(id), slå ihop resultaten själv
+- Max 8 aktiva workers simultant
+
+## GITHUB-ÅTKOMST (ANVÄND ALLTID)${githubSection}
+
+## ASYNKRONITET
+Du körs asynkront — användaren kan stänga appen när som helst och du FORTSÄTTER JOBBA.
+- Spara framsteg ofta med todo_write och git commits
+- Förvänta dig INTE snabb feedback — avsluta uppgifter fullständigt utan att vänta
+- Ntfy-notis skickas automatiskt när du är klar
+
+## GRÄNSER
+- read_file / github_read_file: MAX 15 000 tecken per fil
+- run_command: MAX 10 000 tecken output, MAX 300 sekunder timeout
+- list_directory: MAX djup 3, MAX 200 filer
+- search_files: MAX 100 matchningar
+- workers: MAX 8 aktiva parallella workers
+- iterationer: MAX 8 (enkla) / 20 (normala) / 30 (komplexa) per session
+
+## ROBUSTHET — FEL = LÖSNING, INTE STOPP
+- Om ett verktyg misslyckas: läs felet, prova alternativ strategi, GE ALDRIG UPP
+- Om git push misslyckas: kolla remote, gör git pull --rebase, pusha igen
+- Om npm build misslyckas: läs felet, åtgärda grundorsaken
+- Logga varje stort steg — användaren kan kolla tillbaka timmar senare
+
+## TEXTFORMATERING
+- Börja alltid med det direkta svaret
+- Enkla frågor: 1-3 meningar. Inga rubriker eller listor
+- ## för stora sektioner (3+), ### för undersektioner, ALDRIG # (H1)
+- **fetstil** för kritiska termer. \`inline-kod\` för filnamn, variabler, kommandon
+- Inga emoji i tekniska svar. Ingen upprepning av frågan. Ingen summering av svaret
+
+SERVERMILJÖ: Ubuntu Linux, root, /root/repos/ för projekt, verktyg: Node.js, git, python3, npm, curl, jq, find, grep`;
+}
+
+// ============================================================
+// CODE AGENT — Worker Spawn
+// ============================================================
+
+function spawnCodeWorker(parentSessionId, workerId, workerIndex, task, context, githubToken) {
+  if (!codeWorkers[parentSessionId]) codeWorkers[parentSessionId] = {};
+  const workerInfo = {
+    id: workerId,
+    index: workerIndex,
+    task,
+    status: 'running',
+    output: null,
+    filesModified: [],
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+  };
+  codeWorkers[parentSessionId][workerId] = workerInfo;
+
+  // Run worker asynchronously
+  (async () => {
+    try {
+      const workerModel = (codeSessions[parentSessionId] || {}).model || 'minimax/minimax-m2.5';
+      const systemPrompt = `Du är worker #${workerIndex} i Navi Code. Uppgift: ${task}. Kontext: ${context}. Arbeta självständigt, rapportera filerna du skapade/ändrade. Max 10 iterationer.`;
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: task },
+      ];
+      const maxIter = 10;
+      let finalResponse = '';
+
+      for (let i = 0; i < maxIter; i++) {
+        // Check if parent session was stopped
+        if (codeSessions[parentSessionId]?.shouldStop) {
+          workerInfo.output = 'Stoppat av användaren.';
+          break;
+        }
+        const result = await withRetry(() => callOpenRouter(messages, workerModel, codeAgentToolDefinitions()), 3, 1500);
+        const choice = result.choices?.[0];
+        if (!choice) break;
+        const msg = choice.message;
+        messages.push(msg);
+
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          const fakeSession = { id: parentSessionId, todos: [] };
+          for (const tc of msg.tool_calls) {
+            const tcName = tc.function?.name || 'unknown';
+            let tcArgs = {};
+            try { tcArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
+            const toolResult = await executeCodeTool(tcName, tcArgs, fakeSession, githubToken);
+            messages.push({ role: 'tool', tool_call_id: tc.id, content: toolResult });
+            // Track file modifications
+            if ((tcName === 'write_file' || tcName === 'github_write_file') && tcArgs.path) {
+              workerInfo.filesModified.push(tcArgs.path);
+            }
+          }
+          continue;
+        }
+
+        finalResponse = msg.content || '';
+        if (finalResponse) break;
+      }
+
+      workerInfo.status = 'done';
+      workerInfo.output = finalResponse;
+      workerInfo.completedAt = new Date().toISOString();
+      addLog('CODE_WORKER', `Worker #${workerIndex} klar: ${finalResponse.substring(0, 80)}`);
+    } catch (e) {
+      workerInfo.status = 'error';
+      workerInfo.output = `Fel: ${e.message}`;
+      workerInfo.completedAt = new Date().toISOString();
+      addLog('CODE_WORKER', `Worker #${workerIndex} fel: ${e.message}`);
+    } finally {
+      // Clean up worker after 10 minutes to avoid memory leaks
+      setTimeout(() => {
+        if (codeWorkers[parentSessionId]) {
+          delete codeWorkers[parentSessionId][workerId];
+        }
+      }, 10 * 60 * 1000);
+    }
+  })();
+
+  return workerId;
+}
+
+// ============================================================
+// CODE AGENT — Main ReAct Loop
+// ============================================================
+
+async function codeReactLoop(sessionId, userMessage) {
+  const session = codeSessions[sessionId];
+  if (!session) throw new Error(`Sessionen ${sessionId} finns inte`);
+
+  const complexity = detectComplexity(userMessage);
+  const maxIter = complexity === 'simple' ? 8 : complexity === 'complex' ? 30 : 20;
+
+  // Initialize messages list
+  const now = new Date().toISOString();
+  session.messages = session.messages || [];
+  session.history = session.history || [];
+  session.messages.push({ role: 'user', content: userMessage, timestamp: now });
+
+  // Set session name from first message if not set
+  if (!session.name || session.name === 'Ny session') {
+    session.name = userMessage.substring(0, 60);
+  }
+
+  updateCodeSession(sessionId, {
+    status: 'working',
+    liveStatus: { phase: 'thinking', tool: null, iter: 0, workersActive: 0, startedAt: new Date().toISOString() },
+  });
+
+  const systemPrompt = buildCodeAgentSystemPrompt(session, session.githubToken);
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...session.history,
+    { role: 'user', content: userMessage },
+  ];
+
+  const toolCallsUsed = [];
+  let finalResponse = '';
+  let totalTokens = 0;
+
+  try {
+    for (let i = 0; i < maxIter; i++) {
+      // Check stop flag
+      if (codeSessions[sessionId] && codeSessions[sessionId].shouldStop) {
+        finalResponse = 'Stoppad av användaren.';
+        updateCodeSession(sessionId, {
+          status: 'error',
+          liveStatus: { phase: 'done', tool: null, iter: i },
+        });
+        session.messages.push({
+          role: 'assistant',
+          content: finalResponse,
+          timestamp: new Date().toISOString(),
+        });
+        saveCodeSessions();
+        return;
+      }
+
+      updateCodeSession(sessionId, {
+        liveStatus: { phase: 'thinking', tool: null, iter: i, startedAt: session.liveStatus?.startedAt || new Date().toISOString() },
+      });
+
+      const result = await withRetry(() => callOpenRouter(messages, session.model, codeAgentToolDefinitions()), 3, 1500);
+      const choice = result.choices?.[0];
+      if (!choice) break;
+
+      const usage = result.usage || {};
+      totalTokens += (usage.completion_tokens || 0) + (usage.prompt_tokens || 0);
+
+      const msg = choice.message;
+      messages.push(msg);
+
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        for (const tc of msg.tool_calls) {
+          const tcName = tc.function?.name || 'unknown';
+          let tcArgs = {};
+          try { tcArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
+
+          const toolLabel = `${tcName}(${JSON.stringify(tcArgs).substring(0, 60)})`;
+          toolCallsUsed.push(tcName);
+          updateCodeSession(sessionId, {
+            liveStatus: { phase: 'executing', tool: toolLabel, iter: i, startedAt: session.liveStatus?.startedAt || new Date().toISOString() },
+          });
+
+          const toolResult = await executeCodeTool(tcName, tcArgs, codeSessions[sessionId], session.githubToken);
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: toolResult });
+        }
+        continue;
+      }
+
+      finalResponse = msg.content || '';
+      if (finalResponse) break;
+    }
+  } catch (e) {
+    addLog('CODE_ERROR', `Session ${sessionId}: ${e.message}`);
+    finalResponse = `Fel: ${e.message}`;
+    updateCodeSession(sessionId, {
+      status: 'error',
+      liveStatus: { phase: 'done', tool: null, iter: 0 },
+    });
+    session.messages.push({
+      role: 'assistant',
+      content: finalResponse,
+      timestamp: new Date().toISOString(),
+      toolCalls: toolCallsUsed,
+      tokens: totalTokens,
+    });
+    // Update history
+    session.history.push({ role: 'user', content: userMessage });
+    session.history.push({ role: 'assistant', content: finalResponse });
+    if (session.history.length > 40) session.history = session.history.slice(-40);
+    saveCodeSessions();
+    return;
+  }
+
+  // Finalize — model-aware cost calculation (price per 1M tokens, avg input+output)
+  const MODEL_COSTS = {
+    'minimax/minimax-m2.5':          0.30,
+    'moonshotai/kimi-k2.5':          0.45,
+    'openrouter-free-chain':         0.0,
+    'qwen/qwen3-coder:free':         0.0,
+    'deepseek/deepseek-chat-v3-0324:free': 0.0,
+    'nvidia/nemotron-3-super-120b-a12b:free': 0.0,
+    'google/gemini-2.5-flash:free':  0.0,
+    'meta-llama/llama-4-maverick:free': 0.0,
+    'qwen/qwen3-235b-a22b:free':     0.0,
+    'meta-llama/llama-3.3-70b-instruct:free': 0.0,
+    'mistralai/mistral-small-3.1-24b-instruct:free': 0.0,
+    'deepseek/deepseek-r1:free':     0.0,
+  };
+  const costPerMTok = MODEL_COSTS[session.model] ?? 0.30;
+  const estimatedCost = (totalTokens * costPerMTok) / 1_000_000;
+  session.messages.push({
+    role: 'assistant',
+    content: finalResponse,
+    timestamp: new Date().toISOString(),
+    toolCalls: toolCallsUsed,
+    tokens: totalTokens,
+  });
+
+  // Update conversation history (keep last 40)
+  session.history.push({ role: 'user', content: userMessage });
+  session.history.push({ role: 'assistant', content: finalResponse });
+  if (session.history.length > 40) session.history = session.history.slice(-40);
+  // Cap stored messages to avoid unbounded memory growth
+  if (session.messages.length > 200) session.messages = session.messages.slice(-200);
+
+  updateCodeSession(sessionId, {
+    status: 'done',
+    totalTokens: (session.totalTokens || 0) + totalTokens,
+    totalCost: (session.totalCost || 0) + estimatedCost,
+    liveStatus: { phase: 'done', tool: null, iter: 0 },
+    shouldStop: false,
+  });
+
+  addLog('CODE', `Session ${sessionId} klar: ${finalResponse.substring(0, 80)} (${totalTokens} tok)`);
+
+  // Send ntfy notification
+  sendNtfyNotification(
+    'Navi Code klar',
+    `${finalResponse.substring(0, 80)}`,
+    ['white_check_mark'],
+    3
+  );
+}
+
+// ============================================================
+// CODE AGENT — Routes
+// ============================================================
+
+// GET /code/sessions — list all sessions
+app.get('/code/sessions', auth, (req, res) => {
+  const sessions_list = Object.values(codeSessions)
+    .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+    .map(s => ({
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      model: s.model,
+      messageCount: (s.messages || []).length,
+      totalTokens: s.totalTokens || 0,
+      totalCost: s.totalCost || 0,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      liveStatus: s.liveStatus || {},
+    }));
+  res.json({ sessions: sessions_list });
+});
+
+// POST /code/sessions — create new session
+app.post('/code/sessions', auth, (req, res) => {
+  const { name, model, githubToken: bodyToken, githubRepo } = req.body;
+  const githubToken = req.headers['x-github-token'] || bodyToken || null;
+  const sessionId = uuidv4();
+  const now = new Date().toISOString();
+  const session = {
+    id: sessionId,
+    name: name || 'Ny session',
+    status: 'idle',
+    model: model || 'minimax/minimax-m2.5',
+    messages: [],
+    history: [],
+    liveStatus: {},
+    workers: [],
+    todos: [],
+    githubToken: githubToken || null,
+    githubRepo: githubRepo || null,
+    totalTokens: 0,
+    totalCost: 0,
+    createdAt: now,
+    updatedAt: now,
+    stoppedAt: null,
+    shouldStop: false,
+  };
+  codeSessions[sessionId] = session;
+  saveCodeSessions();
+  addLog('CODE', `Ny session skapad: ${sessionId} (${name || 'Ny session'})`);
+  res.json({ sessionId, name: session.name, status: 'idle', createdAt: now });
+});
+
+// GET /code/sessions/:id — get full session
+app.get('/code/sessions/:id', auth, (req, res) => {
+  const session = codeSessions[req.params.id];
+  if (!session) return res.status(404).json({ error: 'Sessionen finns inte' });
+  const sessionCopy = { ...session };
+  // Return last 50 messages
+  sessionCopy.messages = (session.messages || []).slice(-50);
+  // Attach workers
+  sessionCopy.workers = Object.values(codeWorkers[session.id] || {});
+  res.json({ session: sessionCopy });
+});
+
+// DELETE /code/sessions/:id — delete session
+app.delete('/code/sessions/:id', auth, (req, res) => {
+  if (!codeSessions[req.params.id]) return res.status(404).json({ error: 'Sessionen finns inte' });
+  delete codeSessions[req.params.id];
+  delete codeWorkers[req.params.id];
+  saveCodeSessions();
+  res.json({ ok: true });
+});
+
+// POST /code/sessions/:id/message — send message
+app.post('/code/sessions/:id/message', auth, (req, res) => {
+  const session = codeSessions[req.params.id];
+  if (!session) return res.status(404).json({ error: 'Sessionen finns inte' });
+  if (session.status === 'working') {
+    return res.status(400).json({ error: 'Agent kör redan' });
+  }
+
+  const { message, githubToken: bodyToken } = req.body;
+  if (!message) return res.status(400).json({ error: 'Inget meddelande' });
+
+  const githubToken = req.headers['x-github-token'] || bodyToken || session.githubToken || null;
+  if (githubToken) session.githubToken = githubToken;
+  session.shouldStop = false;
+
+  updateCodeSession(req.params.id, { status: 'working', shouldStop: false });
+
+  // Run in background
+  codeReactLoop(req.params.id, message).catch(e => {
+    addLog('CODE_ERROR', `codeReactLoop failure: ${e.message}`);
+    updateCodeSession(req.params.id, { status: 'error' });
+  });
+
+  res.json({ ok: true, sessionId: req.params.id, status: 'working' });
+});
+
+// POST /code/sessions/:id/stop — stop agent
+app.post('/code/sessions/:id/stop', auth, (req, res) => {
+  if (!codeSessions[req.params.id]) return res.status(404).json({ error: 'Sessionen finns inte' });
+  updateCodeSession(req.params.id, { shouldStop: true, stoppedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
+// POST /code/sessions/:id/clear — clear history
+app.post('/code/sessions/:id/clear', auth, (req, res) => {
+  if (!codeSessions[req.params.id]) return res.status(404).json({ error: 'Sessionen finns inte' });
+  updateCodeSession(req.params.id, { history: [], messages: [], todos: [] });
+  res.json({ ok: true });
+});
+
+// GET /code/live — live status all sessions
+app.get('/code/live', auth, (req, res) => {
+  const live = {};
+  for (const [id, s] of Object.entries(codeSessions)) {
+    live[id] = { status: s.status, liveStatus: s.liveStatus || {}, name: s.name };
+  }
+  res.json({ sessions: live });
+});
+
+// ============================================================
 // START SERVER
 // ============================================================
 
@@ -1487,6 +2559,7 @@ app.get('/tasks', auth, (req, res) => {
 loadCosts();
 loadTasks();
 loadSessions();
+loadCodeSessions();
 telephony.loadAll();
 
 // Register telephony routes
@@ -1496,13 +2569,15 @@ telephony.register(app, auth, addLog);
 setInterval(() => telephony.runScheduler(addLog), 30000);
 
 app.listen(PORT, '0.0.0.0', () => {
-  addLog('BOOT', `Navi Brain v3.3 startad på port ${PORT}`);
+  addLog('BOOT', `Navi Brain v3.4 startad på port ${PORT}`);
   addLog('BOOT', `Modeller: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
   addLog('BOOT', `ntfy.sh topic: ${NTFY_TOPIC}`);
   addLog('BOOT', `Persistens: ${DATA_DIR}`);
-  console.log(`\n🧠 Navi Brain v3.3 running on port ${PORT}`);
+  addLog('BOOT', `Navi Code v1.0 aktiverat — ${Object.keys(codeSessions).length} sparade kodsessioner`);
+  console.log(`\nNavi Brain v3.4 running on port ${PORT}`);
   console.log(`   ntfy topic: ${NTFY_TOPIC}`);
   console.log(`   Models: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
+  console.log(`   Navi Code v1.0 active`);
   console.log(`   Data dir: ${DATA_DIR}\n`);
 });
 
@@ -1512,6 +2587,7 @@ process.on('SIGTERM', () => {
   saveTasks();
   saveSessions();
   saveCosts();
+  saveCodeSessions();
   process.exit(0);
 });
 
@@ -1520,5 +2596,6 @@ process.on('SIGINT', () => {
   saveTasks();
   saveSessions();
   saveCosts();
+  saveCodeSessions();
   process.exit(0);
 });

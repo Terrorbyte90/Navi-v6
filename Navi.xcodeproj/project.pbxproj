@@ -61,6 +61,7 @@
 		327B70D3FC9757691A14C430 /* CallModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6064B9D51A64E2736A9E7E6 /* CallModels.swift */; };
 		3413EAA1855E1413032628E2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C25D02FEE768B0BEF0DBA9 /* AgentEngine.swift */; };
 		341CB294A84C272832195038 /* CodeAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */; };
+		F8C3A7D6542B91E03C8F1E47 /* CodeServerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */; };
 		346AAF7E1B762BDC3FD943AA /* PremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75E16C42F31EA3521A28B103 /* PremiumComponents.swift */; };
 		347925EBE1D813068F70AF46 /* PureChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA49EBA790A1F0AE1DE761C /* PureChatView.swift */; };
 		34885B0F78701976A6947FD3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E9F974224709EF892C219B9E /* Assets.xcassets */; };
@@ -93,6 +94,7 @@
 		4EDFDC0E22145E26079D1713 /* LocalAgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D7FE88018F0A2EC04931FF /* LocalAgentEngine.swift */; };
 		4F92656D9B07C97D8365BD0C /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C521378620BF312B01C21004 /* VoiceView.swift */; };
 		51564F6ECEAF15A183EB7551 /* CodeAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */; };
+		D5B2E7A4916C3F280B6E59D4 /* CodeServerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */; };
 		5218D37946C4435A749E7397 /* PipelinePhaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC33BB35777F343FE6C25B5D /* PipelinePhaseView.swift */; };
 		52C39ED17C5CD0B069B46D79 /* ScheduledTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA46077E6EF10F3DD954F280 /* ScheduledTaskManager.swift */; };
 		54B8F9A68B6D484F62052B27 /* NaviApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B074907A2FB58C840C223A /* NaviApp.swift */; };
@@ -299,6 +301,7 @@
 		4CDC27DAA75627B1862F7AD5 /* NaviTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviTheme.swift; sourceTree = "<group>"; };
 		4CE32D3C945BE36EADF319DE /* ServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerView.swift; sourceTree = "<group>"; };
 		4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeAgent.swift; sourceTree = "<group>"; };
+		A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeServerService.swift; sourceTree = "<group>"; };
 		4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentView.swift; sourceTree = "<group>"; };
 		5072F6FBC2C8CD6FA6720068 /* SearchEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchEngine.swift; sourceTree = "<group>"; };
 		53CF2D3BCA0E9A334DD6FA8B /* SamtalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamtalView.swift; sourceTree = "<group>"; };
@@ -553,6 +556,7 @@
 			isa = PBXGroup;
 			children = (
 				4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */,
+				A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */,
 				34EC1EF699FA1656785D274F /* CodeProject.swift */,
 				36CCC756AC4759371B376BAA /* CodeProjectStore.swift */,
 				795B4677DD4BE3CF6FFC1AC9 /* ModelRouter.swift */,
@@ -1058,6 +1062,7 @@
 				188ECCF97D0F5465E70B8D08 /* ClaudeStreamParser.swift in Sources */,
 				0B927AEAB1E5407184286255 /* CodeActivityConsole.swift in Sources */,
 				51564F6ECEAF15A183EB7551 /* CodeAgent.swift in Sources */,
+				D5B2E7A4916C3F280B6E59D4 /* CodeServerService.swift in Sources */,
 				5D51EA6A5201CCB284E302E1 /* CodeEditorView.swift in Sources */,
 				B2F355C8103BBBD1D9A48BD7 /* CodeProgressCard.swift in Sources */,
 				FC9C841E512757C215142353 /* CodeProject.swift in Sources */,
@@ -1187,6 +1192,7 @@
 				E7596466CBA57674F9E449C8 /* ClaudeStreamParser.swift in Sources */,
 				EED012B5E987F5362A96D24D /* CodeActivityConsole.swift in Sources */,
 				341CB294A84C272832195038 /* CodeAgent.swift in Sources */,
+				F8C3A7D6542B91E03C8F1E47 /* CodeServerService.swift in Sources */,
 				5604A70C387F52B83EA0ED36 /* CodeEditorView.swift in Sources */,
 				0DF3964625D60D7A2CD3C019 /* CodeProgressCard.swift in Sources */,
 				E52E9A063C1B0B6A2C8DC2BC /* CodeProject.swift in Sources */,
