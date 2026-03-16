@@ -86,21 +86,35 @@ final class CodeAgent: ObservableObject {
     @Published var currentAPIInfo: CodeAPIInfo? = nil
     /// Current thinking phase
     @Published var thinkingPhase: String = ""
+    /// Elapsed seconds since current operation started (for server tasks)
+    @Published var elapsedSeconds: Int = 0
+    /// Active server task ID (non-nil when a task is running/polling on server)
+    @Published var serverTaskID: String? = nil
+    /// Server task status label shown in UI
+    @Published var serverTaskStatus: String = ""
 
     // MARK: - Singleton
 
     static let shared = CodeAgent()
     private init() {
         Task { await loadProjects() }
+        restorePendingServerTask()
     }
 
     // MARK: - Cancel
 
     private var currentTask: Task<Void, Never>?
+    private var elapsedTimer: Timer?
+    private var serverPollTask: Task<Void, Never>?
+    private static let taskIDKey = "CodeAgent.pendingServerTaskID"
 
     func stop() {
         currentTask?.cancel()
         currentTask = nil
+        serverPollTask?.cancel()
+        serverPollTask = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
         isRunning = false
         phase = .idle
         liveToolCall = nil
@@ -109,6 +123,8 @@ final class CodeAgent: ObservableObject {
         currentAPIInfo = nil
         thinkingPhase = ""
         streamingText = ""
+        elapsedSeconds = 0
+        // Don't clear serverTaskID/serverTaskStatus — they may still be running on server
     }
 
     // MARK: - Load / new project
@@ -153,6 +169,12 @@ final class CodeAgent: ObservableObject {
         actualModel = model
         usedFallback = false
 
+        // Delegate to server when a server-backed model is selected
+        if let serverKey = model.serverModelKey {
+            startServerTask(prompt: text, serverModelKey: serverKey)
+            return
+        }
+
         currentTask = Task {
             isRunning = true
             defer { isRunning = false }
@@ -189,6 +211,217 @@ final class CodeAgent: ObservableObject {
                 await streamAnswer(text: text, proj: &proj, model: model)
             }
         }
+    }
+
+    // MARK: - Server Task Delegation
+    // When a server-backed model is selected, the task runs on the remote server so
+    // the user can close the app and return later to see the result.
+
+    private func startServerTask(prompt: String, serverModelKey: String) {
+        // Set up project to hold messages
+        if activeProject == nil {
+            _ = newProject(idea: prompt, model: actualModel)
+        }
+        appendMessage(prompt, role: .user)
+
+        guard let proj = activeProject else { return }
+
+        let taskId = UUID().uuidString
+        serverTaskID = taskId
+        serverTaskStatus = "Startar på server…"
+        isRunning = true
+        elapsedSeconds = 0
+        phase = .spec
+
+        // Start elapsed timer
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.elapsedSeconds += 1 }
+        }
+
+        // Persist so we can resume if app is closed mid-task
+        UserDefaults.standard.set(taskId, forKey: Self.taskIDKey)
+        UserDefaults.standard.set(proj.id.uuidString, forKey: "\(Self.taskIDKey).projectID")
+
+        // Start task on server
+        serverPollTask = Task {
+            defer {
+                isRunning = false
+                phase = .idle
+                elapsedTimer?.invalidate()
+                elapsedTimer = nil
+                UserDefaults.standard.removeObject(forKey: Self.taskIDKey)
+                UserDefaults.standard.removeObject(forKey: "\(Self.taskIDKey).projectID")
+            }
+
+            // POST /task/start
+            var body: [String: Any] = [
+                "prompt": prompt,
+                "taskId": taskId,
+                "model": serverModelKey,
+                "notify": true
+            ]
+            // Forward Anthropic key for opus tasks
+            if serverModelKey == "opus",
+               let key = KeychainManager.shared.anthropicAPIKey {
+                body["anthropicKey"] = key
+            }
+
+            do {
+                let startResp = try await serverRequest(path: "/task/start", body: body)
+                guard startResp["taskId"] as? String != nil else {
+                    appendMessage("❌ Server tog inte emot uppgiften.", role: .assistant)
+                    return
+                }
+            } catch {
+                appendMessage("❌ Kunde inte nå servern: \(error.localizedDescription)", role: .assistant)
+                return
+            }
+
+            serverTaskStatus = "Kör på server…"
+
+            // Poll until complete
+            var consecutive404 = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s
+                guard !Task.isCancelled else { break }
+
+                do {
+                    let statusResp = try await serverRequest(path: "/task/status/\(taskId)", method: "GET")
+                    let status = statusResp["status"] as? String ?? "unknown"
+                    let progress = statusResp["progress"] as? String
+
+                    if let progress {
+                        serverTaskStatus = progress
+                        thinkingPhase = progress
+                    } else {
+                        serverTaskStatus = "Kör på server… (\(elapsedSeconds)s)"
+                    }
+
+                    if status == "completed" {
+                        let result = statusResp["result"] as? String ?? "(Inget svar)"
+                        let toolCount = statusResp["toolCalls"] as? Int ?? 0
+                        let modelUsed = statusResp["model"] as? String ?? serverModelKey
+                        appendMessage(result, role: .assistant)
+                        appendMessage("*Server: \(modelUsed) · \(toolCount) verktygsanrop · \(elapsedSeconds)s*", role: .assistant)
+                        serverTaskID = nil
+                        serverTaskStatus = ""
+                        thinkingPhase = ""
+                        break
+                    } else if status == "failed" {
+                        let err = statusResp["error"] as? String ?? "Okänt fel"
+                        appendMessage("❌ Serveruppgift misslyckades: \(err)", role: .assistant)
+                        serverTaskID = nil
+                        serverTaskStatus = ""
+                        thinkingPhase = ""
+                        break
+                    }
+
+                    consecutive404 = 0
+                } catch {
+                    consecutive404 += 1
+                    if consecutive404 > 6 { // 30s of failures
+                        appendMessage("❌ Tappade kontakten med servern.", role: .assistant)
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    /// Restore any task that was polling when the app was last closed.
+    private func restorePendingServerTask() {
+        guard let taskId = UserDefaults.standard.string(forKey: Self.taskIDKey),
+              let projectIDStr = UserDefaults.standard.string(forKey: "\(Self.taskIDKey).projectID") else {
+            return
+        }
+        Task {
+            await loadProjects()
+            if let projID = UUID(uuidString: projectIDStr),
+               let proj = projects.first(where: { $0.id == projID }) {
+                activeProject = proj
+            }
+            serverTaskID = taskId
+            serverTaskStatus = "Återupptar serverövervakning…"
+            isRunning = true
+            elapsedSeconds = 0
+            phase = .spec
+
+            elapsedTimer?.invalidate()
+            elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.elapsedSeconds += 1 }
+            }
+
+            serverPollTask = Task {
+                defer {
+                    isRunning = false
+                    phase = .idle
+                    elapsedTimer?.invalidate()
+                    elapsedTimer = nil
+                    UserDefaults.standard.removeObject(forKey: Self.taskIDKey)
+                    UserDefaults.standard.removeObject(forKey: "\(Self.taskIDKey).projectID")
+                }
+
+                var consecutive404 = 0
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    guard !Task.isCancelled else { break }
+
+                    do {
+                        let statusResp = try await serverRequest(path: "/task/status/\(taskId)", method: "GET")
+                        let status = statusResp["status"] as? String ?? "unknown"
+                        let progress = statusResp["progress"] as? String
+                        serverTaskStatus = progress ?? "Kör på server…"
+                        thinkingPhase = serverTaskStatus
+
+                        if status == "completed" {
+                            let result = statusResp["result"] as? String ?? "(Inget svar)"
+                            let toolCount = statusResp["toolCalls"] as? Int ?? 0
+                            appendMessage(result, role: .assistant)
+                            appendMessage("*Server slutförde: \(toolCount) verktygsanrop · \(elapsedSeconds)s*", role: .assistant)
+                            serverTaskID = nil
+                            serverTaskStatus = ""
+                            thinkingPhase = ""
+                            break
+                        } else if status == "failed" {
+                            let err = statusResp["error"] as? String ?? "Okänt fel"
+                            appendMessage("❌ Serveruppgift misslyckades: \(err)", role: .assistant)
+                            serverTaskID = nil
+                            serverTaskStatus = ""
+                            thinkingPhase = ""
+                            break
+                        }
+                        consecutive404 = 0
+                    } catch {
+                        consecutive404 += 1
+                        if consecutive404 > 12 { break } // 1 min of failures
+                    }
+                }
+            }
+        }
+    }
+
+    /// Generic JSON-in/JSON-out request to the Navi Brain server.
+    private func serverRequest(path: String, body: [String: Any]? = nil, method: String = "POST") async throws -> [String: Any] {
+        let urlStr = "\(NaviBrainService.baseURL)\(path)"
+        guard let url = URL(string: urlStr) else {
+            throw URLError(.badURL)
+        }
+        var req = URLRequest(url: url, timeoutInterval: 30)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("navi-brain-2026", forHTTPHeaderField: "x-api-key")
+
+        if let body {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "HTTP \(code)"])
+        }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
     /// Fast intent classification using Haiku (1 round-trip, ~50 output tokens).

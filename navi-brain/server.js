@@ -48,6 +48,19 @@ const MODELS = {
   opus: 'claude-sonnet-4-6',          // runs via Anthropic API
 };
 
+// Free OpenRouter model chain — ordered by quality, used for cost-free fallback
+const FREE_MODEL_CHAIN = [
+  'qwen/qwen3-coder:free',
+  'deepseek/deepseek-chat-v3-0324:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'google/gemini-2.5-flash:free',
+  'meta-llama/llama-4-maverick:free',
+  'qwen/qwen3-235b-a22b:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'mistralai/mistral-small-3.1-24b-instruct:free',
+  'deepseek/deepseek-r1:free',
+];
+
 // ============================================================
 // AUTH MIDDLEWARE
 // ============================================================
@@ -245,6 +258,20 @@ const TOOLS = [
     },
   },
   {
+    name: 'search_files',
+    description: 'Sök efter text/mönster i filer på servern med grep/ripgrep. Returnerar filnamn och matchande rader.',
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Söksträngen (regex stöds)' },
+        path: { type: 'string', description: 'Katalog att söka i' },
+        filePattern: { type: 'string', description: 'Filnamnsmönster, t.ex. "*.swift" eller "*.js"' },
+        caseSensitive: { type: 'boolean', description: 'Skiftlägeskänslig sökning (standard: false)' },
+      },
+      required: ['pattern', 'path'],
+    },
+  },
+  {
     name: 'github_api',
     description: 'Anropa GitHub REST API direkt med admin-token. Använd för att hämta repos, filer, commits, skapa PRs, issues, branches etc. GitHub-ägare: Terrorbyte90. Token autentiseras automatiskt.',
     parameters: {
@@ -434,6 +461,42 @@ async function triggerXcodeCloudBuild(scheme, branch) {
   return `🟡 Xcode Cloud build pågår.\nWorkflow: ${workflow.attributes.name}\nBuild ID: ${buildId}\nStatus: ${status}\nBygget körs i bakgrunden — ntfy-notis skickas när det är klart.`;
 }
 
+// Exponential backoff retry for API calls
+async function withRetry(fn, maxRetries = 3, baseDelayMs = 2000) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const msg = (err.message || '').toLowerCase();
+      // Don't retry on permanent errors
+      if (msg.includes('401') || msg.includes('invalid_api_key') ||
+          msg.includes('bad url') || attempt >= maxRetries) {
+        throw err;
+      }
+      const delay = baseDelayMs * Math.pow(2, attempt) * (0.8 + Math.random() * 0.4);
+      addLog('RETRY', `Attempt ${attempt + 1} failed: ${err.message.substring(0, 80)} — waiting ${Math.round(delay)}ms`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
+// Classify task complexity: 'simple', 'medium', or 'complex'
+function detectComplexity(prompt) {
+  if (!prompt) return 'medium';
+  const p = prompt.toLowerCase();
+  const len = prompt.length;
+  // Simple: short factual questions
+  const simplePatterns = /^(vad |vad är |vad betyder |förklara |hur stavas |berätta |vem |när |var |how |what |who |when |explain |define |list )/;
+  if (simplePatterns.test(p) && len < 180) return 'simple';
+  // Complex: multi-step work
+  const complexPatterns = /(refactor|migrer|bygg|implementera|skapa|analysera|fixa alla|gå igenom|undersök hela|klon|deploya|testa allt|uppdatera alla|refactor all|implement all|build|create.*project)/;
+  if (complexPatterns.test(p) || len > 600) return 'complex';
+  return 'medium';
+}
+
 // Execute a tool call — githubToken is injected so git ops can authenticate
 async function executeTool(name, args, githubToken = null) {
   try {
@@ -502,6 +565,21 @@ async function executeTool(name, args, githubToken = null) {
           }
         }
         return fs.readdirSync(dirPath).join('\n') || '(tom katalog)';
+      }
+      case 'search_files': {
+        const pattern = args.pattern || '';
+        const searchPath = args.path || '/root';
+        const filePattern = args.filePattern ? `--include="${args.filePattern}"` : '';
+        const caseFlag = args.caseSensitive ? '' : '-i';
+        addLog('TOOL', `search_files: "${pattern}" in ${searchPath}`);
+        try {
+          const cmd = `grep -r ${caseFlag} --line-number ${filePattern} "${pattern.replace(/"/g, '\\"')}" "${searchPath}" 2>/dev/null | head -100`;
+          const output = execSync(cmd, { encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024 });
+          return output || `Inga matchningar för "${pattern}" i ${searchPath}`;
+        } catch (e) {
+          if (e.status === 1) return `Inga matchningar för "${pattern}" i ${searchPath}`;
+          return `Sökfel: ${e.message.substring(0, 500)}`;
+        }
       }
       case 'github_api': {
         const method = (args.method || 'GET').toUpperCase();
@@ -700,43 +778,65 @@ function buildSystemPrompt(githubToken = null) {
 - GitHub-ägare: Terrorbyte90 | API-bas: https://api.github.com\n`
     : `\nOBS: Ingen GitHub-token skickades med denna förfrågan. Be användaren konfigurera token i appen.\n`;
 
-  return `Du är Navi Brain — en kraftfull autonom AI-agent skapad av Ted Svärd.
+  return `Du är Navi Brain — en kraftfull autonom AI-kodningsagent skapad av Ted Svärd.
 Du kör på en dedikerad Ubuntu-server (209.38.98.107) med full root-åtkomst.
-
-VERKTYG DU HAR:
-- run_command(command, cwd?): Kör valfritt bash-kommando. Standard cwd: /root. Kan ange annat cwd.
-- read_file(path): Läs en fil (max 15 000 tecken).
-- write_file(path, content): Skriv/ersätt en fil.
-- list_files(path, recursive?): Lista katalogens innehåll.
-- github_api(method, path, body?): Anropa GitHub REST API direkt med admin-token.
-- deploy_testflight(scheme, branch?, commitMessage?): Bygg och deploya till TestFlight via Xcode Cloud.
+Du agerar som Claude Code — du utforskar, planerar, implementerar och verifierar självständigt.
 
 SERVERMILJÖ:
-- OS: Ubuntu Linux, root-användare
-- Repos klonade på servern: /root/repos/ (t.ex. /root/repos/Navi-v6)
-- Node.js, git, python3, curl, npm finns installerade
-- Serverns eget projekt: /root/navi-brain/
+- OS: Ubuntu Linux, root-användare, IP: 209.38.98.107
+- Repos klonade under: /root/repos/ (t.ex. /root/repos/Navi-v6, /root/repos/BabyCare-v1)
+- Klona ny repo: git clone https://github.com/Terrorbyte90/<repo>.git /root/repos/<repo>
+- Verktyg installerade: Node.js, git, python3, curl, npm, pip, jq, find, grep
+- Serverns eget projekt: /root/navi-brain/ (server.js, package.json, data/)
 ${tokenSection}
-REACT-LOOP (arbetsmetod — OBLIGATORISK):
-1. RESONERA — Analysera uppgiften. Vad behöver göras? Vilka filer/kommandon krävs?
-2. AGERA — Anropa ett verktyg för att utföra nästa konkreta steg.
-3. OBSERVERA — Läs verktygssvarets output noggrant. Vad visar resultatet?
-4. UPPREPA — Fortsätt med nästa steg baserat på observationen.
-5. SLUTFÖR — Ge ett fullständigt och tydligt svar när allt är klart.
+VERKTYG DU HAR:
+- run_command(command, cwd?): Kör bash-kommando. cwd standard: /root. Alltid specificera cwd för repo-arbete.
+- read_file(path): Läs fil (max 15 000 tecken per anrop). Läs ALLTID filen innan du ändrar den.
+- write_file(path, content): Skriv/ersätt fil. Skapar kataloger automatiskt.
+- list_files(path, recursive?): Lista katalog (maxdjup 4, exkl. node_modules/.git).
+- search_files(pattern, path, filePattern?, caseSensitive?): Grep/sök i filer.
+- github_api(method, path, body?): GitHub REST API direkt. GitHub-ägare: Terrorbyte90.
+- deploy_testflight(scheme, branch?, commitMessage?): Bygg och deploya via Xcode Cloud.
 
-GIT-REGLER:
-- Konfigurera alltid git user innan commits: git config user.email "navi@brain.ai" && git config user.name "Navi Brain"
-- För push: git push origin <branch> (token sköter autentisering automatiskt)
-- Repos klonas till /root/repos/<reponamn>
-- Om repo saknas: git clone https://github.com/Terrorbyte90/<repo>.git /root/repos/<repo>
+ARBETSMETOD — CLAUDE CODE-STIL (OBLIGATORISK):
+Steg 1 UTFORSKA: Innan du börjar, utforska relevanta filer. Läs alltid koden INNAN du ändrar den.
+         - list_files för att förstå strukturen
+         - search_files för att hitta relevanta funktioner/klasser
+         - read_file för filer du ska ändra
+Steg 2 PLANERA: Identifiera exakt vad som behöver göras. Dela upp i konkreta steg.
+Steg 3 IMPLEMENTERA: Utför ett steg i taget. Verifiera varje steg med verktyg.
+Steg 4 VERIFIERA: Kontrollera att ändringarna fungerar (kör tester, bygg om möjligt).
+Steg 5 RAPPORTERA: Sammanfatta exakt vad du gjorde, vilka filer du ändrade, och resultatet.
+
+GIT-REGLER (ALLTID):
+- Konfigurera git user FÖRE commits: git config user.email "navi@brain.ai" && git config user.name "Navi Brain"
+- Kontrollera nuvarande branch: git status && git log --oneline -5
+- Pusha: git push origin <branch> (token autentisering sköts automatiskt)
+- Merge/rebase ALDRIG utan explicit instruktion
+- Om repo saknas lokalt: git clone https://github.com/Terrorbyte90/<repo>.git /root/repos/<repo>
+
+FELHANTERING (KRITISK):
+- Om ett verktyg misslyckas: läs felet NOGA, analysera orsaken, prova alternativ strategi.
+- Timeout? Dela upp kommandot i mindre delar, eller öka timeout med 'timeout 120 <kommando>'.
+- Nätverksfel? Försök igen med retry-logik: for i in 1 2 3; do <kommando> && break || sleep 3; done
+- Syntax-fel i kod? Läs om hela filen, analysera felet, rätta och verifiera.
+- Saknar åtkomst? Du har root + GitHub + internet. Lös alltid problemet, ge upp aldrig.
+
+TEXTFORMATERING I SVAR:
+- Börja alltid med det direkta svaret. Ge svaret FÖRST, förklaring sedan.
+- Enkla frågor: 1–3 meningar ren text. Inga rubriker eller punktlistor.
+- Tekniska svar: Markdown. ## för stora sektioner, ### för undersektioner. ALDRIG # (H1).
+- Listor: bara för 3+ parallella objekt. Numrerade för steg. Punktlistor för egenskaper.
+- **Fetstil** för kritiska termer eller varningar. \`inline-kod\` för filnamn, variabler, kommandon.
+- Tabeller: bara för jämförelser av 3+ objekt med samma attribut.
+- Inga emoji i tekniska svar. Inga upprepningar av frågan. Inga sammanfattningar av svaret.
 
 VIKTIGA REGLER:
 - Fortsätt loopen tills uppgiften är HELT löst (upp till 20 iterationer).
 - Säg ALDRIG att du saknar åtkomst — du har root + GitHub + internet.
-- Om ett verktyg misslyckas: analysera felet och försök med annan strategi.
-- Leverera alltid konkret resultat, inte bara planer.
-- Svara på svenska om inte annat begärs.
-- Visa alltid vad du gjorde och vilket resultat du fick.`;
+- Läs filen INNAN du skriver till den. Verifiera ALLTID med verktyg, gissa aldrig.
+- Leverera alltid konkret, verifierbart resultat.
+- Svara på svenska om inte annat begärs.`;
 }
 
 async function reactLoop(prompt, model, sessionHistory, maxIter = 20, githubToken = null) {
@@ -754,7 +854,7 @@ async function reactLoop(prompt, model, sessionHistory, maxIter = 20, githubToke
   for (let i = 0; i < maxIter; i++) {
     liveStatus = { active: true, model, tool: null, iter: i };
 
-    const result = await callOpenRouter(messages, model, toolsToOpenAI());
+    const result = await withRetry(() => callOpenRouter(messages, model, toolsToOpenAI()), 3, 1500);
 
     const choice = result.choices?.[0];
     if (!choice) break;
@@ -823,7 +923,7 @@ async function reactLoopAnthropic(prompt, anthropicKey, sessionHistory, maxIter 
   for (let i = 0; i < maxIter; i++) {
     liveStatus = { active: true, model: MODELS.opus, tool: null, iter: i };
 
-    const result = await callAnthropic(messages, anthropicKey, systemPrompt);
+    const result = await withRetry(() => callAnthropic(messages, anthropicKey, systemPrompt), 3, 2000);
 
     const usage = result.usage || {};
     const inputTok = usage.input_tokens || 0;
@@ -1081,61 +1181,40 @@ app.post('/minimax/history/clear', auth, (req, res) => {
 // ============================================================
 
 app.post('/qwen/ask', auth, async (req, res) => {
-  const prompt = req.body.prompt || '';
-  const sessionId = req.body.sessionId || req.headers['x-session-id'] || 'default';
-  const notify = req.body.notify !== false;
+  const { prompt, sessionId: reqSessionId } = req.body;
   const githubToken = req.headers['x-github-token'] || req.body.githubToken || null;
-  // Allow model override from client (used by iOS fallback chain)
-  const modelOverride = req.headers['x-model-override'] || req.body.model || null;
+  const sessionId = req.headers['x-session-id'] || reqSessionId || 'default';
+  const modelOverride = req.headers['x-model-override'] || null;
 
+  if (!OPENROUTER_KEY) return res.status(500).json({ response: 'Ingen OpenRouter API-nyckel konfigurerad på servern.', tokens: 0 });
   if (!qwenSessions[sessionId]) qwenSessions[sessionId] = { history: [] };
   const session = qwenSessions[sessionId];
 
-  addLog('QWEN', `Prompt: ${prompt.substring(0, 80)}`, 'qwen');
+  const complexity = detectComplexity(prompt);
+  const maxIter = complexity === 'simple' ? 3 : complexity === 'complex' ? 20 : 12;
 
-  try {
-    // Try Qwen3-Coder (paid) first, then DeepSeek R1, then Llama as last resort
-    let result;
-    const primaryModel = modelOverride || MODELS.qwen;
+  // Try each model in the chain until one succeeds
+  const modelChain = modelOverride ? [modelOverride, ...FREE_MODEL_CHAIN] : FREE_MODEL_CHAIN;
+  let lastError = null;
+
+  for (const model of modelChain) {
     try {
-      result = await reactLoop(prompt, primaryModel, session.history, 20, githubToken);
+      addLog('QWEN', `Försöker ${model} (complexity: ${complexity})`, 'qwen');
+      const result = await reactLoop(prompt, model, session.history, maxIter, githubToken);
+      session.history.push({ role: 'user', content: prompt });
+      session.history.push({ role: 'assistant', content: result.response });
+      if (session.history.length > 30) session.history = session.history.slice(-30);
+      saveSessions();
+      return res.json({ ...result, usedModel: model });
     } catch (e) {
-      addLog('QWEN', `${primaryModel} misslyckades, testar DeepSeek R1: ${e.message}`);
-      try {
-        result = await reactLoop(prompt, MODELS.deepseek, session.history, 20, githubToken);
-      } catch (e2) {
-        addLog('QWEN', `DeepSeek misslyckades, testar Llama: ${e2.message}`);
-        result = await reactLoop(prompt, MODELS.deepseekFallback, session.history, 15, githubToken);
-      }
+      lastError = e;
+      addLog('QWEN', `${model} misslyckades: ${e.message.substring(0, 100)}`, 'qwen');
+      // Continue to next model on any error
     }
-
-    session.history.push({ role: 'user', content: prompt });
-    session.history.push({ role: 'assistant', content: result.response });
-    if (session.history.length > 30) session.history.splice(0, session.history.length - 30);
-
-    addLog('QWEN', `Svar: ${result.response.substring(0, 80)} (${result.tokens} tok)`, 'qwen', result.tokens);
-
-    // Send notification for completed chat request
-    if (notify && result.toolCalls.length > 0) {
-      sendNtfyNotification(
-        'Qwen/DeepSeek klar',
-        `${result.toolCalls.length} verktyg, ${result.tokens} tok: ${prompt.substring(0, 60)}`,
-        ['chat_complete', 'zap'],
-        3
-      );
-    }
-
-    res.json({
-      response: result.response,
-      tokens: result.tokens,
-      model: result.model,
-      sessionId,
-      toolCalls: result.toolCalls,
-    });
-  } catch (e) {
-    addLog('ERROR', `Qwen: ${e.message}`, 'qwen');
-    res.status(500).json({ response: `Fel: ${e.message}`, tokens: 0, model: MODELS.qwen });
   }
+
+  // All models failed
+  res.status(500).json({ response: `Alla gratismodeller misslyckades. Sista fel: ${lastError?.message}`, tokens: 0 });
 });
 
 app.post('/qwen/history/clear', auth, (req, res) => {
@@ -1285,8 +1364,27 @@ async function runTaskInBackground(task, anthropicKey) {
       session.totalCost += result.cost || 0;
       session.totalTokens += result.tokens || 0;
       opusSessions[task.sessionId] = session;
+    } else if (task.model === 'free') {
+      // Free model chain — cycles through FREE_MODEL_CHAIN with retry
+      if (!qwenSessions[task.sessionId]) qwenSessions[task.sessionId] = { history: [] };
+      const session = qwenSessions[task.sessionId];
+      let lastError;
+      for (const freeModel of FREE_MODEL_CHAIN) {
+        try {
+          task.progress = `Försöker ${freeModel.split('/').pop().replace(':free', '')}…`;
+          result = await reactLoop(task.prompt, freeModel, session.history, 15, githubToken);
+          session.history.push({ role: 'user', content: task.prompt });
+          session.history.push({ role: 'assistant', content: result.response });
+          break; // success — stop trying
+        } catch (e) {
+          lastError = e;
+          addLog('WARN', `Free model ${freeModel} misslyckades: ${e.message.substring(0, 80)}`);
+          continue;
+        }
+      }
+      if (!result) throw lastError || new Error('Alla gratismodeller misslyckades');
     } else {
-      // OpenRouter models
+      // OpenRouter paid models (minimax, qwen)
       const model = task.model === 'qwen' ? MODELS.qwen : MODELS.minimax;
       const sessionStore = task.model === 'qwen' ? qwenSessions : sessions;
       if (!sessionStore[task.sessionId]) sessionStore[task.sessionId] = { history: [] };

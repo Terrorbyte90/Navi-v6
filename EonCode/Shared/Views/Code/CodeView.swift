@@ -69,7 +69,7 @@ struct CodeView: View {
             HStack(spacing: 8) {
                 Text("Navi Code")
                     .font(NaviTheme.headingFont(size: 17))
-                    .foregroundColor(.primary)
+                    .foregroundColor(.accentNavi)
 
                 // Model picker — right after title, like Chat view
                 Menu {
@@ -239,15 +239,19 @@ struct CodeView: View {
                             // 4. Thinking phase pill
                             if agent.isRunning && agent.streamingText.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    // Visual routed through NaviVisualActivity based on pipeline phase
-                                    NaviVisualActivity.forPhase(agent.phase)
-                                    // thinkingPhase gives real-time detail (iteration count, tool name…)
-                                    if !agent.thinkingPhase.isEmpty {
-                                        Text(agent.thinkingPhase)
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .foregroundColor(.secondary.opacity(0.4))
-                                            .padding(.horizontal, 16)
-                                            .transition(.opacity)
+                                    // Server task: show server-specific indicator
+                                    if agent.serverTaskID != nil {
+                                        serverTaskIndicator
+                                    } else {
+                                        // Local pipeline: visual routed by pipeline phase
+                                        NaviVisualActivity.forPhase(agent.phase)
+                                        if !agent.thinkingPhase.isEmpty {
+                                            Text(agent.thinkingPhase)
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundColor(.secondary.opacity(0.4))
+                                                .padding(.horizontal, 16)
+                                                .transition(.opacity)
+                                        }
                                     }
                                 }
                                 .id("activityPill")
@@ -362,6 +366,48 @@ struct CodeView: View {
     }
 
     // MARK: - Fallback notice
+
+    // MARK: - Server task indicator (replaces local pipeline visuals when running on Navi Brain)
+
+    @ViewBuilder
+    private var serverTaskIndicator: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            ThinkingOrb(size: 28, isAnimating: true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "server.rack")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.accentNavi.opacity(0.8))
+                    Text(agent.serverTaskStatus.isEmpty ? "Kör på server…" : agent.serverTaskStatus)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary.opacity(0.72))
+                        .lineLimit(1)
+                        .id(agent.serverTaskStatus)
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+                }
+                HStack(spacing: 5) {
+                    Text("Kan stängas — uppgiften körs i bakgrunden")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.4))
+                    if agent.elapsedSeconds > 0 {
+                        Text("· \(agent.elapsedSeconds < 60 ? "\(agent.elapsedSeconds)s" : "\(agent.elapsedSeconds / 60)m \(agent.elapsedSeconds % 60)s")")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.32))
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color.surfaceHover.opacity(0.7))
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .animation(.easeInOut(duration: 0.22), value: agent.serverTaskStatus)
+    }
 
     private var fallbackNotice: some View {
         HStack(spacing: 6) {

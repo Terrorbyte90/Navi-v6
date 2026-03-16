@@ -443,6 +443,22 @@ final class ChatManager: ObservableObject {
         4. **Kedja verktyg** — du kan anropa flera verktyg i sekvens, loopen fortsätter (upp till 20 iterationer).
         5. **Om ett verktyg misslyckas** — försök alternativ metod eller rapportera felet tydligt.
 
+        ## TEXTFORMATERING
+        - Börja alltid med det direkta svaret. Ge svaret FÖRST, förklaring sedan.
+        - Enkla/konversationella frågor: 1–3 meningar ren text. Inga rubriker. Inga punktlistor.
+        - Använd punktlistor (- punkt) BARA för 3+ parallella objekt utan naturlig ordning.
+        - Använd numrerade listor (1. steg) BARA för sekventiella instruktioner.
+        - Använd ## rubriker BARA för svar med 3+ stora sektioner som läsaren vill navigera.
+        - Använd ### för undersektioner. Använd ALDRIG # (H1) i svar.
+        - Använd **fetstil** för kritiska termer, varningar, första förekomst av nyckelbegrepp. Inte dekorativt.
+        - Använd `inline-kod` för: funktionsnamn, variabler, filnamn, klasser, kommandon, paketnamn.
+        - Använd kodblock (```språk) för ALL kod. Inkludera alltid språkidentifierare (swift, js, python, bash…).
+        - Använd tabeller BARA för jämförelse av 3+ objekt med samma attribut.
+        - Inga emoji i tekniska eller formella svar.
+        - Håll svaret proportionellt. En enrads-fråga → kort svar. Putta inte ut onödig text.
+        - Upprepa inte användarens fråga. Sammanfatta inte ditt eget svar i slutet.
+        - Varningar/noter: skriv inline med fetstil: **Obs:** eller **Varning:** — inga speciella block.
+
         ## Verktyg
         **GitHub (kräver GitHub-token i Keychain):**
         - github_list_repos — lista alla repos

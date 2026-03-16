@@ -3,21 +3,19 @@ import Foundation
 // MARK: - ModelRouter
 // Provider-agnostic streaming. Routes to Anthropic, xAI, or OpenRouter.
 // ALL providers now support native tool calling.
-// Free OpenRouter models: circular rate-limit fallback (Qwen → MiMo → Devstral → Llama → Qwen…)
+// Free OpenRouter models: linear fallback chain through all 9 free models.
 
 @MainActor
 final class ModelRouter {
 
-    // MARK: - Free model circular chain
+    // MARK: - Free model fallback chain
     // When a free model is rate-limited or times out, the next model in the chain is tried.
-    // The chain is circular: after Llama, it wraps back to Qwen.
+    // .freeModels is the virtual UI entry point that starts from the first model in the chain.
 
-    private static let freeModelChain: [ClaudeModel] = [
-        .qwen3CoderFree, .mimoV2Flash, .devstral2512, .llama33_70B
-    ]
+    private static let freeModelChain: [ClaudeModel] = ClaudeModel.freeModelChain
 
     private static func isFreeModel(_ model: ClaudeModel) -> Bool {
-        freeModelChain.contains(model)
+        model == .freeModels || freeModelChain.contains(model)
     }
 
     /// Detects rate-limit errors from OpenRouter (429) or similar quota errors.
@@ -54,10 +52,11 @@ final class ModelRouter {
         // Validate API key before doing anything
         try validateAPIKey(for: model)
 
-        // Free OpenRouter models: circular rate-limit fallback chain
+        // Free OpenRouter models: fallback chain through all 9 free models
         if isFreeModel(model) {
+            let startModel = (model == .freeModels) ? freeModelChain[0] : model
             return try await streamWithFreeModelFallback(
-                startModel: model,
+                startModel: startModel,
                 messages: messages,
                 systemPrompt: systemPrompt,
                 maxTokens: maxTokens,
@@ -127,15 +126,15 @@ final class ModelRouter {
             }
 
             do {
-                // Qwen3-Coder: 15-second first-response timeout (it's often slow to start)
-                if model == .qwen3CoderFree {
+                // Apply timeout for models that are often slow to start
+                if model == .qwen3CoderFree || model == .gemini25Flash || model == .nvidianemotron {
                     try await streamWithTimeout(
                         model: model,
                         messages: messages,
                         systemPrompt: systemPrompt,
                         maxTokens: maxTokens,
                         tools: tools,
-                        timeout: 15,
+                        timeout: 20,
                         onEvent: onEvent
                     )
                 } else {
@@ -257,11 +256,11 @@ enum ModelRouterError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .qwenTimeout:
-            return "Timeout (15s) — byter modell"
+            return "Timeout (20s) — byter modell"
         case .noAPIKey(let provider):
             return "Ingen \(provider) API-nyckel. Gå till Inställningar."
         case .allFreeModelsRateLimited:
-            return "Alla gratismodeller är rate-limitade. Försök igen om en stund eller välj en betald modell."
+            return "Alla 9 gratismodeller är just nu rate-limitade. Vänta 1 minut och försök igen, eller välj en betald modell."
         }
     }
 }

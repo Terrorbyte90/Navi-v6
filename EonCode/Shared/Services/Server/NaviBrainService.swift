@@ -170,7 +170,7 @@ enum BrainSessionMode: String, CaseIterable {
     var displayName: String {
         switch self {
         case .minimax: return "MiniMax M2.5"
-        case .qwen:    return "MiMo-V2 / Devstral / Llama"
+        case .qwen:    return "Qwen3 Coder (betald)"
         case .opus:    return "Claude Sonnet 4.6"
         }
     }
@@ -191,8 +191,8 @@ enum BrainSessionMode: String, CaseIterable {
             return [] // MiniMax has its own API, no OpenRouter fallback
         case .qwen:
             return [
-                ("/qwen/ask", "xiaomi/mimo-v2-flash:free",                  "MiMo-V2-Flash"),
-                ("/qwen/ask", "mistralai/devstral-2512:free",               "Devstral-2512"),
+                ("/qwen/ask", "deepseek/deepseek-chat-v3-0324:free",        "DeepSeek V3"),
+                ("/qwen/ask", "google/gemini-2.5-flash:free",               "Gemini 2.5 Flash"),
                 ("/qwen/ask", "meta-llama/llama-3.3-70b-instruct:free",     "Llama 3.3 70B"),
             ]
         case .opus:
