@@ -671,10 +671,32 @@ async function executeTool(name, args, githubToken = null) {
 // OPENROUTER API CALL (with tool support)
 // ============================================================
 
+// MiniMax does not support system role — fold system prompt into first user message
+function prepareMessagesForModel(messages, model) {
+  if (!model.includes('minimax')) return messages;
+  const result = [...messages];
+  const sysIdx = result.findIndex(m => m.role === 'system');
+  if (sysIdx === -1) return result;
+  const sysContent = result[sysIdx].content;
+  result.splice(sysIdx, 1);
+  const firstUserIdx = result.findIndex(m => m.role === 'user');
+  if (firstUserIdx >= 0) {
+    const existing = result[firstUserIdx];
+    result[firstUserIdx] = {
+      ...existing,
+      content: `<system>\n${sysContent}\n</system>\n\n${existing.content}`,
+    };
+  } else {
+    result.unshift({ role: 'user', content: `<system>\n${sysContent}\n</system>` });
+  }
+  return result;
+}
+
 async function callOpenRouter(messages, model, tools = null) {
+  const preparedMessages = prepareMessagesForModel(messages, model);
   const body = {
     model,
-    messages,
+    messages: preparedMessages,
     max_tokens: 8192,
   };
   if (tools && tools.length > 0) {
@@ -2201,11 +2223,12 @@ function spawnCodeWorker(parentSessionId, workerId, workerIndex, task, context, 
   (async () => {
     try {
       const workerModel = (codeSessions[parentSessionId] || {}).model || 'minimax/minimax-m2.5';
-      const systemPrompt = `Du är worker #${workerIndex} i Navi Code. Uppgift: ${task}. Kontext: ${context}. Arbeta självständigt, rapportera filerna du skapade/ändrade. Max 10 iterationer.`;
-      const messages = [
-        { role: 'system', content: systemPrompt },
+      const workerSystemPrompt = `Du är worker #${workerIndex} i Navi Code. Uppgift: ${task}. Kontext: ${context}. Arbeta självständigt, rapportera filerna du skapade/ändrade. Max 10 iterationer.`;
+      // prepareMessagesForModel handles MiniMax system→user conversion
+      const messages = prepareMessagesForModel([
+        { role: 'system', content: workerSystemPrompt },
         { role: 'user', content: task },
-      ];
+      ], workerModel);
       const maxIter = 10;
       let finalResponse = '';
 
@@ -2223,12 +2246,16 @@ function spawnCodeWorker(parentSessionId, workerId, workerIndex, task, context, 
 
         if (msg.tool_calls && msg.tool_calls.length > 0) {
           const fakeSession = { id: parentSessionId, todos: [] };
-          for (const tc of msg.tool_calls) {
+          // Run worker tool calls in parallel for speed
+          const toolResults = await Promise.all(msg.tool_calls.map(async (tc) => {
             const tcName = tc.function?.name || 'unknown';
             let tcArgs = {};
             try { tcArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
             const toolResult = await executeCodeTool(tcName, tcArgs, fakeSession, githubToken);
-            messages.push({ role: 'tool', tool_call_id: tc.id, content: toolResult });
+            return { id: tc.id, content: toolResult, tcName, tcArgs };
+          }));
+          for (const { id, content, tcName, tcArgs } of toolResults) {
+            messages.push({ role: 'tool', tool_call_id: id, content });
             // Track file modifications
             if ((tcName === 'write_file' || tcName === 'github_write_file') && tcArgs.path) {
               workerInfo.filesModified.push(tcArgs.path);
@@ -2334,19 +2361,33 @@ async function codeReactLoop(sessionId, userMessage) {
       messages.push(msg);
 
       if (msg.tool_calls && msg.tool_calls.length > 0) {
-        for (const tc of msg.tool_calls) {
+        // Show first tool label in live status
+        const firstTc = msg.tool_calls[0];
+        const firstTcName = firstTc.function?.name || 'unknown';
+        updateCodeSession(sessionId, {
+          liveStatus: {
+            phase: 'executing',
+            tool: msg.tool_calls.length > 1
+              ? `${firstTcName} +${msg.tool_calls.length - 1} parallellt`
+              : firstTcName,
+            iter: i,
+            startedAt: session.liveStatus?.startedAt || new Date().toISOString(),
+          },
+        });
+
+        // Execute independent tool calls in parallel (significant speed-up for multi-tool turns)
+        const toolResults = await Promise.all(msg.tool_calls.map(async (tc) => {
           const tcName = tc.function?.name || 'unknown';
           let tcArgs = {};
           try { tcArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
-
-          const toolLabel = `${tcName}(${JSON.stringify(tcArgs).substring(0, 60)})`;
           toolCallsUsed.push(tcName);
-          updateCodeSession(sessionId, {
-            liveStatus: { phase: 'executing', tool: toolLabel, iter: i, startedAt: session.liveStatus?.startedAt || new Date().toISOString() },
-          });
-
           const toolResult = await executeCodeTool(tcName, tcArgs, codeSessions[sessionId], session.githubToken);
-          messages.push({ role: 'tool', tool_call_id: tc.id, content: toolResult });
+          return { id: tc.id, content: toolResult };
+        }));
+
+        // Append results in same order as tool_calls (required by API spec)
+        for (const { id, content } of toolResults) {
+          messages.push({ role: 'tool', tool_call_id: id, content });
         }
         continue;
       }
