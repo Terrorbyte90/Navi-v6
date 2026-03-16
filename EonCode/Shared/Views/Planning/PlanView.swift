@@ -141,13 +141,13 @@ struct PlanView: View {
                 planInputSection
             }
             // New messages — scroll with animation
-            .onChange(of: plan.messages.count) { _ in
+            .onChange(of: plan.messages.count) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
             // Streaming — throttled to every ~80 chars (no animation = smooth)
-            .onChange(of: manager.streamingText.count / 80) { _ in
+            .onChange(of: manager.streamingText.count / 80) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }

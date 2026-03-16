@@ -96,10 +96,10 @@ struct ChatView: View {
                             .padding(.vertical, 4)
                     }
                 }
-                .onChange(of: agent.conversation.messages.count) { _ in
+                .onChange(of: agent.conversation.messages.count) { _, _ in
                     scrollToBottom(proxy: proxy, animated: true)
                 }
-                .onChange(of: agent.streamingText.count / 80) { _ in
+                .onChange(of: agent.streamingText.count / 80) { _, _ in
                     // Throttled scroll during streaming — only scrolls every ~80 chars
                     scrollToBottom(proxy: proxy, animated: false)
                 }
@@ -655,7 +655,7 @@ struct AgentStreamingBubble: View {
                 cursorVisible = false
             }
         }
-        .onChange(of: text) { newText in
+        .onChange(of: text) { _, newText in
             buffer.update(newText)
         }
         .onDisappear {

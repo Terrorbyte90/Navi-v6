@@ -221,7 +221,7 @@ struct SidebarView: View {
         case .pureChat:  chatList
         case .code:      codeProjectList
         case .artifacts: artifactList
-        case .github:    emptyHint(icon: "arrow.triangle.branch", text: "GitHub")
+        case .github:    githubRepoList
         case .media:     mediaHistoryList
         case .profile:   emptyHint(icon: "person.crop.circle", text: "AI-syntetiserad profil")
         case .voice:     emptyHint(icon: "waveform", text: "Text till tal · Ljud · Röstdesign")
@@ -731,7 +731,7 @@ struct ChatConversationRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(conversation.title)
                         .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(isSelected ? .white : .primary)
+                        .foregroundColor(.primary)
                         .lineLimit(1)
                     HStack(spacing: 4) {
                         Text(conversation.updatedAt.relativeString)
@@ -806,7 +806,7 @@ struct ProjectRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(project.name)
                         .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(isSelected ? .white : .primary)
+                        .foregroundColor(.primary)
                         .lineLimit(1)
                     if isRunning, let status = agent?.currentStatus, !status.isEmpty {
                         Text(status.prefix(28))

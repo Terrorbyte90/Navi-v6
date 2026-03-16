@@ -182,11 +182,11 @@ struct PureChatView: View {
                         chatInputBar.background(Color.chatBackground)
                     }
                     .onAppear { scrollProxy = proxy; scrollToBottom(proxy, animated: false) }
-                    .onChange(of: conv.messages.count) { scrollToBottom(proxy, animated: true) }
-                    .onChange(of: manager.streamingScrollTick) { _ in
+                    .onChange(of: conv.messages.count) { _, _ in scrollToBottom(proxy, animated: true) }
+                    .onChange(of: manager.streamingScrollTick) { _, _ in
                         scrollToBottom(proxy, animated: false)
                     }
-                    .onChange(of: manager.isStreaming) { streaming in
+                    .onChange(of: manager.isStreaming) { _, streaming in
                         if !streaming && conv.messages.last?.role == .assistant {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                 showCompletion = true

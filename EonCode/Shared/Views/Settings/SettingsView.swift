@@ -891,7 +891,7 @@ struct VoicePickerRow: View {
                         Text(voice.name).tag(voice.voice_id)
                     }
                 }
-                .onChange(of: settings.selectedVoiceID) { newID in
+                .onChange(of: settings.selectedVoiceID) { _, newID in
                     if let voice = tts.availableVoices.first(where: { $0.voice_id == newID }) {
                         settings.selectedVoiceName = voice.name
                     }

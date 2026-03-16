@@ -456,7 +456,7 @@ struct ArtifactDetailView: View {
             }
         }
         .background(Color.chatBackground)
-        .onChange(of: artifact.id) { _ in
+        .onChange(of: artifact.id) { _, _ in
             editedContent = artifact.content
             editedTitle = artifact.title
             isEditing = false

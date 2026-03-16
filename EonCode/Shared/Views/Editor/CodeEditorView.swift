@@ -59,7 +59,7 @@ struct CodeEditorView: View {
         .onAppear {
             editableContent = content
         }
-        .onChange(of: content) { new in
+        .onChange(of: content) { _, new in
             if !isDirty { editableContent = new }
         }
     }
@@ -262,7 +262,7 @@ struct IOSCodeEditor: View {
             .disabled(isReadOnly)
             .autocorrectionDisabled()
             .autocapitalization(.none)
-            .onChange(of: text) { _ in onChange() }
+            .onChange(of: text) { _, _ in onChange() }
     }
 }
 #endif

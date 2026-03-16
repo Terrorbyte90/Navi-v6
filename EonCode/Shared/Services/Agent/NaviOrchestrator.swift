@@ -68,6 +68,8 @@ final class NaviOrchestrator {
         if SettingsStore.shared.macRemoteEnabled {
             Task {
                 await executeRemoteOnMac(instruction: instruction, project: targetProject)
+                isProcessing = false
+                activity.complete(summary: "Skickad till Mac")
             }
             return
         }

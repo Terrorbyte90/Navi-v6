@@ -49,9 +49,12 @@ final class InstructionQueue: ObservableObject {
     // MARK: - Enqueue (iOS side)
 
     func enqueue(_ instruction: Instruction) async {
+        var enqueued = false
+
         if let url = sync.urlForInstruction(instruction) {
             do {
                 try await sync.write(instruction, to: url)
+                enqueued = true
             } catch {
                 NaviLog.error("InstructionQueue: kunde inte skriva instruktion till iCloud", error: error)
             }
@@ -61,8 +64,10 @@ final class InstructionQueue: ObservableObject {
 
         try? await LocalNetworkClient.shared.postInstruction(instruction)
 
-        pendingCount += 1
-        NotificationCenter.default.post(name: .instructionEnqueued, object: instruction)
+        if enqueued {
+            pendingCount += 1
+            NotificationCenter.default.post(name: .instructionEnqueued, object: instruction)
+        }
     }
 
     private func writeInstructionSignal() async {
