@@ -235,12 +235,28 @@ final class BrainSession: ObservableObject, Identifiable {
     @Published var name: String
     @Published var messages: [BrainMessage] = []
     @Published var isSending = false
+    @Published var elapsedSeconds: Int = 0
     let createdAt = Date()
+
+    private var elapsedTimer: Timer?
 
     init(mode: BrainSessionMode, index: Int) {
         self.mode = mode
         self.sessionId = "ios-\(mode.rawValue)-\(UUID().uuidString.prefix(8))"
         self.name = "Session \(index)"
+    }
+
+    func startElapsedTimer() {
+        elapsedSeconds = 0
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.elapsedSeconds += 1 }
+        }
+    }
+
+    func stopElapsedTimer() {
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
     }
 }
 
@@ -314,7 +330,20 @@ final class NaviBrainService: ObservableObject {
     private var messagesTimer: Timer?
     private var liveStatusTimer: Timer?
     private var taskPollTimer: Timer?
+
+    /// Lightweight session for short polling requests (status, logs etc.)
     private let urlSession = URLSession(configuration: .default)
+
+    /// Long-running session for AI brain requests — waits up to 30 min for a response
+    private static let brainSessionConfig: URLSessionConfiguration = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest  = 1800   // 30 min — max wait between received bytes
+        cfg.timeoutIntervalForResource = 3600   // 1 hr  — absolute cap per request
+        cfg.waitsForConnectivity       = true   // retry if temporarily offline
+        cfg.allowsCellularAccess       = true
+        return cfg
+    }()
+    private let brainSession = URLSession(configuration: NaviBrainService.brainSessionConfig)
 
     private init() {}
 
@@ -644,10 +673,12 @@ VIKTIGA REGLER:
         guard !session.isSending else { return }
         session.messages.append(BrainMessage(role: .user, content: prompt))
         session.isSending = true
+        session.startElapsedTimer()
         syncSendingFlags()
         startLiveStatusPolling()
         defer {
             session.isSending = false
+            session.stopElapsedTimer()
             syncSendingFlags()
             if !isAnySending { stopLiveStatusPolling() }
         }
@@ -785,12 +816,12 @@ VIKTIGA REGLER:
 
     // MARK: - HTTP Helpers
 
-    /// Post with automatic retry (1 retry on timeout/network error)
+    /// Post with automatic retry (up to 3 retries on network/timeout errors)
     private func postAskWithRetry(prompt: String,
                                   endpoint: String,
                                   sessionId: String? = nil,
                                   extraHeaders: [String: String] = [:],
-                                  maxRetries: Int = 1) async throws -> BrainAskResponse {
+                                  maxRetries: Int = 3) async throws -> BrainAskResponse {
         var lastError: Error?
         for attempt in 0...maxRetries {
             do {
@@ -801,10 +832,12 @@ VIKTIGA REGLER:
                 let nsError = error as NSError
                 // Only retry on network/timeout errors, not HTTP 4xx/5xx
                 let isRetryable = nsError.domain == NSURLErrorDomain &&
-                    [NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet].contains(nsError.code)
+                    [NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost,
+                     NSURLErrorNotConnectedToInternet, NSURLErrorCannotConnectToHost].contains(nsError.code)
                 if !isRetryable || attempt >= maxRetries { throw error }
-                // Wait before retry
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                // Exponential backoff: 3s, 6s, 12s
+                let backoff = UInt64(3_000_000_000) * UInt64(pow(2.0, Double(attempt)))
+                try? await Task.sleep(nanoseconds: backoff)
             }
         }
         throw lastError ?? URLError(.unknown)
@@ -816,7 +849,7 @@ VIKTIGA REGLER:
                          extraHeaders: [String: String] = [:]) async throws -> BrainAskResponse {
         guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { throw URLError(.badURL) }
         let effectiveSessionId = sid ?? sessionId
-        var req = URLRequest(url: url, timeoutInterval: 300)
+        var req = URLRequest(url: url)    // timeout governed by brainSession config (30 min)
         req.httpMethod = "POST"
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -830,7 +863,7 @@ VIKTIGA REGLER:
         let body: [String: Any] = ["prompt": prompt, "sessionId": effectiveSessionId]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, resp) = try await urlSession.data(for: req)
+        let (data, resp) = try await brainSession.data(for: req)
         if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
             let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
             throw NSError(domain: "NaviBrain", code: http.statusCode,
@@ -844,13 +877,13 @@ VIKTIGA REGLER:
                              endpoint: String,
                              extraHeaders: [String: String] = [:]) async throws -> BrainAskResponse {
         guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { throw URLError(.badURL) }
-        var req = URLRequest(url: url, timeoutInterval: 300)
+        var req = URLRequest(url: url)    // timeout governed by brainSession config (30 min)
         req.httpMethod = "POST"
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await urlSession.data(for: req)
+        let (data, resp) = try await brainSession.data(for: req)
         if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
             let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
             throw NSError(domain: "NaviBrain", code: http.statusCode,

@@ -913,7 +913,12 @@ private struct SavedAudioTab: View {
 
             // Share button
             Button {
-                shareURL = url
+                // Copy to temp so UIActivityViewController can read it from sandbox
+                if let localURL = localCopyForSharing(url) {
+                    shareURL = localURL
+                } else {
+                    shareURL = url
+                }
                 showShare = true
             } label: {
                 Image(systemName: "square.and.arrow.up")
@@ -967,6 +972,25 @@ private struct SavedAudioTab: View {
                 await player.play(data: data)
                 playingURL = nil
             }
+        }
+    }
+
+    /// Copy iCloud / sandboxed file to a temp location so UIActivityViewController can access it
+    private func localCopyForSharing(_ url: URL) -> URL? {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(url.lastPathComponent)
+        do {
+            if FileManager.default.fileExists(atPath: tmp.path) {
+                try FileManager.default.removeItem(at: tmp)
+            }
+            // Trigger download if the file is in iCloud but not yet local
+            try FileManager.default.startDownloadingUbiquitousItem(at: url)
+        } catch { /* ignore — file may already be local */ }
+        do {
+            try FileManager.default.copyItem(at: url, to: tmp)
+            return tmp
+        } catch {
+            return nil
         }
     }
 }
