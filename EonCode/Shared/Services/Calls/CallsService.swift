@@ -119,7 +119,7 @@ final class CallsService: ObservableObject {
     func fetchLive() async {
         do {
             let resp: CallsResponse = try await request(path: "/calls/live")
-            liveCalls = resp.calls
+            liveCalls = resp.calls.filter { $0.status == .active && $0.endedAt == nil }
         } catch {}
     }
 

@@ -66,33 +66,12 @@ struct CodeView: View {
 
     private var topBar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Kod")
+            HStack(spacing: 8) {
+                Text("Navi Code")
                     .font(NaviTheme.headingFont(size: 17))
                     .foregroundColor(.primary)
 
-                Spacer()
-
-                // New session button
-                if agent.activeProject != nil {
-                    Button {
-                        withAnimation(NaviTheme.Spring.smooth) {
-                            agent.activeProject = nil
-                        }
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary.opacity(0.55))
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    #if os(macOS)
-                    .help("Ny kodsession")
-                    #endif
-                }
-
-                // Model picker — shows current model, grouped by provider
+                // Model picker — right after title, like Chat view
                 Menu {
                     Section("Anthropic") {
                         ForEach(ClaudeModel.anthropicModels) { model in
@@ -124,6 +103,27 @@ struct CodeView: View {
                     )
                 }
                 .buttonStyle(.plain)
+
+                Spacer()
+
+                // New session button
+                if agent.activeProject != nil {
+                    Button {
+                        withAnimation(NaviTheme.Spring.smooth) {
+                            agent.activeProject = nil
+                        }
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary.opacity(0.55))
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    #if os(macOS)
+                    .help("Ny kodsession")
+                    #endif
+                }
 
                 // Opus review toggle
                 Button {
@@ -238,10 +238,16 @@ struct CodeView: View {
                             // 3. Pipeline phase pill
                             // 4. Thinking phase pill
                             if agent.isRunning && agent.streamingText.isEmpty {
-                                ThinkingDots()
-                                    .padding(.horizontal, 16)
-                                    .id("activityPill")
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                Group {
+                                    if agent.phase == .build {
+                                        Visual2_StreamingCode()
+                                    } else {
+                                        ThinkingDots()
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .id("activityPill")
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                             // Completion state
                             if !agent.isRunning && agent.phase == .done {
@@ -301,8 +307,6 @@ struct CodeView: View {
             ThinkingOrb(size: 72, isAnimating: false)
 
             VStack(spacing: 10) {
-                Text("Kod")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
                 Text("Beskriv ett projekt — Navi planerar, bygger\noch pushar till GitHub åt dig.")
                     .font(.system(size: 14, design: .rounded))
                     .foregroundColor(.secondary)

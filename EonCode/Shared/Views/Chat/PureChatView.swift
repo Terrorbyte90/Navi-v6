@@ -795,7 +795,7 @@ struct MarkdownTextView: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .heading(let level, let t):
@@ -805,35 +805,37 @@ struct MarkdownTextView: View, Equatable {
                     Self.renderParagraph(t)
                         .fixedSize(horizontal: false, vertical: true)
                 case .bulletList(let items):
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 5) {
                         ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text("•")
-                                    .font(NaviTheme.bodyFont(size: 16))
-                                    .foregroundColor(.secondary.opacity(0.7))
-                                    .frame(width: 10, alignment: .leading)
+                            HStack(alignment: .top, spacing: 10) {
+                                Circle()
+                                    .fill(Color.secondary.opacity(0.5))
+                                    .frame(width: 5, height: 5)
+                                    .padding(.top, 7)
                                 Self.renderParagraph(item)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
+                    .padding(.leading, 4)
                 case .numberedList(let items):
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 5) {
                         ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                            HStack(alignment: .top, spacing: 8) {
+                            HStack(alignment: .top, spacing: 10) {
                                 Text("\(i + 1).")
-                                    .font(NaviTheme.bodyFont(size: 16))
-                                    .foregroundColor(.secondary.opacity(0.7))
-                                    .frame(width: 22, alignment: .leading)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 20, alignment: .trailing)
                                 Self.renderParagraph(item)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
+                    .padding(.leading, 4)
                 case .code(let lang, let code):
                     MarkdownCodeBlock(language: lang, code: code)
                 case .divider:
-                    Divider().opacity(0.15).padding(.vertical, 2)
+                    Divider().opacity(0.12).padding(.vertical, 4)
                 }
             }
         }
@@ -841,7 +843,7 @@ struct MarkdownTextView: View, Equatable {
 
     @ViewBuilder
     private static func renderHeading(_ raw: String, level: Int) -> some View {
-        let size: CGFloat = level == 1 ? 20 : level == 2 ? 18 : 16
+        let size: CGFloat = level == 1 ? 20 : level == 2 ? 17 : 15
         let weight: Font.Weight = level == 1 ? .bold : .semibold
         if let attributed = try? AttributedString(
             markdown: raw,
@@ -849,11 +851,11 @@ struct MarkdownTextView: View, Equatable {
         ) {
             Text(attributed)
                 .font(.system(size: size, weight: weight))
-                .padding(.top, level == 1 ? 6 : 3)
+                .padding(.top, level == 1 ? 8 : 4)
         } else {
             Text(raw)
                 .font(.system(size: size, weight: weight))
-                .padding(.top, level == 1 ? 6 : 3)
+                .padding(.top, level == 1 ? 8 : 4)
         }
     }
 
@@ -864,12 +866,12 @@ struct MarkdownTextView: View, Equatable {
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) {
             Text(attributed)
-                .font(NaviTheme.bodyFont(size: 16))
-                .lineSpacing(5)
+                .font(NaviTheme.bodyFont(size: 15.5))
+                .lineSpacing(6)
         } else {
             Text(raw)
-                .font(NaviTheme.bodyFont(size: 16))
-                .lineSpacing(5)
+                .font(NaviTheme.bodyFont(size: 15.5))
+                .lineSpacing(6)
         }
     }
 

@@ -279,6 +279,13 @@ struct ChatHistorySidebar: View {
                     .buttonStyle(.plain)
                     .background(codeAgent.activeProject?.id == proj.id
                                 ? Color.accentNavi.opacity(0.08) : Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Task { await codeAgent.deleteProject(proj) }
+                        } label: {
+                            Label("Ta bort", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }

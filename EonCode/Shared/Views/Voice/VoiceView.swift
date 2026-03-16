@@ -12,12 +12,14 @@ struct VoiceView: View {
         case tts    = "Text till tal"
         case sound  = "Ljud"
         case design = "Röstdesign"
+        case saved  = "Sparade"
         var id: String { rawValue }
         var icon: String {
             switch self {
             case .tts:    return "waveform"
             case .sound:  return "music.note"
             case .design: return "person.wave.2"
+            case .saved:  return "folder.fill"
             }
         }
     }
@@ -37,6 +39,7 @@ struct VoiceView: View {
                 case .tts:    TTSTab()
                 case .sound:  SoundTab()
                 case .design: VoiceDesignTab()
+                case .saved:  SavedAudioTab()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -829,6 +832,154 @@ private struct VoiceDesignTab: View {
         }
     }
 }
+
+// MARK: - Saved Audio Tab
+
+private struct SavedAudioTab: View {
+    @State private var files: [URL] = []
+    @State private var player = AudioPlayer()
+    @State private var playingURL: URL? = nil
+    @State private var shareURL: URL? = nil
+    @State private var showShare = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionLabel("Sparade ljud", icon: "folder.fill")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+
+                if files.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "waveform.slash")
+                            .font(.system(size: 36))
+                            .foregroundColor(.secondary.opacity(0.3))
+                        Text("Inga sparade ljud ännu")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                        Text("Spara TTS eller ljud från de andra flikarna\nså visas de här.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 60)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(files, id: \.absoluteString) { url in
+                            audioRow(url)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+
+                Spacer(minLength: 40)
+            }
+        }
+        .onAppear { loadFiles() }
+        #if os(iOS)
+        .sheet(isPresented: $showShare) {
+            if let url = shareURL {
+                ShareSheet(items: [url])
+            }
+        }
+        #endif
+    }
+
+    private func audioRow(_ url: URL) -> some View {
+        HStack(spacing: 14) {
+            // Play/stop button
+            Button {
+                Task { await togglePlay(url) }
+            } label: {
+                Image(systemName: playingURL == url ? "stop.fill" : "play.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.accentNavi)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.accentNavi.opacity(0.1)))
+            }
+            .buttonStyle(.plain)
+
+            // File info
+            VStack(alignment: .leading, spacing: 3) {
+                Text(url.lastPathComponent)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                Text(fileSize(url))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Share button
+            Button {
+                shareURL = url
+                showShare = true
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.userBubble)
+        )
+    }
+
+    private func loadFiles() {
+        guard let dir = iCloudSyncEngine.shared.mediaAudioRoot else { return }
+        do {
+            let contents = try FileManager.default.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.creationDateKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+            files = contents
+                .filter { ["mp3", "m4a", "wav", "aac"].contains($0.pathExtension.lowercased()) }
+                .sorted { (lhs, rhs) -> Bool in
+                    let lDate = (try? lhs.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date.distantPast
+                    let rDate = (try? rhs.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date.distantPast
+                    return lDate > rDate
+                }
+        } catch {
+            files = []
+        }
+    }
+
+    private func fileSize(_ url: URL) -> String {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return "" }
+        let kb = Double(size) / 1024
+        return kb < 1024 ? String(format: "%.0f KB", kb) : String(format: "%.1f MB", kb / 1024)
+    }
+
+    private func togglePlay(_ url: URL) async {
+        if playingURL == url {
+            player.stop()
+            playingURL = nil
+        } else {
+            if let data = try? Data(contentsOf: url) {
+                playingURL = url
+                await player.play(data: data)
+                playingURL = nil
+            }
+        }
+    }
+}
+
+#if os(iOS)
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+#endif
 
 // MARK: - Shared helper
 
