@@ -2222,7 +2222,10 @@ function spawnCodeWorker(parentSessionId, workerId, workerIndex, task, context, 
   // Run worker asynchronously
   (async () => {
     try {
-      const workerModel = (codeSessions[parentSessionId] || {}).model || 'minimax/minimax-m2.5';
+      let workerModel = (codeSessions[parentSessionId] || {}).model || 'minimax/minimax-m2.5';
+      // For free chain workers, pick the first free model
+      const isWorkerFree = workerModel === 'free';
+      if (isWorkerFree) workerModel = FREE_MODEL_CHAIN[0];
       const workerSystemPrompt = `Du är worker #${workerIndex} i Navi Code. Uppgift: ${task}. Kontext: ${context}. Arbeta självständigt, rapportera filerna du skapade/ändrade. Max 10 iterationer.`;
       // prepareMessagesForModel handles MiniMax system→user conversion
       const messages = prepareMessagesForModel([
@@ -2238,7 +2241,20 @@ function spawnCodeWorker(parentSessionId, workerId, workerIndex, task, context, 
           workerInfo.output = 'Stoppat av användaren.';
           break;
         }
-        const result = await withRetry(() => callOpenRouter(messages, workerModel, codeAgentToolDefinitions()), 3, 1500);
+        // For free workers, try model chain with fallback
+        let result;
+        if (isWorkerFree) {
+          let lastErr;
+          for (const fm of FREE_MODEL_CHAIN) {
+            try {
+              result = await callOpenRouter(messages, fm, codeAgentToolDefinitions());
+              break;
+            } catch (e) { lastErr = e; continue; }
+          }
+          if (!result) throw lastErr || new Error('Alla gratismodeller misslyckades (worker)');
+        } else {
+          result = await withRetry(() => callOpenRouter(messages, workerModel, codeAgentToolDefinitions()), 3, 1500);
+        }
         const choice = result.choices?.[0];
         if (!choice) break;
         const msg = choice.message;
@@ -2298,6 +2314,19 @@ async function codeReactLoop(sessionId, userMessage) {
   const session = codeSessions[sessionId];
   if (!session) throw new Error(`Sessionen ${sessionId} finns inte`);
 
+  // Normalize model ID — map short names to full OpenRouter model IDs
+  const MODEL_ALIASES = {
+    'minimax':  'minimax/minimax-m2.5',
+    'kimi':     'moonshotai/kimi-k2.5',
+    'qwen':     'qwen/qwen3-coder',
+    'deepseek': 'deepseek/deepseek-r1-0528',
+  };
+  if (MODEL_ALIASES[session.model]) {
+    session.model = MODEL_ALIASES[session.model];
+    updateCodeSession(sessionId, { model: session.model });
+  }
+
+  const isFreeChain = session.model === 'free';
   const complexity = detectComplexity(userMessage);
   const maxIter = complexity === 'simple' ? 8 : complexity === 'complex' ? 30 : 20;
 
@@ -2327,6 +2356,33 @@ async function codeReactLoop(sessionId, userMessage) {
   const toolCallsUsed = [];
   let finalResponse = '';
   let totalTokens = 0;
+  // Track which free model is currently working (for chain fallback)
+  let currentFreeModelIdx = 0;
+
+  // Helper: call OpenRouter with free-chain fallback when model === 'free'
+  async function callWithModel(msgs, tools) {
+    if (!isFreeChain) {
+      return await withRetry(() => callOpenRouter(msgs, session.model, tools), 3, 1500);
+    }
+    // Free model chain — try each model until one succeeds
+    let lastError;
+    for (let fi = currentFreeModelIdx; fi < FREE_MODEL_CHAIN.length; fi++) {
+      const freeModel = FREE_MODEL_CHAIN[fi];
+      try {
+        updateCodeSession(sessionId, {
+          liveStatus: { ...session.liveStatus, phase: `trying ${freeModel.split('/').pop().replace(':free', '')}` },
+        });
+        const result = await callOpenRouter(msgs, freeModel, tools);
+        currentFreeModelIdx = fi; // stick with working model
+        return result;
+      } catch (e) {
+        lastError = e;
+        addLog('WARN', `Free model ${freeModel} misslyckades (code): ${e.message.substring(0, 80)}`);
+        continue;
+      }
+    }
+    throw lastError || new Error('Alla gratismodeller misslyckades');
+  }
 
   try {
     for (let i = 0; i < maxIter; i++) {
@@ -2350,7 +2406,7 @@ async function codeReactLoop(sessionId, userMessage) {
         liveStatus: { phase: 'thinking', tool: null, iter: i, startedAt: session.liveStatus?.startedAt || new Date().toISOString() },
       });
 
-      const result = await withRetry(() => callOpenRouter(messages, session.model, codeAgentToolDefinitions()), 3, 1500);
+      const result = await callWithModel(messages, codeAgentToolDefinitions());
       const choice = result.choices?.[0];
       if (!choice) break;
 
@@ -2587,7 +2643,12 @@ app.post('/code/sessions/:id/clear', auth, (req, res) => {
 app.get('/code/live', auth, (req, res) => {
   const live = {};
   for (const [id, s] of Object.entries(codeSessions)) {
-    live[id] = { status: s.status, liveStatus: s.liveStatus || {}, name: s.name };
+    live[id] = {
+      status: s.status,
+      liveStatus: s.liveStatus || {},
+      name: s.name,
+      workers: Object.values(codeWorkers[id] || {}),
+    };
   }
   res.json({ sessions: live });
 });

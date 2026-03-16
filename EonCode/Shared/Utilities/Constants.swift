@@ -242,8 +242,8 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
     var serverModelKey: String? {
         switch self {
         case .freeModels:  return "free"
-        case .minimaxM25:  return "minimax"
-        case .kimiK25:     return "minimax"   // closest available on server
+        case .minimaxM25:  return "minimax/minimax-m2.5"
+        case .kimiK25:     return "moonshotai/kimi-k2.5"
         default:           return nil          // run locally
         }
     }
