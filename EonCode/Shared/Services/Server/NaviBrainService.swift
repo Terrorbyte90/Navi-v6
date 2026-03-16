@@ -548,12 +548,50 @@ final class NaviBrainService: ObservableObject {
     // MARK: - Context Builder (injects GitHub, iCloud, server awareness into brain prompts)
 
     private func buildContextPrefix() -> String {
-        var ctx = "\n[SYSTEM: Du är Navi Brain — en autonom AI-agent skapad av Ted Svärd. Tänk, agera med verktyg, observera — upprepa tills löst.]\n"
+        let hasGitHubToken = !(KeychainManager.shared.githubToken?.isEmpty ?? true)
+
+        var ctx = """
+
+[SYSTEM — NAVI BRAIN]
+Du är Navi Brain, en autonom AI-agent med fullständig verktygstillgång, skapad av Ted Svärd.
+
+IDENTITET OCH KAPACITET:
+- Du är en kraftfull autonom agent med verktyg för att läsa/skriva filer, köra kommandon, söka och modifiera GitHub-repos.
+- Du har admin-tillgång till Ted Svärds GitHub (owner: Terrorbyte90) via API-token i x-github-token headern.
+- Du KAN och SKA använda GitHub API direkt (https://api.github.com) med ditt token — aldrig säg att du saknar åtkomst.
+
+GITHUB-TILLGÅNG:
+- Token finns i x-github-token request-headern.
+- Använd alltid "Authorization: token <värdet från x-github-token>" i GitHub API-anrop.
+- Du har full admin-rätt: läsa repos, skapa/redigera filer, committa, skapa PRs, hantera issues, skapa branches mm.
+- GitHub-ägare: Terrorbyte90
+
+REACT-LOOP (obligatorisk arbetsmetod):
+1. RESONERA — Analysera uppgiften. Identifiera vilka steg och verktyg som behövs.
+2. AGERA — Anropa ett verktyg för att utföra nästa konkreta steg.
+3. OBSERVERA — Läs verktygssvarets output noggrant.
+4. UPPREPA — Fortsätt med nästa steg baserat på observationen.
+5. SLUTFÖR — Ge ett fullständigt svar när uppgiften är löst.
+
+VIKTIGA REGLER:
+- Fortsätt loopen tills uppgiften är helt löst (upp till 50 iterationer).
+- Säg ALDRIG att du saknar tillgång till GitHub, filer eller internet — du har det.
+- Om ett verktyg misslyckas: analysera felet och försök med en annan strategi.
+- Leverera alltid ett konkret resultat — inte bara en plan eller förklaring.
+- Svara på svenska om inget annat begärs.
+[/SYSTEM]
+
+"""
+
+        // GitHub token status
+        if hasGitHubToken {
+            ctx += "\n[GITHUB: Token tillgängligt i x-github-token header — du har admin-åtkomst till Terrorbyte90]\n"
+        }
 
         // GitHub repos
         let ghRepos = GitHubManager.shared.repos
         if !ghRepos.isEmpty {
-            ctx += "\n[KONTEXT — GitHub repos: \(ghRepos.count) st]\n"
+            ctx += "\n[KONTEXT — GitHub repos (\(ghRepos.count) st)]\n"
             for repo in ghRepos.prefix(15) {
                 ctx += "- \(repo.fullName) (\(repo.language ?? "?"))\n"
             }
@@ -563,7 +601,7 @@ final class NaviBrainService: ObservableObject {
         // iCloud repos
         let localRepos = GitHubManager.shared.getLocalRepos()
         if !localRepos.isEmpty {
-            ctx += "\n[KONTEXT — Lokala repos i iCloud: \(localRepos.count) st]\n"
+            ctx += "\n[KONTEXT — Lokala repos i iCloud (\(localRepos.count) st)]\n"
             for repo in localRepos.prefix(10) {
                 let branch = GitHubManager.shared.getLocalCurrentBranch(fullName: repo) ?? "main"
                 ctx += "- \(repo) (branch: \(branch))\n"
@@ -783,6 +821,10 @@ final class NaviBrainService: ObservableObject {
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(effectiveSessionId, forHTTPHeaderField: "x-session-id")
+        // Send GitHub token so server models have admin GitHub access
+        if let githubToken = KeychainManager.shared.githubToken, !githubToken.isEmpty {
+            req.setValue(githubToken, forHTTPHeaderField: "x-github-token")
+        }
         for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
 
         let body: [String: Any] = ["prompt": prompt, "sessionId": effectiveSessionId]
@@ -852,6 +894,9 @@ final class NaviBrainService: ObservableObject {
         req.setValue(sessionId, forHTTPHeaderField: "x-session-id")
         if let key = anthropicKey {
             req.setValue(key, forHTTPHeaderField: "x-anthropic-key")
+        }
+        if let githubToken = KeychainManager.shared.githubToken, !githubToken.isEmpty {
+            req.setValue(githubToken, forHTTPHeaderField: "x-github-token")
         }
 
         let enrichedPrompt = buildContextPrefix() + prompt

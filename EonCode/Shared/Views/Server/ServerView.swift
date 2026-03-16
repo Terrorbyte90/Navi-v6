@@ -1064,18 +1064,19 @@ struct BrainChatView: View {
             .textSelection(.enabled)
     }
 
-    // MARK: - Thinking indicator — uses one of the 10 VisualsTest designs
+    // MARK: - Thinking indicator
 
     var thinkingIndicator: some View {
-        let live = brain.liveStatus
-        let hasLiveTool = live?.active == true && live?.tool != nil
+        let tool = brain.liveStatus?.active == true ? brain.liveStatus?.tool : nil
 
-        if hasLiveTool, let tool = live?.tool {
-            // Live tool executing → route to correct visual (Visual2–Visual10)
-            return AnyView(NaviVisualActivity.forTool(tool))
+        if let tool, tool.contains("write_file") || tool.contains("create_file") {
+            // File writing → streaming code visual
+            return AnyView(Visual2_StreamingCode()
+                .padding(.horizontal, 16))
         }
-        // Model is generating a response — Visual1 Terminal Pulse
-        return AnyView(NaviVisualActivity(state: .thinking))
+        // All other states: tool calls, thinking, processing → three-dot indicator
+        return AnyView(ThinkingDots()
+            .padding(.horizontal, 16))
     }
 
     // MARK: - Input bar
