@@ -73,6 +73,17 @@ final class XcodeBuildManager: ObservableObject {
     ) async -> BuildResult {
         var lastResult = BuildResult(succeeded: false, output: "", errors: [], exitCode: -1)
 
+        // Resolve active project so AgentEngine has file-path context for its tools
+        let activeProject = await ProjectStore.shared.projects.first(where: { proj in
+            guard let resolved = proj.resolvedURL else { return false }
+            return projectPath.hasPrefix(resolved.path)
+        })
+        if let proj = activeProject {
+            await AgentEngine.shared.setProject(proj)
+        }
+
+        let projectID = activeProject?.id ?? UUID()
+
         for attempt in 1...maxAttempts {
             CheckpointManager.shared.save(
                 taskID: UUID(),
@@ -95,9 +106,9 @@ final class XcodeBuildManager: ObservableObject {
             onFix("🔧 Fixar \(result.errors.count) fel...")
 
             // Create a conversation and ask for fixes
-            var conv = Conversation(projectID: UUID(), model: .haiku)
+            var conv = Conversation(projectID: projectID, model: .haiku)
             await AgentEngine.shared.run(
-                task: AgentTask(projectID: UUID(), instruction: fixPrompt),
+                task: AgentTask(projectID: projectID, instruction: fixPrompt),
                 conversation: &conv,
                 onUpdate: onFix
             )

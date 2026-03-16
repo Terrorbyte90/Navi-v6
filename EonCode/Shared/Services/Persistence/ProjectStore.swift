@@ -113,6 +113,10 @@ final class ProjectStore: ObservableObject {
     func delete(_ project: NaviProject) async {
         projects.removeAll { $0.id == project.id }
 
+        // Stop and discard the agent + prompt queue for this project
+        AgentPool.shared.removeAgent(for: project.id)
+        PromptQueue.remove(for: project.id)
+
         // Remove from iCloud
         if let dir = sync.urlForProject(project) {
             do {
