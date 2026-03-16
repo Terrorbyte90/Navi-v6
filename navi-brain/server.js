@@ -42,9 +42,10 @@ const startTime = Date.now();
 // Model IDs
 const MODELS = {
   minimax: 'minimax/minimax-m2.5',
-  qwen: 'qwen/qwen3-coder:free',
-  deepseek: 'deepseek/deepseek-r1',
-  opus: 'claude-sonnet-4-6',   // runs via Anthropic API
+  qwen: 'qwen/qwen3-coder',           // paid — proper tool-calling support
+  deepseek: 'deepseek/deepseek-r1-0528', // updated DeepSeek R1
+  deepseekFallback: 'meta-llama/llama-3.3-70b-instruct',
+  opus: 'claude-sonnet-4-6',          // runs via Anthropic API
 };
 
 // ============================================================
@@ -198,53 +199,67 @@ function addLog(action, details, project = 'system', tokens = null) {
 const TOOLS = [
   {
     name: 'run_command',
-    description: 'Kör ett shell-kommando på servern. Returnerar stdout och stderr. Använd för att utforska filsystem, köra git-kommandon, etc.',
+    description: 'Kör ett shell-kommando på Ubuntu-servern. Returnerar stdout+stderr. Använd för git-kommandon, filoperationer, npm, python, curl etc. Git-autentisering via token sköts automatiskt — du behöver inte skicka lösenord manuellt.',
     parameters: {
       type: 'object',
       properties: {
-        command: { type: 'string', description: 'Shell-kommandot att köra' },
+        command: { type: 'string', description: 'Shell-kommandot att köra (bash)' },
+        cwd: { type: 'string', description: 'Arbetskatalog (standard: /root). Exempel: /root/repos/Navi-v6' },
       },
       required: ['command'],
     },
   },
   {
     name: 'read_file',
-    description: 'Läs innehållet i en fil. Returnerar filens text.',
+    description: 'Läs innehållet i en fil på servern. Returnerar filens text (max 15 000 tecken).',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Sökväg till filen' },
+        path: { type: 'string', description: 'Absolut sökväg till filen' },
       },
       required: ['path'],
     },
   },
   {
     name: 'write_file',
-    description: 'Skriv innehåll till en fil. Skapar filen om den inte finns.',
+    description: 'Skriv eller ersätt en fil på servern. Skapar kataloger om de saknas.',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Sökväg till filen' },
-        content: { type: 'string', description: 'Innehållet att skriva' },
+        path: { type: 'string', description: 'Absolut sökväg till filen' },
+        content: { type: 'string', description: 'Fullständigt filinnehåll att skriva' },
       },
       required: ['path', 'content'],
     },
   },
   {
     name: 'list_files',
-    description: 'Lista filer i en katalog.',
+    description: 'Lista filer i en katalog på servern.',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Katalogväg' },
-        recursive: { type: 'boolean', description: 'Rekursiv listning' },
+        path: { type: 'string', description: 'Katalogväg (absolut)' },
+        recursive: { type: 'boolean', description: 'Rekursiv listning (max djup 3)' },
       },
       required: ['path'],
     },
   },
   {
+    name: 'github_api',
+    description: 'Anropa GitHub REST API direkt med admin-token. Använd för att hämta repos, filer, commits, skapa PRs, issues, branches etc. GitHub-ägare: Terrorbyte90. Token autentiseras automatiskt.',
+    parameters: {
+      type: 'object',
+      properties: {
+        method: { type: 'string', description: 'HTTP-metod: GET, POST, PUT, PATCH, DELETE', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+        path: { type: 'string', description: 'API-sökväg, t.ex. /repos/Terrorbyte90/Navi-v6/contents/README.md eller /repos/Terrorbyte90/Navi-v6/git/refs' },
+        body: { type: 'object', description: 'JSON-body för POST/PUT/PATCH (valfritt)' },
+      },
+      required: ['method', 'path'],
+    },
+  },
+  {
     name: 'deploy_testflight',
-    description: 'Trigga en Xcode Cloud-build via App Store Connect API och ladda upp till TestFlight. Pushar först till GitHub och startar sedan en Xcode Cloud workflow.',
+    description: 'Trigga en Xcode Cloud-build och deploya till TestFlight via App Store Connect API.',
     parameters: {
       type: 'object',
       properties: {
@@ -419,23 +434,40 @@ async function triggerXcodeCloudBuild(scheme, branch) {
   return `🟡 Xcode Cloud build pågår.\nWorkflow: ${workflow.attributes.name}\nBuild ID: ${buildId}\nStatus: ${status}\nBygget körs i bakgrunden — ntfy-notis skickas när det är klart.`;
 }
 
-// Execute a tool call
-async function executeTool(name, args) {
+// Execute a tool call — githubToken is injected so git ops can authenticate
+async function executeTool(name, args, githubToken = null) {
   try {
     switch (name) {
       case 'run_command': {
         const cmd = args.command || '';
+        const cwd = args.cwd || '/root';
         addLog('TOOL', `run_command: ${cmd.substring(0, 100)}`);
         try {
+          // Inject GitHub token into environment so git push/pull/clone works
+          const env = { ...process.env };
+          if (githubToken) {
+            env.GIT_ASKPASS = '/bin/echo';
+            env.GITHUB_TOKEN = githubToken;
+            // Configure git to use token-based auth inline for this call
+            // Pre-configure credential helper to use the token
+            try {
+              execSync(
+                `git config --global credential.helper '!f() { echo "username=x-token"; echo "password=${githubToken}"; }; f'`,
+                { encoding: 'utf8', timeout: 5000 }
+              );
+            } catch {}
+          }
           const output = execSync(cmd, {
-            timeout: 30000,
-            maxBuffer: 1024 * 1024,
+            timeout: 60000,      // 60s — git clone/push can take time
+            maxBuffer: 2 * 1024 * 1024,
             encoding: 'utf8',
-            cwd: '/root',
+            cwd,
+            env,
           });
-          return output.substring(0, 8000);
+          return output.substring(0, 10000) || '(tom utdata — kommandot lyckades)';
         } catch (e) {
-          return `Error (exit ${e.status}): ${(e.stderr || e.message).substring(0, 4000)}`;
+          const errOut = ((e.stderr || '') + ' ' + (e.stdout || '') + ' ' + e.message).trim();
+          return `Fel (exit ${e.status ?? '?'}): ${errOut.substring(0, 5000)}`;
         }
       }
       case 'read_file': {
@@ -452,7 +484,7 @@ async function executeTool(name, args) {
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(filePath, content, 'utf8');
-        return `Filen skriven: ${filePath}`;
+        return `✅ Filen skriven: ${filePath} (${content.length} tecken)`;
       }
       case 'list_files': {
         const dirPath = args.path || '/root';
@@ -461,15 +493,61 @@ async function executeTool(name, args) {
         if (!fs.existsSync(dirPath)) return `Katalogen finns inte: ${dirPath}`;
         if (recursive) {
           try {
-            const output = execSync(`find "${dirPath}" -maxdepth 3 -type f | head -100`, {
-              encoding: 'utf8', timeout: 5000,
+            const output = execSync(`find "${dirPath}" -maxdepth 4 -not -path '*/node_modules/*' -not -path '*/.git/objects/*' | head -200`, {
+              encoding: 'utf8', timeout: 8000,
             });
-            return output;
+            return output || '(tom katalog)';
           } catch {
-            return 'Kunde inte lista filer rekursivt';
+            return fs.readdirSync(dirPath).join('\n');
           }
         }
-        return fs.readdirSync(dirPath).join('\n');
+        return fs.readdirSync(dirPath).join('\n') || '(tom katalog)';
+      }
+      case 'github_api': {
+        const method = (args.method || 'GET').toUpperCase();
+        const apiPath = args.path || '';
+        const body = args.body || null;
+        const token = githubToken || process.env.GITHUB_TOKEN || '';
+        addLog('TOOL', `github_api: ${method} ${apiPath}`);
+
+        if (!token) return '❌ Ingen GitHub-token tillgänglig. Skicka x-github-token i headern.';
+
+        const result = await new Promise((resolve, reject) => {
+          const bodyData = body ? JSON.stringify(body) : null;
+          const req = https.request({
+            hostname: 'api.github.com',
+            path: apiPath,
+            method,
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'Navi-Brain/3.5',
+              'X-GitHub-Api-Version': '2022-11-28',
+              ...(bodyData ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) } : {}),
+            },
+            timeout: 30000,
+          }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(data);
+                if (res.statusCode >= 400) {
+                  resolve(`❌ GitHub API ${res.statusCode}: ${JSON.stringify(json.message || json).substring(0, 500)}`);
+                } else {
+                  resolve(JSON.stringify(json, null, 2).substring(0, 12000));
+                }
+              } catch {
+                resolve(data.substring(0, 5000));
+              }
+            });
+          });
+          req.on('error', reject);
+          req.on('timeout', () => { req.destroy(); reject(new Error('GitHub API timeout')); });
+          if (bodyData) req.write(bodyData);
+          req.end();
+        });
+        return result;
       }
       case 'deploy_testflight': {
         const scheme = args.scheme || 'Navi-iOS';
@@ -480,9 +558,13 @@ async function executeTool(name, args) {
         // Optional: commit and push first
         if (commitMsg) {
           try {
-            execSync(`cd /root/repos/Navi-v5 && git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`, {
-              encoding: 'utf8', timeout: 30000,
-            });
+            const repoPath = '/root/repos/Navi-v6';
+            const env = { ...process.env };
+            if (githubToken) env.GITHUB_TOKEN = githubToken;
+            execSync(
+              `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`,
+              { encoding: 'utf8', timeout: 60000, cwd: repoPath, env }
+            );
             addLog('TOOL', 'Git push klar innan deploy');
           } catch (e) {
             addLog('TOOL', `Git push-varning: ${e.message.substring(0, 200)}`);
@@ -609,20 +691,58 @@ async function callAnthropic(messages, anthropicKey, systemPrompt = null) {
 // REACT LOOP (OpenRouter models)
 // ============================================================
 
-const SYSTEM_PROMPT = `Du är Navi Brain — en autonom AI-agent skapad av Ted Svärd.
-Du kör på en dedikerad Ubuntu-server (209.38.98.107).
-Du har tillgång till verktyg: run_command, read_file, write_file, list_files.
+function buildSystemPrompt(githubToken = null) {
+  const tokenSection = githubToken
+    ? `\nGITHUB-TOKEN (admin-åtkomst till Terrorbyte90):
+- Token finns och är injicerat i git credential helper automatiskt.
+- För github_api-verktyget autentiseras det automatiskt — du behöver inte skicka det manuellt.
+- För git push/pull/clone via run_command fungerar autentisering automatiskt.
+- GitHub-ägare: Terrorbyte90 | API-bas: https://api.github.com\n`
+    : `\nOBS: Ingen GitHub-token skickades med denna förfrågan. Be användaren konfigurera token i appen.\n`;
 
-VIKTIGT:
-- Tänk steg-för-steg (ReAct: Tanke → Åtgärd → Observation → upprepa).
-- Använd verktygen aktivt för att utforska, läsa och modifiera filer.
-- Svara alltid på svenska om inte annat begärs.
-- När du är klar, ge ett tydligt svar med resultatet.
-- Du kan köra git-kommandon, installera paket, redigera filer etc.`;
+  return `Du är Navi Brain — en kraftfull autonom AI-agent skapad av Ted Svärd.
+Du kör på en dedikerad Ubuntu-server (209.38.98.107) med full root-åtkomst.
 
-async function reactLoop(prompt, model, sessionHistory, maxIter = 15) {
+VERKTYG DU HAR:
+- run_command(command, cwd?): Kör valfritt bash-kommando. Standard cwd: /root. Kan ange annat cwd.
+- read_file(path): Läs en fil (max 15 000 tecken).
+- write_file(path, content): Skriv/ersätt en fil.
+- list_files(path, recursive?): Lista katalogens innehåll.
+- github_api(method, path, body?): Anropa GitHub REST API direkt med admin-token.
+- deploy_testflight(scheme, branch?, commitMessage?): Bygg och deploya till TestFlight via Xcode Cloud.
+
+SERVERMILJÖ:
+- OS: Ubuntu Linux, root-användare
+- Repos klonade på servern: /root/repos/ (t.ex. /root/repos/Navi-v6)
+- Node.js, git, python3, curl, npm finns installerade
+- Serverns eget projekt: /root/navi-brain/
+${tokenSection}
+REACT-LOOP (arbetsmetod — OBLIGATORISK):
+1. RESONERA — Analysera uppgiften. Vad behöver göras? Vilka filer/kommandon krävs?
+2. AGERA — Anropa ett verktyg för att utföra nästa konkreta steg.
+3. OBSERVERA — Läs verktygssvarets output noggrant. Vad visar resultatet?
+4. UPPREPA — Fortsätt med nästa steg baserat på observationen.
+5. SLUTFÖR — Ge ett fullständigt och tydligt svar när allt är klart.
+
+GIT-REGLER:
+- Konfigurera alltid git user innan commits: git config user.email "navi@brain.ai" && git config user.name "Navi Brain"
+- För push: git push origin <branch> (token sköter autentisering automatiskt)
+- Repos klonas till /root/repos/<reponamn>
+- Om repo saknas: git clone https://github.com/Terrorbyte90/<repo>.git /root/repos/<repo>
+
+VIKTIGA REGLER:
+- Fortsätt loopen tills uppgiften är HELT löst (upp till 20 iterationer).
+- Säg ALDRIG att du saknar åtkomst — du har root + GitHub + internet.
+- Om ett verktyg misslyckas: analysera felet och försök med annan strategi.
+- Leverera alltid konkret resultat, inte bara planer.
+- Svara på svenska om inte annat begärs.
+- Visa alltid vad du gjorde och vilket resultat du fick.`;
+}
+
+async function reactLoop(prompt, model, sessionHistory, maxIter = 20, githubToken = null) {
+  const systemPrompt = buildSystemPrompt(githubToken);
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     ...sessionHistory,
     { role: 'user', content: prompt },
   ];
@@ -655,24 +775,23 @@ async function reactLoop(prompt, model, sessionHistory, maxIter = 15) {
         liveStatus.tool = `${name}(${JSON.stringify(args).substring(0, 60)})`;
         toolCallNames.push(name);
 
-        const result = await executeTool(name, args);
+        const toolResult = await executeTool(name, args, githubToken);
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
-          content: result,
+          content: toolResult,
         });
       }
       continue; // Another iteration
     }
 
-    // No tool calls — we have the final response
+    // No tool calls — model is done
     finalResponse = msg.content || '';
-    break;
+    if (finalResponse) break;  // Only break if we actually got a response
   }
 
   liveStatus = { active: false, model: null, tool: null, iter: null };
 
-  // Track cost
   const inputCost = (totalTokens * 0.3) / 1_000_000;  // rough estimate
   costTracker.total_cost += inputCost;
   costTracker.total_requests += 1;
@@ -689,7 +808,8 @@ async function reactLoop(prompt, model, sessionHistory, maxIter = 15) {
 // REACT LOOP (Anthropic/Claude)
 // ============================================================
 
-async function reactLoopAnthropic(prompt, anthropicKey, sessionHistory, maxIter = 15) {
+async function reactLoopAnthropic(prompt, anthropicKey, sessionHistory, maxIter = 20, githubToken = null) {
+  const systemPrompt = buildSystemPrompt(githubToken);
   const messages = [
     ...sessionHistory,
     { role: 'user', content: prompt },
@@ -703,7 +823,7 @@ async function reactLoopAnthropic(prompt, anthropicKey, sessionHistory, maxIter 
   for (let i = 0; i < maxIter; i++) {
     liveStatus = { active: true, model: MODELS.opus, tool: null, iter: i };
 
-    const result = await callAnthropic(messages, anthropicKey, SYSTEM_PROMPT);
+    const result = await callAnthropic(messages, anthropicKey, systemPrompt);
 
     const usage = result.usage || {};
     const inputTok = usage.input_tokens || 0;
@@ -727,7 +847,7 @@ async function reactLoopAnthropic(prompt, anthropicKey, sessionHistory, maxIter 
         liveStatus.tool = `${name}(${JSON.stringify(args).substring(0, 60)})`;
         toolCallNames.push(name);
 
-        const toolResult = await executeTool(name, args);
+        const toolResult = await executeTool(name, args, githubToken);
         toolResults.push({
           type: 'tool_result',
           tool_use_id: block.id,
@@ -910,6 +1030,7 @@ app.post('/ask', auth, async (req, res) => {
   const prompt = req.body.prompt || '';
   const sessionId = req.body.sessionId || req.headers['x-session-id'] || 'default';
   const notify = req.body.notify !== false;
+  const githubToken = req.headers['x-github-token'] || req.body.githubToken || null;
 
   if (!sessions[sessionId]) sessions[sessionId] = { history: [] };
   const session = sessions[sessionId];
@@ -917,7 +1038,7 @@ app.post('/ask', auth, async (req, res) => {
   addLog('MINIMAX', `Prompt: ${prompt.substring(0, 80)}`, 'minimax');
 
   try {
-    const result = await reactLoop(prompt, MODELS.minimax, session.history);
+    const result = await reactLoop(prompt, MODELS.minimax, session.history, 20, githubToken);
 
     // Update session history
     session.history.push({ role: 'user', content: prompt });
@@ -963,6 +1084,9 @@ app.post('/qwen/ask', auth, async (req, res) => {
   const prompt = req.body.prompt || '';
   const sessionId = req.body.sessionId || req.headers['x-session-id'] || 'default';
   const notify = req.body.notify !== false;
+  const githubToken = req.headers['x-github-token'] || req.body.githubToken || null;
+  // Allow model override from client (used by iOS fallback chain)
+  const modelOverride = req.headers['x-model-override'] || req.body.model || null;
 
   if (!qwenSessions[sessionId]) qwenSessions[sessionId] = { history: [] };
   const session = qwenSessions[sessionId];
@@ -970,13 +1094,19 @@ app.post('/qwen/ask', auth, async (req, res) => {
   addLog('QWEN', `Prompt: ${prompt.substring(0, 80)}`, 'qwen');
 
   try {
-    // Try Qwen3-Coder first, fall back to DeepSeek R1
+    // Try Qwen3-Coder (paid) first, then DeepSeek R1, then Llama as last resort
     let result;
+    const primaryModel = modelOverride || MODELS.qwen;
     try {
-      result = await reactLoop(prompt, MODELS.qwen, session.history, 10);
+      result = await reactLoop(prompt, primaryModel, session.history, 20, githubToken);
     } catch (e) {
-      addLog('QWEN', `Qwen3-Coder misslyckades, testar DeepSeek R1: ${e.message}`);
-      result = await reactLoop(prompt, MODELS.deepseek, session.history, 10);
+      addLog('QWEN', `${primaryModel} misslyckades, testar DeepSeek R1: ${e.message}`);
+      try {
+        result = await reactLoop(prompt, MODELS.deepseek, session.history, 20, githubToken);
+      } catch (e2) {
+        addLog('QWEN', `DeepSeek misslyckades, testar Llama: ${e2.message}`);
+        result = await reactLoop(prompt, MODELS.deepseekFallback, session.history, 15, githubToken);
+      }
     }
 
     session.history.push({ role: 'user', content: prompt });
@@ -1023,6 +1153,7 @@ app.post('/opus/ask', auth, async (req, res) => {
   const sessionId = req.body.sessionId || req.headers['x-session-id'] || 'default';
   const anthropicKey = req.headers['x-anthropic-key'] || process.env.ANTHROPIC_API_KEY || '';
   const notify = req.body.notify !== false;
+  const githubToken = req.headers['x-github-token'] || req.body.githubToken || null;
 
   if (!anthropicKey) {
     return res.status(400).json({ response: 'Ingen Anthropic API-nyckel', tokens: 0 });
@@ -1034,7 +1165,7 @@ app.post('/opus/ask', auth, async (req, res) => {
   addLog('OPUS', `Prompt: ${prompt.substring(0, 80)}`, 'opus');
 
   try {
-    const result = await reactLoopAnthropic(prompt, anthropicKey, session.history);
+    const result = await reactLoopAnthropic(prompt, anthropicKey, session.history, 20, githubToken);
 
     session.history.push({ role: 'user', content: prompt });
     session.history.push({ role: 'assistant', content: result.response });
@@ -1091,6 +1222,7 @@ app.post('/opus/history/clear', auth, (req, res) => {
 
 app.post('/task/start', auth, async (req, res) => {
   const { prompt, taskId: clientTaskId, model: modelName, sessionId, anthropicKey, notify } = req.body;
+  const githubToken = req.headers['x-github-token'] || req.body.githubToken || null;
 
   if (!prompt) {
     return res.status(400).json({ error: 'Ingen prompt angiven' });
@@ -1112,6 +1244,7 @@ app.post('/task/start', auth, async (req, res) => {
     completedAt: null,
     sessionId: sessionId || 'default',
     notify: notify !== false,
+    githubToken,  // store for background use
   };
 
   activeTasks[taskId] = task;
@@ -1141,13 +1274,14 @@ app.post('/task/start', auth, async (req, res) => {
 });
 
 async function runTaskInBackground(task, anthropicKey) {
+  const githubToken = task.githubToken || null;
   try {
     let result;
 
     if (task.model === 'opus' && anthropicKey) {
       // Claude via Anthropic
       const session = opusSessions[task.sessionId] || { history: [], totalCost: 0, totalTokens: 0 };
-      result = await reactLoopAnthropic(task.prompt, anthropicKey, session.history);
+      result = await reactLoopAnthropic(task.prompt, anthropicKey, session.history, 20, githubToken);
       session.totalCost += result.cost || 0;
       session.totalTokens += result.tokens || 0;
       opusSessions[task.sessionId] = session;
@@ -1157,7 +1291,7 @@ async function runTaskInBackground(task, anthropicKey) {
       const sessionStore = task.model === 'qwen' ? qwenSessions : sessions;
       if (!sessionStore[task.sessionId]) sessionStore[task.sessionId] = { history: [] };
       const session = sessionStore[task.sessionId];
-      result = await reactLoop(task.prompt, model, session.history);
+      result = await reactLoop(task.prompt, model, session.history, 20, githubToken);
       session.history.push({ role: 'user', content: task.prompt });
       session.history.push({ role: 'assistant', content: result.response });
     }
