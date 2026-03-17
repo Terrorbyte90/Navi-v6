@@ -69,7 +69,7 @@ final class NaviOrchestrator {
             Task {
                 await executeRemoteOnMac(instruction: instruction, project: targetProject)
                 isProcessing = false
-                activity.complete(summary: "Skickad till Mac")
+                activity.complete(summary: activity.buildSummary())
             }
             return
         }

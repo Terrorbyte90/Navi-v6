@@ -75,6 +75,34 @@ struct CodeProgressCard: View {
     }
 }
 
+// MARK: - PhasePill
+
+struct PhasePill: View {
+    let phase: PipelinePhase
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color.accentNavi)
+                .frame(width: 6, height: 6)
+                .scaleEffect(pulse ? 1.4 : 1.0)
+                .opacity(pulse ? 0.6 : 1.0)
+            Text(phase.displayName.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .tracking(0.8)
+        }
+        .foregroundColor(.accentNavi.opacity(0.8))
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(Capsule().fill(Color.accentNavi.opacity(0.08)))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+    }
+}
+
 // MARK: - PipelinePhase helper
 
 extension PipelinePhase {
