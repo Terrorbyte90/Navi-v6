@@ -417,38 +417,65 @@ async function executeTool(name, args, session) {
       }
 
       case 'web_search': {
-        const query = encodeURIComponent(args.query || '');
+        const query = args.query || '';
+        const encodedQuery = encodeURIComponent(query);
+
+        // Use DuckDuckGo HTML endpoint — more reliable than the JSON API
         const result = await new Promise((resolve) => {
           const req = https.request({
-            hostname: 'api.duckduckgo.com',
-            path: `/?q=${query}&format=json&no_html=1&skip_disambig=1`,
+            hostname: 'html.duckduckgo.com',
+            path: `/html/?q=${encodedQuery}&kl=se-sv`,
             method: 'GET',
-            timeout: 10000,
-            headers: { 'User-Agent': 'Navi-Code-Agent/2.0' },
+            timeout: 15000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'sv,en;q=0.9',
+              'Accept-Encoding': 'identity',
+            },
           }, (res) => {
             let body = '';
-            res.on('data', c => body += c);
+            res.on('data', c => { if (body.length < 600000) body += c; });
             res.on('end', () => {
               try {
-                const d = JSON.parse(body);
-                const parts = [];
-                if (d.AbstractText) {
-                  parts.push(d.AbstractText);
-                  if (d.AbstractURL) parts.push(`Source: ${d.AbstractURL}`);
+                const results = [];
+
+                // Extract result titles + URLs
+                const titleRe = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+                const snippetRe = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+
+                const titles = [];
+                const snippets = [];
+                let m;
+
+                while ((m = titleRe.exec(body)) !== null && titles.length < 8) {
+                  const url = m[1];
+                  const title = m[2].replace(/<[^>]+>/g, '').trim();
+                  if (title && url) titles.push({ url, title });
                 }
-                const results = (d.RelatedTopics || [])
-                  .filter(t => t.Text && t.FirstURL)
-                  .slice(0, 8)
-                  .map(t => `• ${t.Text}\n  ${t.FirstURL}`);
+                while ((m = snippetRe.exec(body)) !== null && snippets.length < 8) {
+                  const text = m[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").trim();
+                  if (text) snippets.push(text);
+                }
+
+                for (let i = 0; i < Math.min(titles.length, 6); i++) {
+                  const snippet = snippets[i] || '';
+                  results.push(`**${titles[i].title}**\n${snippet}\n${titles[i].url}`);
+                }
+
                 if (results.length > 0) {
-                  parts.push('\nRelated:\n' + results.join('\n'));
+                  resolve(`Sökresultat för "${query}":\n\n${results.join('\n\n')}`);
+                } else {
+                  // Fallback: try DuckDuckGo JSON API
+                  resolve('Inga resultat. Prova ett mer specifikt sökord.');
                 }
-                resolve(parts.join('\n\n') || 'No results found. Try a more specific query.');
-              } catch { resolve('Search failed — could not parse response.'); }
+              } catch (e) {
+                resolve(`Sökning misslyckades: ${e.message}`);
+              }
             });
           });
-          req.on('error', () => resolve('Search unavailable'));
-          req.on('timeout', () => { req.destroy(); resolve('Search timed out'); });
+          req.on('error', (e) => resolve(`Sökning otillgänglig: ${e.message}`));
+          req.on('timeout', () => { req.destroy(); resolve('Söktidsgräns nådd'); });
           req.end();
         });
         return { result, isError: false };

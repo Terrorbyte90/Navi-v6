@@ -15,6 +15,7 @@ struct ChatHistorySidebar: View {
     @StateObject private var statusBroadcaster = DeviceStatusBroadcaster.shared
     @StateObject private var ghManager = GitHubManager.shared
     @StateObject private var mediaManager = MediaGenerationManager.shared
+    @StateObject private var codeSessionsStore = CodeSessionsStore.shared
 
     @State private var searchText = ""
     @State private var showSettings = false
@@ -242,7 +243,118 @@ struct ChatHistorySidebar: View {
 
     @ViewBuilder
     var codeHistory: some View {
-        emptyHistoryHint(icon: "chevron.left.forwardslash.chevron.right.circle", text: "Code-projekt visas här")
+        VStack(alignment: .leading, spacing: 0) {
+            // Running sessions
+            let running = codeSessionsStore.runningSessions
+            let recent  = codeSessionsStore.recentSessions
+
+            if !running.isEmpty {
+                sectionHeader("Kör nu")
+                ForEach(running) { session in
+                    codeSessionRow(session)
+                }
+            }
+
+            if !recent.isEmpty {
+                sectionHeader("Senaste sessioner")
+                ForEach(recent.prefix(15)) { session in
+                    codeSessionRow(session)
+                }
+            }
+
+            if running.isEmpty && recent.isEmpty {
+                if codeSessionsStore.isLoading {
+                    HStack(spacing: 8) {
+                        ProgressView().scaleEffect(0.7)
+                        Text("Hämtar sessioner…")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 20)
+                } else {
+                    emptyHistoryHint(icon: "terminal.fill", text: "Inga Code-sessioner ännu\nStarta en ny i Code-vyn")
+                }
+            }
+        }
+        .onAppear { codeSessionsStore.startPolling() }
+    }
+
+    @ViewBuilder
+    private func codeSessionRow(_ session: RemoteCodeSession) -> some View {
+        let isCurrent = ServerCodeSession.shared.sessionId == session.id
+        Button {
+            codeSessionsStore.switchToSession(session)
+            selectedTab = .code
+            showSidebar = false
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(session.statusColor.opacity(0.15))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: session.statusIcon)
+                        .font(.system(size: 13))
+                        .foregroundColor(session.statusColor)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(session.taskPreview)
+                        .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
+                        .foregroundColor(.primary.opacity(isCurrent ? 1 : 0.85))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 6) {
+                        Text(session.modelDisplayName)
+                            .font(.system(size: 10, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.6))
+                        if session.isRunning {
+                            HStack(spacing: 3) {
+                                Circle().fill(NaviTheme.warning).frame(width: 5, height: 5)
+                                Text("Aktiv")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(NaviTheme.warning)
+                            }
+                        } else {
+                            Text(session.timeAgo)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.5))
+                        }
+
+                        if session.doneCount > 0 {
+                            Text("· \(session.doneCount)/\(session.todos.count)")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.45))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if session.isRunning {
+                    ProgressView().scaleEffect(0.55)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isCurrent ? Color.accentNavi.opacity(0.08) : Color.clear)
+            )
+            .overlay(
+                isCurrent
+                    ? Rectangle()
+                        .fill(Color.accentNavi)
+                        .frame(width: 2.5)
+                        .clipShape(RoundedRectangle(cornerRadius: 1.5))
+                        .frame(maxHeight: .infinity, alignment: .leading)
+                    : nil,
+                alignment: .leading
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
     }
 
     // MARK: - Chat history

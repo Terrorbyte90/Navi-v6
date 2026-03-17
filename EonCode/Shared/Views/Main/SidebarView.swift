@@ -16,6 +16,7 @@ struct SidebarView: View {
     @StateObject private var ghManager = GitHubManager.shared
     @StateObject private var mediaManager = MediaGenerationManager.shared
     @StateObject private var callsService = CallsService.shared
+    @StateObject private var codeSessionsStore = CodeSessionsStore.shared
 
     @State private var searchText = ""
     @State private var showSettings = false
@@ -344,50 +345,92 @@ struct SidebarView: View {
     }
 
     var codeProjectList: some View {
-        let agent = CodeAgent.shared
-        return Group {
-            if agent.projects.isEmpty {
-                emptyHint(icon: "chevron.left.forwardslash.chevron.right.circle", text: "Inga Code-projekt ännu")
-            } else {
-                ForEach(agent.projects) { proj in
-                    Button {
-                        agent.selectProject(proj)
-                        section = .code
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: proj.currentPhase == .done ? "checkmark.circle.fill" : proj.currentPhase == .idle ? "circle" : "bolt.circle.fill")
-                                .font(.system(size: 13))
-                                .foregroundColor(proj.currentPhase == .done ? .green : proj.currentPhase == .idle ? .secondary : .orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(proj.name)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .lineLimit(1)
-                                Text(proj.currentPhase.displayName)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 1) {
+                let running = codeSessionsStore.runningSessions
+                let recent  = codeSessionsStore.recentSessions
+
+                if !running.isEmpty {
+                    listSectionHeader("Kör nu")
+                    ForEach(running) { sess in macCodeSessionRow(sess) }
+                }
+
+                if !recent.isEmpty {
+                    listSectionHeader("Senaste")
+                    ForEach(recent.prefix(20)) { sess in macCodeSessionRow(sess) }
+                }
+
+                if running.isEmpty && recent.isEmpty {
+                    if codeSessionsStore.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 20)
+                    } else {
+                        emptyHint(icon: "terminal.fill",
+                                  text: "Inga Code-sessioner\nStarta en ny i Code-vyn")
                     }
-                    .buttonStyle(.plain)
-                    .background(
-                        agent.activeProject?.id == proj.id
-                            ? Color.accentNavi.opacity(0.08)
-                            : Color.clear
-                    )
-                    .overlay(
-                        agent.activeProject?.id == proj.id
-                            ? Rectangle().fill(Color.accentNavi).frame(width: 2).frame(maxHeight: .infinity, alignment: .leading)
-                            : nil,
-                        alignment: .leading
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
+            .padding(.bottom, 8)
         }
+        .onAppear { codeSessionsStore.startPolling() }
+    }
+
+    @ViewBuilder
+    private func macCodeSessionRow(_ sess: RemoteCodeSession) -> some View {
+        let isCurrent = ServerCodeSession.shared.sessionId == sess.id
+        Button {
+            codeSessionsStore.switchToSession(sess)
+            section = .code
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle().fill(sess.statusColor.opacity(0.15)).frame(width: 26, height: 26)
+                    Image(systemName: sess.statusIcon)
+                        .font(.system(size: 11))
+                        .foregroundColor(sess.statusColor)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(sess.task.prefix(50)))
+                        .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                    HStack(spacing: 5) {
+                        Text(sess.modelDisplayName)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.55))
+                        if sess.isRunning {
+                            Text("· Aktiv")
+                                .font(.system(size: 10))
+                                .foregroundColor(NaviTheme.warning)
+                        } else {
+                            Text("· \(sess.timeAgo)")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.45))
+                        }
+                    }
+                }
+                Spacer()
+                if sess.isRunning { ProgressView().scaleEffect(0.5) }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isCurrent ? Color.accentNavi.opacity(0.08) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .overlay(
+            isCurrent
+                ? Rectangle().fill(Color.accentNavi).frame(width: 2)
+                    .frame(maxHeight: .infinity, alignment: .leading)
+                    .padding(.leading, 6)
+                : nil,
+            alignment: .leading
+        )
     }
 
     // MARK: - Project list

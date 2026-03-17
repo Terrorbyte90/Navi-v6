@@ -552,6 +552,14 @@ final class ServerCodeSession: ObservableObject {
                 commitCurrentText(text: accumulatedText)
                 accumulatedText = ""
             }
+            // Local notification
+            let taskSnap    = task
+            let summarySnap = event.summary ?? "Klar"
+            Task {
+                await CodeNotificationHelper.sendCompletionNotification(
+                    task: taskSnap, summary: summarySnap
+                )
+            }
 
         case .runError:
             isRunning = false
@@ -559,6 +567,12 @@ final class ServerCodeSession: ObservableObject {
             lastError = event.error
             liveToolName = nil
             streamingText = ""
+            // Notification only for real errors (not user-stopped)
+            let errMsg = event.error ?? ""
+            if !errMsg.contains("Stoppad av användaren") {
+                let taskSnap = task
+                Task { await CodeNotificationHelper.sendErrorNotification(task: taskSnap, error: errMsg) }
+            }
 
         case .error:
             lastError = event.error
