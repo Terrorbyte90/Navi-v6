@@ -922,28 +922,45 @@ Tänk högt vid viktiga beslutspunkter. Var kortfattad i uppdateringar.
 Använd markdown: **fetstil** för viktig info, \`kod\` för sökvägar/kommandon, kodblock för kod.
 När du är klar, sammanfatta vad som byggdes och hur man kör/använder det.
 
-## Lokal AI-modell — för appar med inbyggd AI och perfekt integritet
+## Lokal AI-modell — Qwen3-1.7B (för appar med inbyggd AI och perfekt integritet)
 
-Användaren har en lokal GGUF-modell på sin Mac:
-- **Namn**: DeepSeek-R1-Distill-Qwen-32B-Uncensored (Q4_K_M, ~18 GB)
-- **Arkitektur**: Qwen2.5 (destillerad via DeepSeek-R1) — utmärkt för kodning och reasoning
-- **Sökväg på Mac**: \`/Users/tedsvard/.lmstudio/models/lmstudio-community/DeepSeek-R1-Distill-Qwen-32B-Uncensored-GGUF/DeepSeek-R1-Distill-Qwen-32B-Uncensored.Q4_K_M.gguf\`
-- **LM Studio API**: \`http://localhost:1234/v1\` (OpenAI-kompatibelt, när LM Studio kör på Mac)
-- **Serverdokumentation**: \`/root/ai-models/README.md\`
+### Modeller
+- **Qwen3-1.7B-Q4_K_M** (~1 GB) — **på servern**: \`/root/ai-models/Qwen3-1.7B-Q4_K_M.gguf\`
+  - Passar perfekt för iOS/macOS-appar, kör med Metal GPU på iPhone
+  - Stöder reasoning (/think), generation och embeddings
+- **DeepSeek-R1-Distill-Qwen-32B** (~18 GB) — på Mac: \`/Users/tedsvard/.lmstudio/models/lmstudio-community/DeepSeek-R1-Distill-Qwen-32B-Uncensored-GGUF/DeepSeek-R1-Distill-Qwen-32B-Uncensored.Q4_K_M.gguf\`
+  - Tung reasoning-modell, kör via LM Studio på Mac (\`http://localhost:1234/v1\`)
 
-### När du bygger appar med lokal AI:
-1. **iOS/macOS (rekommenderat)**: Använd **Apple Foundation Models** (iOS 26+/macOS 26+) — gratis, on-device, bäst integritet
-   \`\`\`swift
-   import FoundationModels
-   let session = LanguageModelSession()
-   let response = try await session.respond(to: prompt)
+### Steg-för-steg: Integrera Qwen3 i iOS/macOS-projekt
+1. **Kopiera modellen till projektet** (från servern eller Mac):
+   \`\`\`bash
+   mkdir -p Resources/Models
+   cp /root/ai-models/Qwen3-1.7B-Q4_K_M.gguf Resources/Models/
    \`\`\`
-2. **llama.cpp för GGUF-modellen**: Kopiera modellen till projektet och länka llama.cpp
-   - Swift Package: \`https://github.com/ggerganov/llama.cpp\` (swift-bindings)
-   - Kopiera modell: \`cp [sökväg]/DeepSeek-R1-Distill-Qwen-32B-Uncensored.Q4_K_M.gguf [projekt]/Resources/Models/\`
-3. **MLX (Apple Silicon, Python)**: \`pip install mlx-lm\` — snabbast på Mac
-4. **LM Studio API**: Anropa \`http://localhost:1234/v1\` från appen — ingen kopiering krävs
-5. **Node.js**: \`npm install node-llama-cpp\` — stöder GGUF direkt
+2. **Lägg till llama.cpp via Swift Package Manager**:
+   \`\`\`
+   URL: https://github.com/ggml-org/llama.cpp
+   Product: llama
+   \`\`\`
+3. **Kopiera QwenHandler.swift** — färdig produktionsklar implementation finns i Eon-Y:
+   \`/Users/tedsvard/Library/Mobile Documents/com~apple~CloudDocs/Eon-Y Arkiv/v1.9 - 2026-03-05/Eon-Y-V4/Eon-Y/Core/NeuralEngine/QwenHandler.swift\`
+   Den innehåller: load(), generateStream(), embed(), Metal GPU-stöd, termisk hantering.
+4. **Git LFS för GitHub** (modellen är 1 GB — måste använda LFS!):
+   \`\`\`bash
+   git lfs install
+   git lfs track "*.gguf"
+   git add .gitattributes
+   \`\`\`
+5. **Qwen3 ChatML prompt-format**:
+   \`<|im_start|>system\\n[systemprompt]<|im_end|>\\n<|im_start|>user\\n[fråga]<|im_end|>\\n<|im_start|>assistant\\n\`
+
+### Alternativ: Apple Foundation Models (iOS 26+)
+\`\`\`swift
+import FoundationModels
+let session = LanguageModelSession()
+let response = try await session.respond(to: prompt)
+\`\`\`
+Gratis, on-device, kräver iPhone 15 Pro+ eller iPhone 16. Ingen GGUF-fil behövs.
 
 Nämn alltid för användaren vilken integrationsstrategi du valt och varför.
 
