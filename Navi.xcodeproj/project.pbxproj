@@ -122,7 +122,6 @@
 		6E10F5EA6CF1D243BF3967DD /* CodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC0E0DC13B3418C6E7BE099 /* CodeView.swift */; };
 		708A0CEDC5CD88DFAE432071 /* ProjectIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E774684432AF41D71C0FDE5F /* ProjectIndexer.swift */; };
 		734D4A4F12F1903BC8893867 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BE7D1EDE2C854EDF626CFEF /* ChatView.swift */; };
-		7417BD6D90D28F5D679400DF /* VisualsTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD99D0EDBC196E3DD536448C /* VisualsTest.swift */; };
 		76230ED9C7910D0AAFA4C5AA /* AgentAction+Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA7B0E1D043971209D35C110 /* AgentAction+Platform.swift */; };
 		76BE069846765398189C56A4 /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E145A4DCF8B170F35B55C /* FileNode.swift */; };
 		76E0688CB3B9998A672C51F4 /* DeviceStatusBroadcaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215B5630F5C90A41A92CEE6E /* DeviceStatusBroadcaster.swift */; };
@@ -158,7 +157,6 @@
 		98B8DF00784FF65EAF88A672 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81AB7E8B7FB42687CBD3D91 /* BrowserView.swift */; };
 		9A63C510FD4CBB1F38E7BD0C /* NaviActivityPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */; };
 		9BEBC654F5C68DF9D33D4721 /* CheckpointManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E0F32117BD899767E725C6 /* CheckpointManager.swift */; };
-		9CF0DA63FDEDA4AB66F49FE4 /* VisualsTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD99D0EDBC196E3DD536448C /* VisualsTest.swift */; };
 		9E42BEE7328C4D3D9AE198B2 /* VoiceModeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */; };
 		9E4952BBF146103DA9C6E684 /* ExchangeRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433D65180DC56EA603F1EBFB /* ExchangeRate.swift */; };
 		9F336D89CD8681EF0073BBFB /* XcodeBuildManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F2A1F74AE4306E978FC894 /* XcodeBuildManager.swift */; };
@@ -317,7 +315,7 @@
 		64B074907A2FB58C840C223A /* NaviApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviApp.swift; sourceTree = "<group>"; };
 		6FD7C47B7A159B2A9A089AB6 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
 		7423689F437F42E5120BB320 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
-		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7547E53210F7158811E0657B /* BrowserAgentLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAgentLogView.swift; sourceTree = "<group>"; };
 		75E16C42F31EA3521A28B103 /* PremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumComponents.swift; sourceTree = "<group>"; };
 		778D08B3D0DD0AD571D93118 /* TerminalExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalExecutor.swift; sourceTree = "<group>"; };
@@ -356,7 +354,6 @@
 		B8BA70D01A417EFA13C8B9ED /* KeychainSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSync.swift; sourceTree = "<group>"; };
 		B8F2A1F74AE4306E978FC894 /* XcodeBuildManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeBuildManager.swift; sourceTree = "<group>"; };
 		BC33BB35777F343FE6C25B5D /* PipelinePhaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PipelinePhaseView.swift; sourceTree = "<group>"; };
-		BD99D0EDBC196E3DD536448C /* VisualsTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualsTest.swift; sourceTree = "<group>"; };
 		BF1E145A4DCF8B170F35B55C /* FileNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNode.swift; sourceTree = "<group>"; };
 		C060EC4823CD390A11D75959 /* MediaGenerationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaGenerationManager.swift; sourceTree = "<group>"; };
 		C09A7E41FD15D6E951893B64 /* AgentTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTask.swift; sourceTree = "<group>"; };
@@ -805,7 +802,6 @@
 				06075E83F58D9C6DB461B918 /* GlassCard.swift */,
 				CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */,
 				75E16C42F31EA3521A28B103 /* PremiumComponents.swift */,
-				BD99D0EDBC196E3DD536448C /* VisualsTest.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -987,7 +983,6 @@
 						ProvisioningStyle = Automatic;
 					};
 					DAB8911160F888000AB35966 = {
-						DevelopmentTeam = DV646H5VDP;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -1146,7 +1141,6 @@
 				B656D55DEAD432C6EF0AE607 /* UserProfileManager.swift in Sources */,
 				F9FC84F28E6E32579D622444 /* Version.swift in Sources */,
 				305478642D91B19AD1B6D208 /* VersionStore.swift in Sources */,
-				9CF0DA63FDEDA4AB66F49FE4 /* VisualsTest.swift in Sources */,
 				9E42BEE7328C4D3D9AE198B2 /* VoiceModeManager.swift in Sources */,
 				48AEE337BEEEC1649399FF30 /* VoiceModeOverlay.swift in Sources */,
 				4F92656D9B07C97D8365BD0C /* VoiceView.swift in Sources */,
@@ -1274,7 +1268,6 @@
 				F4C2EDCCA55422820DF3D224 /* UserProfileManager.swift in Sources */,
 				0268031574BC3759F0CCC5E4 /* Version.swift in Sources */,
 				CE0DA5088F4570AC95B033DC /* VersionStore.swift in Sources */,
-				7417BD6D90D28F5D679400DF /* VisualsTest.swift in Sources */,
 				12172C21C552F91BC79429C6 /* VoiceModeManager.swift in Sources */,
 				158FDEB191AA845C344E0BC8 /* VoiceModeOverlay.swift in Sources */,
 				85571089B8B958323A81865C /* VoiceView.swift in Sources */,
@@ -1444,7 +1437,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1485,7 +1478,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
