@@ -74,12 +74,12 @@ final class XcodeBuildManager: ObservableObject {
         var lastResult = BuildResult(succeeded: false, output: "", errors: [], exitCode: -1)
 
         // Resolve active project so AgentEngine has file-path context for its tools
-        let activeProject = await ProjectStore.shared.projects.first(where: { proj in
+        let activeProject = ProjectStore.shared.projects.first(where: { proj in
             guard let resolved = proj.resolvedURL else { return false }
             return projectPath.hasPrefix(resolved.path)
         })
         if let proj = activeProject {
-            await AgentEngine.shared.setProject(proj)
+            AgentEngine.shared.setProject(proj)
         }
 
         let projectID = activeProject?.id ?? UUID()

@@ -615,8 +615,10 @@ final class BrowserAgent: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     }
 
     nonisolated func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        let request = navigationAction.request
-        Task { @MainActor in webView.load(request) }
+        Task { @MainActor in
+            let request = navigationAction.request
+            webView.load(request)
+        }
         return nil
     }
 

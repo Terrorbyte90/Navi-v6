@@ -187,7 +187,6 @@ final class XAIClient: ObservableObject {
 
         // Track tool calls from streaming deltas
         var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
-        var hasToolCalls = false
         var stopReason = "end_turn"
 
         for try await line in bytes.lines {
@@ -239,8 +238,6 @@ final class XAIClient: ObservableObject {
                                 let name = funcInfo?["name"] as? String ?? ""
                                 let args = funcInfo?["arguments"] as? String ?? ""
                                 pendingToolCalls[idx] = (id: id, name: name, arguments: args)
-                                hasToolCalls = true
-
                                 onEvent(.contentBlockStart(index: idx + 1, type: "tool_use", id: id, name: name))
                             }
 

@@ -80,27 +80,36 @@ final class NaviOrchestrator {
                 isProcessing = false
             }
 
-            do {
-                // Step 1: Scan project if needed
-                if let proj = targetProject {
-                    await scanProjectIfNeeded(proj)
-                }
-
-                // Step 2: Create plan via Haiku (cheap)
-                await createPlan(instruction: instruction, project: targetProject)
-
-                // Step 3: Execute via AgentEngine
-                await executeWithEngine(instruction: instruction, project: targetProject)
-
-                // Step 4: Complete
-                let summary = activity.buildSummary()
-                activity.complete(summary: summary)
-
-            } catch is CancellationError {
-                activity.fail(message: "Avbrutet av användaren")
-            } catch {
-                activity.fail(message: error.localizedDescription)
+            // Step 1: Scan project if needed
+            if let proj = targetProject {
+                await scanProjectIfNeeded(proj)
             }
+
+            // Check for cancellation after each async step
+            guard !Task.isCancelled else {
+                activity.fail(message: "Avbrutet av användaren")
+                return
+            }
+
+            // Step 2: Create plan via Haiku (cheap)
+            await createPlan(instruction: instruction, project: targetProject)
+
+            guard !Task.isCancelled else {
+                activity.fail(message: "Avbrutet av användaren")
+                return
+            }
+
+            // Step 3: Execute via AgentEngine
+            await executeWithEngine(instruction: instruction, project: targetProject)
+
+            guard !Task.isCancelled else {
+                activity.fail(message: "Avbrutet av användaren")
+                return
+            }
+
+            // Step 4: Complete
+            let summary = activity.buildSummary()
+            activity.complete(summary: summary)
         }
     }
 
@@ -137,7 +146,7 @@ final class NaviOrchestrator {
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) {
-            for case let fileURL as URL in enumerator {
+            for fileURL in enumerator.compactMap({ $0 as? URL }) {
                 let pathComponents = fileURL.pathComponents
                 if pathComponents.contains(where: { ignoredDirs.contains($0) }) {
                     continue
