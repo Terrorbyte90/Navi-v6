@@ -13,7 +13,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execSync, exec } = require('child_process');
+const { WebSocketServer } = require('ws');
 const telephony = require('./telephony');
+const codeAgent = require('./code-agent');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -1263,30 +1265,67 @@ telephony.register(app, auth, addLog);
 // Telephony scheduler — check every 30 seconds
 setInterval(() => telephony.runScheduler(addLog), 30000);
 
-app.listen(PORT, '0.0.0.0', () => {
-  addLog('BOOT', `Navi Brain v3.3 startad på port ${PORT}`);
+// ============================================================
+// CODE AGENT routes
+// ============================================================
+
+app.use('/code', auth, codeAgent.createRouter(express));
+
+// ============================================================
+// HTTP SERVER + WEBSOCKET
+// ============================================================
+
+const httpServer = http.createServer(app);
+
+const wss = new WebSocketServer({ noServer: true });
+
+codeAgent.init(wss, {
+  dataDir: DATA_DIR,
+  openrouterKey: OPENROUTER_KEY,
+  anthropicKey: process.env.ANTHROPIC_API_KEY || '',
+});
+
+// Route WebSocket upgrades for /code/ws to the code agent WS server
+httpServer.on('upgrade', (request, socket, head) => {
+  // Simple auth: check ?key= or X-Api-Key header
+  const url = new URL(request.url, 'http://localhost');
+  const wsKey = url.searchParams.get('key') || request.headers['x-api-key'] || '';
+  if (wsKey !== API_KEY) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  if (request.url.startsWith('/code/ws')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+httpServer.listen(PORT, '0.0.0.0', () => {
+  addLog('BOOT', `Navi Brain v3.4 startad på port ${PORT}`);
   addLog('BOOT', `Modeller: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
   addLog('BOOT', `ntfy.sh topic: ${NTFY_TOPIC}`);
   addLog('BOOT', `Persistens: ${DATA_DIR}`);
-  console.log(`\n🧠 Navi Brain v3.3 running on port ${PORT}`);
+  addLog('BOOT', `Code Agent WebSocket: ws://0.0.0.0:${PORT}/code/ws`);
+  console.log(`\n🧠 Navi Brain v3.4 running on port ${PORT}`);
   console.log(`   ntfy topic: ${NTFY_TOPIC}`);
   console.log(`   Models: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
+  console.log(`   Code Agent WS: ws://0.0.0.0:${PORT}/code/ws`);
   console.log(`   Data dir: ${DATA_DIR}\n`);
 });
 
 // Graceful shutdown — save state
-process.on('SIGTERM', () => {
+function gracefulShutdown() {
   console.log('[SHUTDOWN] Saving state...');
   saveTasks();
   saveSessions();
   saveCosts();
   process.exit(0);
-});
+}
 
-process.on('SIGINT', () => {
-  console.log('[SHUTDOWN] Saving state...');
-  saveTasks();
-  saveSessions();
-  saveCosts();
-  process.exit(0);
-});
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT',  gracefulShutdown);

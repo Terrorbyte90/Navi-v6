@@ -10,13 +10,14 @@ SERVER="root@209.38.98.107"
 REMOTE_DIR="/root/navi-brain"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "🧠 Deploying Navi Brain v3.1 to ${SERVER}..."
+echo "🧠 Deploying Navi Brain v3.4 to ${SERVER}..."
 
 # 1. Copy files to server
 echo "📦 Kopierar filer..."
 ssh $SERVER "mkdir -p $REMOTE_DIR"
 scp "$SCRIPT_DIR/package.json" "$SERVER:$REMOTE_DIR/package.json"
 scp "$SCRIPT_DIR/server.js" "$SERVER:$REMOTE_DIR/server.js"
+scp "$SCRIPT_DIR/code-agent.js"  "$SERVER:$REMOTE_DIR/code-agent.js"
 
 # 2. Install dependencies
 echo "📥 Installerar beroenden..."
