@@ -248,6 +248,132 @@ struct NaviCodeLiveCard: View {
     }
 }
 
+// MARK: - NaviThinkingCard
+// Replaces ThinkingDots in ALL views — shows what the model is actually doing.
+// Phase-aware: icon, label, tool name, and elapsed time update as the request progresses.
+// Design: same bubble shape as chat messages so it sits naturally in the flow.
+
+struct NaviThinkingCard: View {
+    let phase: ChatManager.ThinkingPhase
+    var liveToolCall: String? = nil
+    var elapsed: Int = 0
+
+    @State private var dotPhase  = false
+    @State private var iconScale = false
+
+    // MARK: Derived display values
+
+    private var primaryLabel: String {
+        if phase == .executingTools, let tool = liveToolCall {
+            return tool.liveToolPillText
+        }
+        return phase.label
+    }
+
+    private var toolSubLabel: String? {
+        guard phase == .executingTools, let tool = liveToolCall, !tool.isEmpty else { return nil }
+        return tool.replacingOccurrences(of: "_", with: " ")
+    }
+
+    private var iconName: String {
+        if phase == .executingTools, let tool = liveToolCall {
+            return NaviActivityPill.toolIcon(tool)
+        }
+        return phase.icon
+    }
+
+    private var accentColor: Color {
+        switch phase {
+        case .connecting:     return Color.accentNavi.opacity(0.55)
+        case .thinking:       return Color.accentNavi
+        case .executingTools: return Color(naviHex: "68C89A")   // teal-green
+        case .finishing:      return Color(naviHex: "F4A261")   // amber
+        default:              return Color.secondary.opacity(0.8)
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            ThinkingOrb(size: 28, isAnimating: phase != .idle)
+
+            VStack(alignment: .leading, spacing: 4) {
+                // — Main status row: icon + label + animated dots
+                HStack(spacing: 6) {
+                    if !iconName.isEmpty {
+                        Image(systemName: iconName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(accentColor.opacity(0.85))
+                            .scaleEffect(iconScale ? 1.12 : 0.92)
+                            .animation(
+                                .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                                value: iconScale
+                            )
+                    }
+                    Text(primaryLabel)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary.opacity(0.72))
+                        .id(primaryLabel)           // key for implicit transition
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+
+                    // Compact dots — same rhythm as ThinkingDots, smaller
+                    HStack(spacing: 3) {
+                        ForEach(0..<3, id: \.self) { i in
+                            Circle()
+                                .fill(accentColor.opacity(dotPhase ? 0.75 : 0.2))
+                                .frame(width: 4, height: 4)
+                                .scaleEffect(dotPhase ? 1.0 : 0.55)
+                                .animation(
+                                    .easeInOut(duration: 0.52)
+                                        .repeatForever(autoreverses: true)
+                                        .delay(Double(i) * 0.16),
+                                    value: dotPhase
+                                )
+                        }
+                    }
+                }
+
+                // — Sub-row: tool name (monospaced) + elapsed time
+                if toolSubLabel != nil || elapsed > 0 {
+                    HStack(spacing: 5) {
+                        if let sub = toolSubLabel {
+                            Text(sub)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.45))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        if elapsed > 0 {
+                            Text("· \(elapsed < 60 ? "\(elapsed)s" : "\(elapsed / 60)m \(elapsed % 60)s")")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.32))
+                        }
+                    }
+                } else if elapsed > 0 {
+                    Text(elapsed < 60 ? "\(elapsed)s" : "\(elapsed / 60)m \(elapsed % 60)s")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.32))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color.surfaceHover.opacity(0.7))
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            dotPhase  = true
+            iconScale = true
+        }
+        .onDisappear {
+            dotPhase  = false
+            iconScale = false
+        }
+        .animation(.easeInOut(duration: 0.22), value: primaryLabel)
+    }
+}
+
 // MARK: - Status text helpers — ChatManager.ThinkingPhase
 
 extension ChatManager.ThinkingPhase {
@@ -311,6 +437,144 @@ extension String {
     var isCodeWritingTool: Bool {
         let t = self.lowercased()
         return t.hasPrefix("write_file") || t.hasPrefix("create_file")
+    }
+}
+
+// MARK: - ActivityState
+// Maps the current model state to one of the 10 visual designs from VisualsTest.
+// Each case corresponds precisely to a Visual1–Visual10 struct.
+
+enum ActivityState {
+    case thinking           // Visual 1: Terminal Pulse  — Tänker / resonerar
+    case writingCode        // Visual 2: Streaming Code  — Skriver kod
+    case searching          // Visual 3: Glass Orb       — Söker
+    case building           // Visual 4: Waveform Bar    — Bygger / kompilerar
+    case scanningFiles      // Visual 5: Scanning Lines  — Läser / skannar filer
+    case multipleTools      // Visual 6: Particle Swarm  — Flera verktyg
+    case fetchingData       // Visual 7: Neon Ring       — Hämtar data
+    case analyzing          // Visual 8: Matrix Rain     — Analyserar resultat
+    case waiting            // Visual 9: Breathing Dot   — Väntar / idle
+    case error              // Visual 10: Glitch Retry   — Fel / försöker igen
+
+    // MARK: Derive from raw tool name
+
+    static func fromTool(_ toolName: String, toolCount: Int = 1) -> ActivityState {
+        if toolCount > 1 { return .multipleTools }          // Visual6: 2+ tools simultaneously
+        let t = toolName.lowercased()
+        // Writing / creating files → Visual2
+        if t.hasPrefix("write_file") || t.hasPrefix("create_file") || t.hasPrefix("edit_file") { return .writingCode }
+        // Reading / scanning files → Visual5
+        if t.hasPrefix("read_file") || t.hasPrefix("get_file")     { return .scanningFiles }
+        if t.hasPrefix("list_files") || t.hasPrefix("list_dir")    { return .scanningFiles }
+        // Web / text search → Visual3
+        if t.hasPrefix("web_search") || t.hasPrefix("search_files") || t.hasPrefix("search") { return .searching }
+        // Build / run commands → Visual4
+        if t.hasPrefix("bash") || t.hasPrefix("run_command") || t.hasPrefix("execute") { return .building }
+        if t.hasPrefix("zip_") || t.hasPrefix("deploy_") || t.hasPrefix("build_")     { return .building }
+        if t.hasPrefix("server_exec")                               { return .building }
+        // Fetch / download / GitHub / server data → Visual7
+        if t.hasPrefix("download_file") || t.hasPrefix("fetch_")   { return .fetchingData }
+        if t.hasPrefix("github_list") || t.hasPrefix("github_get") { return .fetchingData }
+        if t.hasPrefix("github_create_pull")                       { return .fetchingData }
+        if t.hasPrefix("github")                                    { return .fetchingData }
+        if t.hasPrefix("server_ask")                                { return .fetchingData }
+        if t.hasPrefix("server")                                    { return .fetchingData }
+        // Analyze / image / memory → Visual8
+        if t.hasPrefix("image")                                     { return .analyzing }
+        if t.hasPrefix("memory")                                    { return .analyzing }
+        if t.hasPrefix("analyze") || t.hasPrefix("get_api_key")    { return .analyzing }
+        return .thinking                                            // Default → Visual1
+    }
+
+    // MARK: Derive from Swedish/English status text
+
+    static func fromStatus(_ text: String) -> ActivityState {
+        let s = text.lowercased()
+        if s.contains("skriver kod") || s.contains("write") || s.contains("skapar fil") { return .writingCode }
+        if s.contains("kör verktyg") || s.contains("flera verktyg")                     { return .multipleTools }
+        if s.contains("letar") || s.contains("söker") || s.contains("search")          { return .searching }
+        if s.contains("läser") || s.contains("skannar")                                 { return .scanningFiles }
+        if s.contains("bygger") || s.contains("kompilerar") || s.contains("kör kommando") ||
+           s.contains("pushar") || s.contains("konfigurerar")                           { return .building }
+        if s.contains("hämtar") || s.contains("github") || s.contains("brain") ||
+           s.contains("frågar") || s.contains("ansluter")                               { return .fetchingData }
+        if s.contains("analyserar")                                                      { return .analyzing }
+        if s.contains("väntar") || s.contains("förbereder")                             { return .waiting }
+        if s.contains("fel") || s.contains("error") || s.contains("retry")             { return .error }
+        // covers "Tänker", "Planerar", "Undersöker", "Slutför",
+        // "Opus tänker", "Qwen tänker", "Minimax tänker" …
+        return .thinking
+    }
+}
+
+// MARK: - PipelinePhase → ActivityState
+
+extension PipelinePhase {
+    var activityState: ActivityState {
+        switch self {
+        case .idle:     return .waiting
+        case .spec:     return .thinking
+        case .research: return .searching
+        case .setup:    return .building
+        case .plan:     return .thinking
+        case .build:    return .writingCode
+        case .push:     return .building
+        case .done:     return .waiting
+        }
+    }
+}
+
+// MARK: - ChatManager.ThinkingPhase → ActivityState
+
+extension ChatManager.ThinkingPhase {
+    var activityState: ActivityState {
+        switch self {
+        case .idle:           return .waiting
+        case .preparing:      return .waiting
+        case .connecting:     return .fetchingData
+        case .thinking:       return .thinking
+        case .responding:     return .thinking
+        case .executingTools: return .multipleTools
+        case .finishing:      return .thinking
+        }
+    }
+}
+
+// MARK: - NaviVisualActivity
+// The single entry-point for live model-activity visuals.
+// Routes each ActivityState to its dedicated visual from VisualsTest (Visual1–Visual10).
+// All models in all views (Chat, Code, Server) route through here.
+
+struct NaviVisualActivity: View {
+    let state: ActivityState
+
+    var body: some View {
+        switch state {
+        case .thinking:      Visual1_TerminalPulse(label: "Tänker…", terminalText: "resonerar")
+        case .writingCode:   Visual2_StreamingCode()
+        case .searching:     Visual3_GlassOrb()
+        case .building:      Visual4_WaveformBar()
+        case .scanningFiles: Visual5_ScanningLines()
+        case .multipleTools: Visual6_ParticleSwarm()
+        case .fetchingData:  Visual7_NeonRing()
+        case .analyzing:     Visual8_MatrixRain()
+        case .waiting:       Visual9_BreathingDot()
+        case .error:         Visual10_GlitchRetry()
+        }
+    }
+
+    // MARK: Convenience constructors
+
+    static func forTool(_ toolName: String, count: Int = 1) -> NaviVisualActivity {
+        NaviVisualActivity(state: .fromTool(toolName, toolCount: count))
+    }
+
+    static func forStatus(_ statusText: String) -> NaviVisualActivity {
+        NaviVisualActivity(state: .fromStatus(statusText))
+    }
+
+    static func forPhase(_ phase: PipelinePhase) -> NaviVisualActivity {
+        NaviVisualActivity(state: phase.activityState)
     }
 }
 

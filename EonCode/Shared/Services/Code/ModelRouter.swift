@@ -3,10 +3,36 @@ import Foundation
 // MARK: - ModelRouter
 // Provider-agnostic streaming. Routes to Anthropic, xAI, or OpenRouter.
 // ALL providers now support native tool calling.
-// Special behaviour for Qwen3-Coder: 15s timeout → auto-fallback to MiniMax M2.5.
+// Free OpenRouter models: linear fallback chain through all 9 free models.
 
 @MainActor
 final class ModelRouter {
+
+    // MARK: - Free model fallback chain
+    // When a free model is rate-limited or times out, the next model in the chain is tried.
+    // .freeModels is the virtual UI entry point that starts from the first model in the chain.
+
+    private static let freeModelChain: [ClaudeModel] = ClaudeModel.freeModelChain
+
+    private static func isFreeModel(_ model: ClaudeModel) -> Bool {
+        model == .freeModels || freeModelChain.contains(model)
+    }
+
+    /// Detects rate-limit errors from OpenRouter (429) or similar quota errors.
+    private static func isRateLimitOrTimeoutError(_ error: Error) -> Bool {
+        if let routerErr = error as? ModelRouterError {
+            switch routerErr {
+            case .qwenTimeout, .allFreeModelsRateLimited: return true
+            case .noAPIKey: return false
+            }
+        }
+        let nsError = error as NSError
+        if nsError.code == 429 { return true }
+        let desc = error.localizedDescription.lowercased()
+        return desc.contains("rate limit") || desc.contains("429") ||
+               desc.contains("too many") || desc.contains("quota") ||
+               desc.contains("timeout") || desc.contains("overloaded")
+    }
 
     // MARK: - Primary entry
 
@@ -26,9 +52,11 @@ final class ModelRouter {
         // Validate API key before doing anything
         try validateAPIKey(for: model)
 
-        // Qwen3-Coder: 15-second timeout + fallback to MiniMax M2.5
-        if model == .qwen3CoderFree {
-            return try await streamWithQwenFallback(
+        // Free OpenRouter models: fallback chain through all 9 free models
+        if isFreeModel(model) {
+            let startModel = (model == .freeModels) ? freeModelChain[0] : model
+            return try await streamWithFreeModelFallback(
+                startModel: startModel,
                 messages: messages,
                 systemPrompt: systemPrompt,
                 maxTokens: maxTokens,
@@ -37,7 +65,7 @@ final class ModelRouter {
             )
         }
 
-        // All models: direct routing with tools
+        // All other models: direct routing with tools
         try await routeStream(
             messages: messages,
             model: model,
@@ -68,9 +96,13 @@ final class ModelRouter {
         }
     }
 
-    // MARK: - Qwen fallback
+    // MARK: - Free model circular fallback
 
-    private static func streamWithQwenFallback(
+    /// Tries each free model in a circular chain starting from `startModel`.
+    /// On rate-limit (429), timeout, or quota error → rotates to next model seamlessly.
+    /// Context carries over because `messages` is passed unchanged to each attempt.
+    private static func streamWithFreeModelFallback(
+        startModel: ClaudeModel,
         messages: [ChatMessage],
         systemPrompt: String?,
         maxTokens: Int,
@@ -78,76 +110,93 @@ final class ModelRouter {
         onEvent: @escaping (StreamEvent) -> Void
     ) async throws -> ClaudeModel {
 
-        // Try Qwen with 15-second timeout
-        do {
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask { @MainActor in
+        let startIndex = freeModelChain.firstIndex(of: startModel) ?? 0
+        let count = freeModelChain.count
+
+        for i in 0..<count {
+            let modelIdx = (startIndex + i) % count
+            let model = freeModelChain[modelIdx]
+
+            // Emit switch notice for fallback attempts (not for the first try)
+            if i > 0 {
+                onEvent(.contentBlockDelta(
+                    index: 0,
+                    delta: .text("\n\n⚡ *Rate limit — byter till \(model.displayName)…*\n\n")
+                ))
+            }
+
+            do {
+                // Apply timeout for models that are often slow to start
+                if model == .qwen3CoderFree || model == .gemini25Flash || model == .nvidianemotron {
+                    try await streamWithTimeout(
+                        model: model,
+                        messages: messages,
+                        systemPrompt: systemPrompt,
+                        maxTokens: maxTokens,
+                        tools: tools,
+                        timeout: 20,
+                        onEvent: onEvent
+                    )
+                } else {
                     try await routeStream(
                         messages: messages,
-                        model: .qwen3CoderFree,
+                        model: model,
                         systemPrompt: systemPrompt,
                         maxTokens: maxTokens,
                         tools: tools,
                         onEvent: onEvent
                     )
                 }
-
-                group.addTask {
-                    try await Task.sleep(nanoseconds: 15 * 1_000_000_000)
-                    throw ModelRouterError.qwenTimeout
-                }
-
-                // Wait for first task to complete
-                do {
-                    try await group.next()
-                    group.cancelAll()
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch ModelRouterError.qwenTimeout {
-                    group.cancelAll()
-                    throw ModelRouterError.qwenTimeout
-                } catch {
-                    // Qwen failed with a real error — propagate, don't timeout
-                    group.cancelAll()
-                    throw error
-                }
-            }
-            return .qwen3CoderFree
-        } catch ModelRouterError.qwenTimeout {
-            // Emit fallback notice
-            onEvent(.contentBlockDelta(
-                index: 0,
-                delta: .text("\n\n⚡ *Qwen3-Coder timeout — testar MiniMax M2.5*\n\n")
-            ))
-
-            // Try MiniMax M2.5
-            do {
-                try await routeStream(
-                    messages: messages,
-                    model: .minimaxM25,
-                    systemPrompt: systemPrompt,
-                    maxTokens: maxTokens,
-                    tools: tools,
-                    onEvent: onEvent
-                )
-                return .minimaxM25
+                return model  // Success
             } catch {
-                // MiniMax failed — try Sonnet as final fallback
-                onEvent(.contentBlockDelta(
-                    index: 0,
-                    delta: .text("\n\n⚡ *MiniMax misslyckades — byter till Sonnet*\n\n")
-                ))
+                NaviLog.info("ModelRouter: \(model.displayName) failed (\(error.localizedDescription)) — trying next free model")
+                if isRateLimitOrTimeoutError(error) {
+                    continue  // Rotate to next free model
+                }
+                throw error  // Non-rate-limit error: propagate
+            }
+        }
 
-                try validateAPIKey(for: .sonnet45)
+        // All free models exhausted
+        throw ModelRouterError.allFreeModelsRateLimited
+    }
+
+    /// Streams with a strict first-response timeout. Throws `ModelRouterError.qwenTimeout` if no response within `timeout` seconds.
+    private static func streamWithTimeout(
+        model: ClaudeModel,
+        messages: [ChatMessage],
+        systemPrompt: String?,
+        maxTokens: Int,
+        tools: [ClaudeTool]?,
+        timeout: UInt64,
+        onEvent: @escaping (StreamEvent) -> Void
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
                 try await routeStream(
                     messages: messages,
-                    model: .sonnet45,
+                    model: model,
                     systemPrompt: systemPrompt,
                     maxTokens: maxTokens,
                     tools: tools,
                     onEvent: onEvent
                 )
-                return .sonnet45
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeout * 1_000_000_000)
+                throw ModelRouterError.qwenTimeout
+            }
+            do {
+                try await group.next()
+                group.cancelAll()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch ModelRouterError.qwenTimeout {
+                group.cancelAll()
+                throw ModelRouterError.qwenTimeout
+            } catch {
+                group.cancelAll()
+                throw error
             }
         }
     }
@@ -202,13 +251,16 @@ final class ModelRouter {
 enum ModelRouterError: LocalizedError {
     case qwenTimeout
     case noAPIKey(String)
+    case allFreeModelsRateLimited
 
     var errorDescription: String? {
         switch self {
         case .qwenTimeout:
-            return "Qwen3-Coder timeout (15s) — byter till MiniMax M2.5"
+            return "Timeout (20s) — byter modell"
         case .noAPIKey(let provider):
             return "Ingen \(provider) API-nyckel. Gå till Inställningar."
+        case .allFreeModelsRateLimited:
+            return "Alla 9 gratismodeller är just nu rate-limitade. Vänta 1 minut och försök igen, eller välj en betald modell."
         }
     }
 }

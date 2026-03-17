@@ -54,6 +54,14 @@ enum Constants {
         static let minimaxM25 = "minimax/minimax-m2.5"
         static let kimiK25 = "moonshotai/kimi-k2.5"
         static let qwen3CoderFree = "qwen/qwen3-coder:free"
+        static let deepseekChatV3 = "deepseek/deepseek-chat-v3-0324:free"
+        static let nvidianemotron = "nvidia/nemotron-3-super-120b-a12b:free"
+        static let gemini25Flash  = "google/gemini-2.5-flash:free"
+        static let llama4Maverick = "meta-llama/llama-4-maverick:free"
+        static let qwen3_235b     = "qwen/qwen3-235b-a22b:free"
+        static let llama33_70B    = "meta-llama/llama-3.3-70b-instruct:free"
+        static let mistralSmall31 = "mistralai/mistral-small-3.1-24b-instruct:free"
+        static let deepseekR1Free = "deepseek/deepseek-r1:free"
 
         // Price per million tokens (USD)
         static let prices: [String: (input: Double, output: Double)] = [
@@ -67,6 +75,14 @@ enum Constants {
             minimaxM25:     (0.30,  1.20),
             kimiK25:        (0.45,  2.20),
             qwen3CoderFree: (0.0,   0.0),
+            deepseekChatV3: (0.0,   0.0),
+            nvidianemotron: (0.0,   0.0),
+            gemini25Flash:  (0.0,   0.0),
+            llama4Maverick: (0.0,   0.0),
+            qwen3_235b:     (0.0,   0.0),
+            llama33_70B:    (0.0,   0.0),
+            mistralSmall31: (0.0,   0.0),
+            deepseekR1Free: (0.0,   0.0),
         ]
     }
 
@@ -115,10 +131,21 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
     case grok4 = "grok-4"
     case grok41Fast = "grok-4-1-fast"
     case grok3Mini = "grok-3-mini"
-    // OpenRouter
+    // OpenRouter — paid
     case minimaxM25 = "minimax/minimax-m2.5"
     case kimiK25 = "moonshotai/kimi-k2.5"
-    case qwen3CoderFree = "qwen/qwen3-coder:free"
+    // OpenRouter — Gratismodeller (virtual entry — routes through free fallback chain)
+    case freeModels = "openrouter-free-chain"
+    // OpenRouter — free chain members (internal use, not shown in UI individually)
+    case qwen3CoderFree  = "qwen/qwen3-coder:free"
+    case deepseekChatV3  = "deepseek/deepseek-chat-v3-0324:free"
+    case nvidianemotron  = "nvidia/nemotron-3-super-120b-a12b:free"
+    case gemini25Flash   = "google/gemini-2.5-flash:free"
+    case llama4Maverick  = "meta-llama/llama-4-maverick:free"
+    case qwen3_235b      = "qwen/qwen3-235b-a22b:free"
+    case llama33_70B     = "meta-llama/llama-3.3-70b-instruct:free"
+    case mistralSmall31  = "mistralai/mistral-small-3.1-24b-instruct:free"
+    case deepseekR1Free  = "deepseek/deepseek-r1:free"
 
     var id: String { rawValue }
 
@@ -126,22 +153,34 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .haiku, .sonnet45, .sonnet46, .opus46: return .anthropic
         case .grok4, .grok41Fast, .grok3Mini: return .xai
-        case .minimaxM25, .kimiK25, .qwen3CoderFree: return .openRouter
+        case .minimaxM25, .kimiK25, .freeModels,
+             .qwen3CoderFree, .deepseekChatV3, .nvidianemotron, .gemini25Flash,
+             .llama4Maverick, .qwen3_235b, .llama33_70B, .mistralSmall31,
+             .deepseekR1Free: return .openRouter
         }
     }
 
     var displayName: String {
         switch self {
-        case .haiku:      return "Haiku 4.5"
-        case .sonnet45:   return "Sonnet 4.5"
-        case .sonnet46:   return "Sonnet 4.6"
-        case .opus46:     return "Opus 4.6"
+        case .haiku:          return "Haiku 4.5"
+        case .sonnet45:       return "Sonnet 4.5"
+        case .sonnet46:       return "Sonnet 4.6"
+        case .opus46:         return "Opus 4.6"
         case .grok4:          return "Grok 4"
         case .grok41Fast:     return "Grok 4.1 Fast"
         case .grok3Mini:      return "Grok 3 Mini"
-        case .minimaxM25:     return "MiniMax M2.5"
-        case .kimiK25:        return "Kimi K2.5"
-        case .qwen3CoderFree: return "Qwen3 Coder (gratis)"
+        case .minimaxM25:      return "MiniMax M2.5"
+        case .kimiK25:         return "Kimi K2.5"
+        case .freeModels:      return "Gratismodeller"
+        case .qwen3CoderFree:  return "Qwen3 Coder"
+        case .deepseekChatV3:  return "DeepSeek Chat V3"
+        case .nvidianemotron:  return "NVIDIA Nemotron 120B"
+        case .gemini25Flash:   return "Gemini 2.5 Flash"
+        case .llama4Maverick:  return "Llama 4 Maverick"
+        case .qwen3_235b:      return "Qwen3 235B"
+        case .llama33_70B:     return "Llama 3.3 70B"
+        case .mistralSmall31:  return "Mistral Small 3.1"
+        case .deepseekR1Free:  return "DeepSeek R1"
         }
     }
 
@@ -155,16 +194,25 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
 
     var description: String {
         switch self {
-        case .haiku:      return "Snabbast & billigast · $1/$5/MTok"
-        case .sonnet45:   return "Balanserad · $3/$15/MTok"
-        case .sonnet46:   return "Senaste Sonnet · $3/$15/MTok"
-        case .opus46:     return "Kraftfullast · $5/$25/MTok"
+        case .haiku:          return "Snabbast & billigast · $1/$5/MTok"
+        case .sonnet45:       return "Balanserad · $3/$15/MTok"
+        case .sonnet46:       return "Senaste Sonnet · $3/$15/MTok"
+        case .opus46:         return "Kraftfullast · $5/$25/MTok"
         case .grok4:          return "Mest kapabel · $3/$15/MTok"
         case .grok41Fast:     return "Snabb & billig · $0.20/$0.50/MTok"
         case .grok3Mini:      return "Liten & effektiv · $0.30/$0.50/MTok"
-        case .minimaxM25:     return "80% SWE-Bench · $0.30/$1.20/MTok"
-        case .kimiK25:        return "Agentisk kodning · $0.45/$2.20/MTok"
-        case .qwen3CoderFree: return "480B MoE · GRATIS · 262K context"
+        case .minimaxM25:      return "80% SWE-Bench · $0.30/$1.20/MTok"
+        case .kimiK25:         return "Agentisk kodning · $0.45/$2.20/MTok"
+        case .freeModels:      return "9 modeller · automatisk fallback · GRATIS"
+        case .qwen3CoderFree:  return "Qwen3 480B MoE · GRATIS · 262K context"
+        case .deepseekChatV3:  return "DeepSeek V3 · GRATIS · bäst för kodning"
+        case .nvidianemotron:  return "NVIDIA 120B · GRATIS · SWE-Bench top"
+        case .gemini25Flash:   return "Google Gemini · GRATIS · 1M context"
+        case .llama4Maverick:  return "Meta 400B MoE · GRATIS · 1M context"
+        case .qwen3_235b:      return "Qwen3 235B · GRATIS · reasoning"
+        case .llama33_70B:     return "Meta Llama 3.3 · GRATIS · stabil"
+        case .mistralSmall31:  return "Mistral 24B · GRATIS · snabb"
+        case .deepseekR1Free:  return "DeepSeek R1 · GRATIS · deep reasoning"
         }
     }
 
@@ -180,7 +228,25 @@ enum ClaudeModel: String, CaseIterable, Codable, Identifiable {
     /// Models grouped by provider for the model picker
     static var anthropicModels: [ClaudeModel] { [.haiku, .sonnet45, .sonnet46, .opus46] }
     static var xaiModels: [ClaudeModel] { [.grok4, .grok41Fast, .grok3Mini] }
-    static var openRouterModels: [ClaudeModel] { [.minimaxM25, .kimiK25, .qwen3CoderFree] }
+    static var openRouterModels: [ClaudeModel] {
+        [.minimaxM25, .kimiK25, .freeModels]
+    }
+    /// The internal free model fallback chain — not shown individually in UI
+    static var freeModelChain: [ClaudeModel] {
+        [.qwen3CoderFree, .deepseekChatV3, .nvidianemotron, .gemini25Flash,
+         .llama4Maverick, .qwen3_235b, .llama33_70B, .mistralSmall31, .deepseekR1Free]
+    }
+
+    /// Server model key for Code view delegation to Navi Brain.
+    /// Returns nil for models that run locally on-device.
+    var serverModelKey: String? {
+        switch self {
+        case .freeModels:  return "free"
+        case .minimaxM25:  return "minimax"
+        case .kimiK25:     return "minimax"   // closest available on server
+        default:           return nil          // run locally
+        }
+    }
 
     // Safe Codable: fall back to .haiku for unknown raw values
     init(from decoder: Decoder) throws {

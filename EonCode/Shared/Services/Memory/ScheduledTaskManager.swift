@@ -59,6 +59,13 @@ final class ScheduledTaskManager: ObservableObject {
         persist()
     }
 
+    func deleteAll() {
+        let ids = tasks.map { $0.notificationIdentifier }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+        tasks = []
+        UserDefaults.standard.removeObject(forKey: storageKey)
+    }
+
     // MARK: - Mark completed
 
     func markCompleted(_ task: ScheduledTask) {

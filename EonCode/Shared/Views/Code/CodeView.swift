@@ -4,317 +4,246 @@ import PhotosUI
 #endif
 
 // MARK: - CodeView
-// Code generation with pipeline agent. Model selection now properly syncs.
+// Server-backed code sessions via CodeServerService.
+// All interactions go through the Navi Brain server for concurrent multi-session support.
 
 struct CodeView: View {
-    @StateObject private var agent = CodeAgent.shared
+    @StateObject private var serverService = CodeServerService.shared
     @StateObject private var settings = SettingsStore.shared
     @State private var inputText = ""
-    @State private var showModelPicker = false
-    @State private var selectedImages: [Data] = []
-    @State private var isShowingFilePicker = false
+    @State private var showNewSessionSheet = false
+    @State private var selectedModel: ClaudeModel = .minimaxM25
     @FocusState private var inputFocused: Bool
-    #if os(iOS)
-    @State private var photoPickerItems: [PhotosPickerItem] = []
-    #endif
-
-    /// The model to use — persisted via settings.defaultModel
-    @State private var selectedModel: ClaudeModel = .sonnet46
-    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
             Divider().opacity(0.08)
 
-            if agent.usedFallback {
-                fallbackNotice
+            if let error = serverService.errorMessage {
+                errorBanner(error)
             }
 
-            if let error = errorMessage {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12))
-                    Text(error)
-                        .font(NaviTheme.bodyFont(size: 12.5))
-                        .lineLimit(3)
-                    Spacer()
-                    Button { errorMessage = nil } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(NaviTheme.error.opacity(0.6))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .foregroundColor(NaviTheme.error)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(NaviTheme.error.opacity(0.06))
-                .transition(.move(edge: .top).combined(with: .opacity))
+            if serverService.activeSession != nil {
+                sessionDetailView
+            } else {
+                sessionListView
             }
-
-            messagesArea
         }
         .background(Color.chatBackground)
         .onAppear {
-            selectedModel = settings.defaultModel
+            // Default to a server-capable model
+            if settings.defaultModel.serverModelKey != nil {
+                selectedModel = settings.defaultModel
+            }
+            // Refresh session list on every appear
+            Task { await serverService.loadSessions() }
+        }
+        .sheet(isPresented: $showNewSessionSheet) {
+            NewSessionSheet(serverService: serverService, selectedModel: $selectedModel)
         }
     }
 
-    // MARK: - Top bar — Claude style with inline phase progress
+    // MARK: - Top bar
 
     private var topBar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Kod")
-                    .font(NaviTheme.headingFont(size: 17))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                // New session button
-                if agent.activeProject != nil {
-                    Button {
-                        withAnimation(NaviTheme.Spring.smooth) {
-                            agent.activeProject = nil
-                        }
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary.opacity(0.55))
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    #if os(macOS)
-                    .help("Ny kodsession")
-                    #endif
-                }
-
-                // Model picker — shows current model, grouped by provider
-                Menu {
-                    Section("Anthropic") {
-                        ForEach(ClaudeModel.anthropicModels) { model in
-                            modelButton(model)
-                        }
-                    }
-                    Section("xAI / Grok") {
-                        ForEach(ClaudeModel.xaiModels) { model in
-                            modelButton(model)
-                        }
-                    }
-                    Section("OpenRouter") {
-                        ForEach(ClaudeModel.openRouterModels) { model in
-                            modelButton(model)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(selectedModel.displayName)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9))
-                    }
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule().fill(Color.surfaceHover)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                // Opus review toggle
+        HStack(spacing: 8) {
+            // Back button when session is active
+            if serverService.activeSession != nil {
                 Button {
-                    agent.opusReviewEnabled.toggle()
-                } label: {
-                    Image(systemName: agent.opusReviewEnabled ? "shield.checkmark.fill" : "shield")
-                        .font(.system(size: 14))
-                        .foregroundColor(agent.opusReviewEnabled ? .accentNavi : .secondary.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-                #if os(macOS)
-                .help(agent.opusReviewEnabled ? "Opus-granskning aktiv" : "Aktivera Opus-kodgranskning")
-                #endif
-
-                // Stop button — always visible per spec
-                Button {
-                    if agent.isRunning { agent.stop() }
-                } label: {
-                    Image(systemName: agent.isRunning ? "stop.fill" : "stop")
-                        .font(.system(size: 14))
-                        .foregroundColor(agent.isRunning ? NaviTheme.error : .secondary.opacity(0.25))
-                }
-                .buttonStyle(.plain)
-                .disabled(!agent.isRunning)
-                #if os(macOS)
-                .help(agent.isRunning ? "Stopp" : "Inget pågår")
-                #endif
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .frame(minHeight: 44)
-
-            // Phase progress bar + iteration counter when running
-            if agent.isRunning && agent.phase != .idle {
-                HStack(spacing: 8) {
-                    PhaseProgressBar(currentPhase: agent.phase)
-                    if agent.currentIteration > 0 {
-                        Text("iter \(agent.currentIteration)")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.accentNavi.opacity(0.6))
-                            .padding(.trailing, 16)
+                    withAnimation(NaviTheme.Spring.smooth) {
+                        serverService.activeSession = nil
                     }
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(NaviTheme.Spring.smooth, value: agent.isRunning)
-        .animation(NaviTheme.Spring.smooth, value: agent.phase)
-    }
-
-    @ViewBuilder
-    private func modelButton(_ model: ClaudeModel) -> some View {
-        let hasKey = Self.hasAPIKey(for: model)
-        Button {
-            selectedModel = model
-            settings.defaultModel = model
-            errorMessage = nil
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
+                } label: {
                     HStack(spacing: 4) {
-                        Text(model.displayName)
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Sessioner")
                             .font(.system(size: 14, weight: .medium))
-                        if !hasKey {
-                            Image(systemName: "key.slash")
-                                .font(.system(size: 9))
-                                .foregroundColor(.orange)
-                        }
                     }
-                    Text(hasKey ? model.description : "Saknar API-nyckel")
-                        .font(.system(size: 11))
-                        .foregroundColor(hasKey ? .secondary : .orange)
+                    .foregroundColor(.accentNavi)
                 }
-                Spacer()
-                if selectedModel == model {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.accentNavi)
-                }
-            }
-        }
-    }
-
-    private static func hasAPIKey(for model: ClaudeModel) -> Bool {
-        switch model.provider {
-        case .anthropic:   return KeychainManager.shared.anthropicAPIKey?.isEmpty == false
-        case .xai:         return KeychainManager.shared.xaiAPIKey?.isEmpty == false
-        case .openRouter:  return KeychainManager.shared.openRouterAPIKey?.isEmpty == false
-        }
-    }
-
-    // MARK: - Messages area
-
-    private var messagesArea: some View {
-        Group {
-            if let proj = agent.activeProject, !proj.messages.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(proj.messages) { msg in
-                                CodeMessageRow(message: msg)
-                                    .equatable()
-                                    .id(msg.id)
-                            }
-                            if !agent.streamingText.isEmpty {
-                                CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
-                                    .id("streaming")
-                            }
-                            // Single unified activity visual — priority:
-                            // 1. Code writing card (build phase)
-                            // 2. Live tool call pill
-                            // 3. Pipeline phase pill
-                            // 4. Thinking phase pill
-                            if agent.isRunning && agent.streamingText.isEmpty {
-                                Group {
-                                    if agent.phase == .build,
-                                       let status = agent.workerStatuses.first(where: { $0.isActive && $0.currentFile != nil }),
-                                       let file = status.currentFile {
-                                        // Large code writing card
-                                        NaviCodeLiveCard(
-                                            fileName: file,
-                                            liveCode: status.liveCode
-                                        )
-                                        .transition(.asymmetric(
-                                            insertion: .move(edge: .top).combined(with: .opacity),
-                                            removal: .opacity
-                                        ))
-                                    } else if let toolName = agent.liveToolCall {
-                                        NaviActivityPill(
-                                            statusText: toolName.liveToolPillText,
-                                            items: [toolName]
-                                        )
-                                    } else if agent.phase != .idle && agent.phase != .done {
-                                        NaviActivityPill(statusText: agent.phase.pillText)
-                                    } else if !agent.thinkingPhase.isEmpty {
-                                        NaviActivityPill(statusText: agent.thinkingPhase)
-                                    } else {
-                                        NaviActivityPill(statusText: "Tänker")
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .id("activityPill")
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                .animation(.easeInOut(duration: 0.25), value: agent.liveToolCall ?? "")
-                                .animation(.easeInOut(duration: 0.25), value: agent.phase)
-                            }
-                            // Completion state
-                            if !agent.isRunning && agent.phase == .done {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(NaviTheme.success)
-                                    Text("Projektet klart")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundColor(NaviTheme.success.opacity(0.8))
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(NaviTheme.success.opacity(0.08))
-                                .cornerRadius(10)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 6)
-                                .transition(.scale.combined(with: .opacity))
-                                .id("codeDone")
-                            }
-                            Color.clear.frame(height: 8).id("bottomAnchor")
-                        }
-                        .padding(.vertical, 8)
-                    }
-                    .scrollDismissesKeyboard(.interactively)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        inputBar.background(Color.chatBackground)
-                    }
-                    .onChange(of: agent.streamingText) { _, _ in
-                        proxy.scrollTo("streaming", anchor: .bottom)
-                    }
-                    .onChange(of: agent.isRunning) { _, running in
-                        if running { proxy.scrollTo("progressCard", anchor: .bottom) }
-                    }
-                    .onChange(of: proj.messages.count) { _, _ in
-                        if let last = proj.messages.last {
-                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                        }
-                    }
-                }
+                .buttonStyle(.plain)
             } else {
-                ScrollView { emptyState }
-                    .scrollDismissesKeyboard(.interactively)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        inputBar.background(Color.chatBackground)
-                    }
+                Text("Navi Code")
+                    .font(NaviTheme.headingFont(size: 17))
+                    .foregroundColor(.accentNavi)
             }
+
+            // Model picker
+            modelPickerMenu
+
+            Spacer()
+
+            // Stop button (session detail only)
+            if let session = serverService.activeSession, session.status == .working {
+                Button {
+                    Task { await serverService.stopSession(session) }
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(NaviTheme.error)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Avbryt session")
+                #if os(macOS)
+                .help("Avbryt session")
+                #endif
+            }
+
+            // New session button
+            Button {
+                showNewSessionSheet = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Ny session")
+            .buttonStyle(.plain)
+            #if os(macOS)
+            .help("Ny kodsession")
+            #endif
+
+            // Refresh button
+            Button {
+                Task { await serverService.loadSessions() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(serverService.isLoading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+    }
+
+    // MARK: - Model picker menu
+
+    private var modelPickerMenu: some View {
+        Menu {
+            Section("Server — Navi Brain") {
+                Button {
+                    selectedModel = .minimaxM25
+                } label: {
+                    HStack {
+                        Text("MiniMax M2.5")
+                        Spacer()
+                        if selectedModel == .minimaxM25 {
+                            Image(systemName: "checkmark").foregroundColor(.accentNavi)
+                        }
+                    }
+                }
+                Button {
+                    selectedModel = .kimiK25
+                } label: {
+                    HStack {
+                        Text("Kimi K2.5")
+                        Spacer()
+                        if selectedModel == .kimiK25 {
+                            Image(systemName: "checkmark").foregroundColor(.accentNavi)
+                        }
+                    }
+                }
+                Button {
+                    selectedModel = .freeModels
+                } label: {
+                    HStack {
+                        Text("Gratismodeller")
+                        Spacer()
+                        if selectedModel == .freeModels {
+                            Image(systemName: "checkmark").foregroundColor(.accentNavi)
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(selectedModel.displayName)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9))
+            }
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Color.surfaceHover))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Error banner
+
+    private func errorBanner(_ error: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+            Text(error)
+                .font(NaviTheme.bodyFont(size: 12.5))
+                .lineLimit(3)
+            Spacer()
+            Button { serverService.errorMessage = nil } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(NaviTheme.error.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundColor(NaviTheme.error)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(NaviTheme.error.opacity(0.06))
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
+    // MARK: - Session list
+
+    private var sessionListView: some View {
+        Group {
+            if serverService.isLoading && serverService.sessions.isEmpty {
+                loadingState
+            } else if serverService.sessions.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(serverService.sessions) { session in
+                            CodeServerSessionCard(session: session) {
+                                withAnimation(NaviTheme.Spring.smooth) {
+                                    serverService.activeSession = session
+                                }
+                            } onDelete: {
+                                Task { await serverService.deleteSession(session) }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                #if os(iOS)
+                .refreshable { await serverService.loadSessions() }
+                #endif
+            }
+        }
+    }
+
+    // MARK: - Loading state
+
+    private var loadingState: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            ProgressView()
+            Text("Hämtar sessioner…")
+                .font(NaviTheme.bodyFont(size: 14))
+                .foregroundColor(.secondary)
+            Spacer()
         }
     }
 
@@ -327,21 +256,32 @@ struct CodeView: View {
             ThinkingOrb(size: 72, isAnimating: false)
 
             VStack(spacing: 10) {
-                Text("Kod")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Beskriv ett projekt — Navi planerar, bygger\noch pushar till GitHub åt dig.")
+                Text("Bygg projekt på servern.")
+                    .font(NaviTheme.headingFont(size: 18))
+                    .foregroundColor(.primary)
+                Text("Navi planerar, kodar och pushar till GitHub åt dig.\nFlera sessioner kan köra parallellt.")
                     .font(.system(size: 14, design: .rounded))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
             }
 
-            VStack(spacing: 8) {
-                quickStartChip("Starta en iOS ToDo-app med iCloud sync", icon: "iphone")
-                quickStartChip("Python CLI-tool för JSON-transformation", icon: "terminal")
-                quickStartChip("React dashboard för realtidsdata", icon: "chart.bar")
+            Button {
+                showNewSessionSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16))
+                    Text("Starta ny session")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(Color.accentNavi)
+                .cornerRadius(20)
             }
-            .padding(.top, 4)
+            .buttonStyle(.plain)
 
             Spacer()
         }
@@ -349,114 +289,328 @@ struct CodeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func quickStartChip(_ text: String, icon: String = "sparkle") -> some View {
-        Button {
-            inputText = text
-            inputFocused = true
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundColor(.accentNavi.opacity(0.6))
-                    .frame(width: 20)
-                Text(text)
-                    .font(.system(size: 13, design: .rounded))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.3))
+    // MARK: - Session detail
+
+    private var sessionDetailView: some View {
+        Group {
+            if let session = serverService.activeSession {
+                SessionDetailView(
+                    session: session,
+                    serverService: serverService
+                )
+            }
+        }
+    }
+}
+
+// MARK: - CodeServerSessionCard
+
+struct CodeServerSessionCard: View {
+    let session: CodeServerSession
+    var onTap: () -> Void
+    var onDelete: () -> Void
+
+    private var timeAgo: String {
+        // Simple relative time from ISO8601 string
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: session.updatedAt)
+                ?? ISO8601DateFormatter().date(from: session.updatedAt)
+        else { return session.updatedAt }
+        let diff = Int(-date.timeIntervalSinceNow)
+        if diff < 60 { return "nyss" }
+        if diff < 3600 { return "\(diff / 60)m sedan" }
+        if diff < 86400 { return "\(diff / 3600)h sedan" }
+        return "\(diff / 86400)d sedan"
+    }
+
+    private var modelShortName: String {
+        // Strip provider prefix for display
+        let m = session.model
+        if let slash = m.lastIndex(of: "/") {
+            return String(m[m.index(after: slash)...])
+        }
+        return m
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 8) {
+                // Top row: status pill + name
+                HStack(spacing: 8) {
+                    // Status pill
+                    Text(session.status.displayName.uppercased())
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .tracking(0.5)
+                        .foregroundColor(session.status.color)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(session.status.color.opacity(0.12))
+                        .clipShape(Capsule())
+
+                    Text(session.name)
+                        .font(NaviTheme.bodyFont(size: 15))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    // Live pulse if working
+                    if session.status == .working {
+                        LivePulseDot()
+                    }
+                }
+
+                // Bottom row: model, message count, tokens, time
+                HStack(spacing: 10) {
+                    Label(modelShortName, systemImage: "cpu")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.6))
+
+                    if !session.messages.isEmpty {
+                        Label("\(session.messages.count)", systemImage: "bubble.left.and.bubble.right")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                    }
+
+                    if session.totalTokens > 0 {
+                        Label("\(formatTokens(session.totalTokens))", systemImage: "bolt")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                    }
+
+                    Spacer()
+
+                    Text(timeAgo)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.4))
+                }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.surfaceHover.opacity(0.5))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.surfaceHover.opacity(0.6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(
+                                session.status == .working
+                                    ? Color.accentNavi.opacity(0.25)
+                                    : Color.primary.opacity(0.07),
+                                lineWidth: session.status == .working ? 1 : 0.5
+                            )
+                    )
             )
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Fallback notice
-
-    private var fallbackNotice: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 11))
-            Text("Qwen3-Coder timeout — \(agent.actualModel.displayName) används")
-                .font(.system(size: 12))
+        .contextMenu {
+            Button(role: .destructive) { onDelete() } label: {
+                Label("Ta bort session", systemImage: "trash")
+            }
         }
-        .foregroundColor(NaviTheme.warning)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(NaviTheme.warningBg)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) { onDelete() } label: {
+                Label("Ta bort", systemImage: "trash")
+            }
+        }
     }
 
-    // MARK: - Input bar — with attachment support
+    private func formatTokens(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 1000 { return String(format: "%.1fk", Double(n) / 1000) }
+        return "\(n)"
+    }
+}
+
+// MARK: - LivePulseDot
+
+private struct LivePulseDot: View {
+    @State private var pulse = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.accentNavi)
+            .frame(width: 7, height: 7)
+            .scaleEffect(pulse ? 1.4 : 1.0)
+            .opacity(pulse ? 0.5 : 1.0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+    }
+}
+
+// MARK: - SessionDetailView
+
+struct SessionDetailView: View {
+    let session: CodeServerSession
+    @ObservedObject var serverService: CodeServerService
+    @State private var inputText = ""
+    @FocusState private var inputFocused: Bool
+
+    // Resolve live session from service (keeps updates reactive)
+    private var liveSession: CodeServerSession {
+        serverService.sessions.first { $0.id == session.id } ?? session
+    }
+
+    // Derive ThinkingPhase from server liveStatus.phase
+    private var thinkingPhase: ChatManager.ThinkingPhase {
+        guard liveSession.status == .working else { return .idle }
+        guard let phase = liveSession.liveStatus?.phase else { return .thinking }
+        switch phase.lowercased() {
+        case "thinking", "reasoning": return .thinking
+        case "executing", "tools":    return .executingTools
+        case "responding", "writing": return .responding
+        case "connecting":            return .connecting
+        case "finishing", "done":     return .finishing
+        default:                      return .thinking
+        }
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    // Todo list (if any)
+                    if !liveSession.todos.isEmpty {
+                        todoList
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                    }
+
+                    // Empty-state placeholder for brand-new sessions
+                    if liveSession.messages.isEmpty && liveSession.status == .idle {
+                        VStack(spacing: 12) {
+                            Image(systemName: "curlybraces.square")
+                                .font(.system(size: 36))
+                                .foregroundColor(.secondary.opacity(0.3))
+                            Text("Beskriv vad du vill bygga…")
+                                .font(NaviTheme.bodyFont(size: 15))
+                                .foregroundColor(.secondary.opacity(0.5))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 60)
+                    }
+
+                    // Messages
+                    ForEach(liveSession.messages) { msg in
+                        ServerMessageRow(message: msg)
+                            .id(msg.id)
+                    }
+
+                    // Live activity indicator
+                    if liveSession.status == .working {
+                        VStack(alignment: .leading, spacing: 6) {
+                            NaviThinkingCard(
+                                phase: thinkingPhase,
+                                liveToolCall: liveSession.liveStatus?.tool,
+                                elapsed: serverService.elapsedSeconds
+                            )
+                            .padding(.horizontal, 16)
+
+                            // Worker chips
+                            if !liveSession.workers.isEmpty {
+                                workerChips
+                                    .padding(.horizontal, 16)
+                            }
+                        }
+                        .id("activityArea")
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
+                    // Done indicator
+                    if liveSession.status == .done && !liveSession.messages.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(NaviTheme.success)
+                            Text("Sessionen klar")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(NaviTheme.success.opacity(0.8))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(NaviTheme.success.opacity(0.08))
+                        .cornerRadius(10)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .transition(.scale.combined(with: .opacity))
+                        .id("sessionDone")
+                    }
+
+                    Color.clear.frame(height: 8).id("bottomAnchor")
+                }
+                .padding(.vertical, 8)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                inputBar.background(Color.chatBackground)
+            }
+            .onChange(of: liveSession.messages.count) { _, _ in
+                withAnimation {
+                    proxy.scrollTo("bottomAnchor", anchor: .bottom)
+                }
+            }
+            .onChange(of: liveSession.status) { _, status in
+                if status == .working {
+                    withAnimation { proxy.scrollTo("activityArea", anchor: .bottom) }
+                }
+            }
+        }
+        .animation(NaviTheme.Spring.smooth, value: liveSession.status)
+    }
+
+    // MARK: Todo list
+
+    private var todoList: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("UPPGIFTER")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .tracking(0.8)
+                .foregroundColor(.secondary.opacity(0.5))
+                .padding(.bottom, 2)
+
+            ForEach(liveSession.todos) { todo in
+                HStack(spacing: 8) {
+                    Image(systemName: todo.done ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 13))
+                        .foregroundColor(todo.done ? NaviTheme.success : .secondary.opacity(0.5))
+                    Text(todo.text)
+                        .font(NaviTheme.bodyFont(size: 13))
+                        .foregroundColor(todo.done ? .secondary : .primary)
+                        .strikethrough(todo.done, color: .secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.surfaceHover.opacity(0.5))
+        )
+    }
+
+    // MARK: Worker chips
+
+    private var workerChips: some View {
+        let active = liveSession.workers.filter { $0.status == "running" || $0.status == "done" }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(active.prefix(8)) { worker in
+                    WorkerChip(worker: worker)
+                }
+            }
+        }
+    }
+
+    // MARK: Input bar
 
     private var inputBar: some View {
         VStack(spacing: 8) {
-            // Image thumbnails
-            if !selectedImages.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, data in
-                            InputImageThumb(data: data) { selectedImages.remove(at: idx) }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 4)
-                }
-            }
-
             HStack(alignment: .center, spacing: 8) {
-                #if os(iOS)
-                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
-                    ZStack {
-                        Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
-                        Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.checkmark")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
-                }
-                .buttonStyle(.plain)
-                .onChange(of: photoPickerItems) { _, items in
-                    Task {
-                        for item in items {
-                            if let data = try? await item.loadTransferable(type: Data.self) {
-                                await MainActor.run { selectedImages.append(data) }
-                            }
-                        }
-                        await MainActor.run { photoPickerItems = [] }
-                    }
-                }
-                #endif
-
-                // Attachment menu
-                Menu {
-                    #if os(macOS)
-                    Button { } label: { Label("Bild", systemImage: "photo") }
-                    #endif
-                    Button { isShowingFilePicker = true } label: {
-                        Label("Fil", systemImage: "doc")
-                    }
-                } label: {
-                    ZStack {
-                        Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.4))
-                    }
-                }
-                #if os(macOS)
-                .menuStyle(.borderlessButton)
-                #endif
-
                 TextField(
-                    agent.activeProject == nil
+                    liveSession.messages.isEmpty
                         ? "Beskriv ett projekt att bygga…"
                         : "Fortsätt konversationen…",
                     text: $inputText,
@@ -501,51 +655,84 @@ struct CodeView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 16)
+        .padding(.bottom, 24)
         .padding(.top, 8)
     }
 
     private var sendDisabled: Bool {
-        inputText.trimmingCharacters(in: .whitespaces).isEmpty || agent.isRunning
+        inputText.trimmingCharacters(in: .whitespaces).isEmpty || liveSession.status == .working
     }
-
-    // MARK: - Send — passes selected model to agent
 
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty, !agent.isRunning else { return }
-
-        // Validate API key
-        if !Self.hasAPIKey(for: selectedModel) {
-            let provider = selectedModel.providerDisplayName
-            errorMessage = "Ingen \(provider) API-nyckel. Gå till Inställningar."
-            return
-        }
-
-        inputText = ""
-        errorMessage = nil
+        guard !text.isEmpty, liveSession.status != .working else { return }
         dismissKeyboard()
-
-        if agent.activeProject == nil {
-            agent.handleMessage(text: text, model: selectedModel)
-        } else {
-            agent.continueChat(text: text, model: selectedModel)
+        Task {
+            do {
+                try await serverService.sendMessage(text, to: liveSession)
+                inputText = "" // Clear only on success
+            } catch {
+                // Preserve inputText so user can retry
+                serverService.errorMessage = error.localizedDescription
+            }
         }
     }
 }
 
-// MARK: - CodeMessageRow
+// MARK: - WorkerChip
 
-struct CodeMessageRow: View, Equatable {
-    let message: PureChatMessage
+private struct WorkerChip: View {
+    let worker: CodeServerWorker
 
-    static func == (lhs: CodeMessageRow, rhs: CodeMessageRow) -> Bool {
-        lhs.message.id == rhs.message.id && lhs.message.content == rhs.message.content
+    private var statusColor: Color {
+        switch worker.status {
+        case "done":    return Color(naviHex: "4CAF50")
+        case "error":   return Color(naviHex: "FF5252")
+        default:        return Color.accentNavi
+        }
+    }
+
+    private var icon: String {
+        switch worker.status {
+        case "done":  return "checkmark.circle.fill"
+        case "error": return "xmark.circle.fill"
+        default:      return "circle.dotted"
+        }
     }
 
     var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundColor(statusColor)
+            Text("Worker \(worker.index + 1)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.primary.opacity(0.7))
+            Text(worker.task.prefix(24))
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(.secondary.opacity(0.5))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(statusColor.opacity(0.08))
+                .overlay(
+                    Capsule().strokeBorder(statusColor.opacity(0.2), lineWidth: 0.5)
+                )
+        )
+    }
+}
+
+// MARK: - ServerMessageRow
+
+struct ServerMessageRow: View {
+    let message: CodeServerMessage
+
+    var body: some View {
         Group {
-            if message.role == .user {
+            if message.role == "user" {
                 userRow
             } else {
                 assistantRow
@@ -574,20 +761,39 @@ struct CodeMessageRow: View, Equatable {
 
     private var assistantRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: false)
-                .padding(.top, 2)
+            // Worker badge if from a sub-agent
+            if message.isWorker == true {
+                Text("W\((message.workerIndex ?? 0) + 1)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(.accentNavi.opacity(0.7))
+                    .frame(width: 24, height: 24)
+                    .background(Color.accentNavi.opacity(0.1))
+                    .clipShape(Circle())
+                    .padding(.top, 2)
+            } else {
+                ThinkingOrb(size: 24, isAnimating: false)
+                    .padding(.top, 2)
+            }
+
             VStack(alignment: .leading, spacing: 6) {
-                // Tool call pill — shown when model executed tools
-                if let tools = message.toolCallNames, !tools.isEmpty {
+                // Tool calls pill
+                if let tools = message.toolCalls, !tools.isEmpty {
                     NaviActivityPill(
                         statusText: tools.count == 1 ? "1 verktyg" : "\(tools.count) verktyg",
                         items: tools,
                         isLive: false
                     )
                 }
+
                 MarkdownTextView(text: message.content)
-                    .equatable()
                     .textSelection(.enabled)
+
+                // Token count (subtle)
+                if let tokens = message.tokens, tokens > 0 {
+                    Text("\(tokens) tokens")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.3))
+                }
 
                 // Copy button
                 Button {
@@ -610,29 +816,108 @@ struct CodeMessageRow: View, Equatable {
     }
 }
 
-// MARK: - CodeStreamingRow
+// MARK: - NewSessionSheet
 
-struct CodeStreamingRow: View {
-    let text: String
-    let phase: PipelinePhase
+struct NewSessionSheet: View {
+    @ObservedObject var serverService: CodeServerService
+    @Binding var selectedModel: ClaudeModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var sessionName = ""
+    @State private var firstMessage = ""
+    @State private var isCreating = false
+    @FocusState private var nameFocused: Bool
+
+    private let serverModels: [(ClaudeModel, String)] = [
+        (.minimaxM25, "minimax/minimax-m2.5"),
+        (.kimiK25, "moonshotai/kimi-k2.5"),
+        (.freeModels, "free")
+    ]
+
+    private var serverModelKey: String {
+        selectedModel.serverModelKey ?? "minimax/minimax-m2.5"
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
+        NavigationStack {
+            Form {
+                Section("Sessionsnamn") {
+                    TextField("t.ex. iOS Todo-app", text: $sessionName)
+                        .focused($nameFocused)
+                }
 
-            VStack(alignment: .leading, spacing: 6) {
-                if text.isEmpty {
-                    NaviActivityPill(statusText: phase.pillText)
-                } else {
-                    MarkdownTextView(text: text)
+                Section("Modell") {
+                    ForEach(serverModels, id: \.0) { model, key in
+                        Button {
+                            selectedModel = model
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(model.displayName)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.primary)
+                                    Text(model.description)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if selectedModel == model {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.accentNavi)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Section("Första instruktion (valfri)") {
+                    TextField("Beskriv vad du vill bygga…", text: $firstMessage, axis: .vertical)
+                        .lineLimit(3...8)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .navigationTitle("Ny kodsession")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Skapa") { createSession() }
+                        .disabled(sessionName.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
+                }
+            }
+            .onAppear { nameFocused = true }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+    }
+
+    private func createSession() {
+        let name = sessionName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        isCreating = true
+        Task {
+            do {
+                let session = try await serverService.createSession(
+                    name: name,
+                    model: serverModelKey
+                )
+                // Send first message if provided
+                let msg = firstMessage.trimmingCharacters(in: .whitespaces)
+                if !msg.isEmpty {
+                    try await serverService.sendMessage(msg, to: session)
+                }
+            } catch {
+                serverService.errorMessage = error.localizedDescription
+            }
+            isCreating = false
+            dismiss()
+        }
     }
 }
+
+// MARK: - Legacy components kept for backward compat (used by older code paths)
 
 // MARK: - PhasePill — compact inline phase badge
 
@@ -703,6 +988,30 @@ struct PhaseProgressBar: View {
     }
 }
 
+// MARK: - CodeStreamingRow (kept for any remaining local usage)
+
+struct CodeStreamingRow: View {
+    let text: String
+    let phase: PipelinePhase
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ThinkingOrb(size: 24, isAnimating: true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if text.isEmpty {
+                    NaviVisualActivity.forPhase(phase)
+                } else {
+                    MarkdownTextView(text: text)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+    }
+}
+
 // MARK: - CodeAPIInfoCard — shows current API request info
 
 struct CodeAPIInfoCard: View {
@@ -752,7 +1061,7 @@ struct CodeAPIInfoCard: View {
     }
 }
 
-// MARK: - CodeThinkingCard — shows what the agent is thinking/doing
+// MARK: - CodeThinkingCard — legacy component retained for compatibility
 
 struct CodeThinkingCard: View {
     let phase: String
@@ -851,5 +1160,79 @@ struct CodeToolCallCard: View {
         )
         .padding(.horizontal, 16)
         .padding(.vertical, 1)
+    }
+}
+
+// MARK: - CodeMessageRow (kept for backward compat — wraps PureChatMessage)
+
+struct CodeMessageRow: View, Equatable {
+    let message: PureChatMessage
+
+    static func == (lhs: CodeMessageRow, rhs: CodeMessageRow) -> Bool {
+        lhs.message.id == rhs.message.id && lhs.message.content == rhs.message.content
+    }
+
+    var body: some View {
+        Group {
+            if message.role == .user {
+                userRow
+            } else {
+                assistantRow
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+    }
+
+    private var userRow: some View {
+        HStack {
+            Spacer(minLength: 60)
+            Text(message.content)
+                .font(NaviTheme.bodyFont(size: 16))
+                .foregroundColor(.primary)
+                .lineSpacing(4)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color.userBubble)
+                )
+                .textSelection(.enabled)
+        }
+    }
+
+    private var assistantRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ThinkingOrb(size: 24, isAnimating: false)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 6) {
+                if let tools = message.toolCallNames, !tools.isEmpty {
+                    NaviActivityPill(
+                        statusText: tools.count == 1 ? "1 verktyg" : "\(tools.count) verktyg",
+                        items: tools,
+                        isLive: false
+                    )
+                }
+                MarkdownTextView(text: message.content)
+                    .equatable()
+                    .textSelection(.enabled)
+
+                Button {
+                    #if os(iOS)
+                    UIPasteboard.general.string = message.content
+                    #else
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(message.content, forType: .string)
+                    #endif
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 40)
+        }
     }
 }

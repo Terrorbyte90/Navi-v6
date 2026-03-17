@@ -24,6 +24,10 @@ final class ChatManager: ObservableObject {
     @Published var thinkingPhase: ThinkingPhase = .idle
     /// Current API call info for visual display
     @Published var currentAPIInfo: APICallInfo? = nil
+    /// Elapsed seconds since the current request started (for UI display)
+    @Published var elapsedSeconds: Int = 0
+
+    private var elapsedTimer: Timer?
 
     enum ThinkingPhase: Equatable {
         case idle
@@ -84,8 +88,8 @@ final class ChatManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let toolExecutor = ToolExecutor()
 
-    /// Maximum tool call loop iterations to prevent infinite loops
-    private let maxToolIterations = 10
+    /// Maximum tool call loop iterations — set high to ensure complex tasks complete
+    private let maxToolIterations = 20
 
     private init() {
         Task {
@@ -172,7 +176,14 @@ final class ChatManager: ObservableObject {
         toolCallEvents = []
         thinkingPhase = .preparing
         currentAPIInfo = nil
+        elapsedSeconds = 0
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.elapsedSeconds += 1 }
+        }
         defer {
+            elapsedTimer?.invalidate()
+            elapsedTimer = nil
             isStreaming = false
             streamingText = ""
             liveToolCall = nil
@@ -301,8 +312,9 @@ final class ChatManager: ObservableObject {
                 break
             }
 
-            // Execute tool calls
+            // Execute tool calls — clear stale streaming text so visual switches to tool indicator
             thinkingPhase = .executingTools
+            streamingText = ""
             let executedNames = toolCalls.map { $0.name }
             allExecutedToolNames.append(contentsOf: executedNames)
             NaviLog.info("Chat: iteration \(iteration + 1) — executing \(toolCalls.count) tool calls: \(executedNames)")
@@ -424,13 +436,54 @@ final class ChatManager: ObservableObject {
         - Komplett, fungerande kod vid kodningsfrågor — inga placeholders
         - Svara DIREKT på frågan — ingen onödig inledning
 
+        ## KRITISKA REGLER — FÖLJ ALLTID
+        1. **SLUTFÖR ALLTID uppgiften** — stanna aldrig mitt i. Fortsätt tills du har ett komplett svar.
+        2. **ANVÄND ALLTID verktyg** för frågor om GitHub, server, projekt, filer — gissa ALDRIG.
+        3. **PRESENTERA resultatet** efter varje verktygsanrop — analysera och svara direkt.
+        4. **Kedja verktyg** — du kan anropa flera verktyg i sekvens, loopen fortsätter (upp till 20 iterationer).
+        5. **Om ett verktyg misslyckas** — försök alternativ metod eller rapportera felet tydligt.
+
+        ## TEXTFORMATERING
+        - Börja alltid med det direkta svaret. Ge svaret FÖRST, förklaring sedan.
+        - Enkla/konversationella frågor: 1–3 meningar ren text. Inga rubriker. Inga punktlistor.
+        - Använd punktlistor (- punkt) BARA för 3+ parallella objekt utan naturlig ordning.
+        - Använd numrerade listor (1. steg) BARA för sekventiella instruktioner.
+        - Använd ## rubriker BARA för svar med 3+ stora sektioner som läsaren vill navigera.
+        - Använd ### för undersektioner. Använd ALDRIG # (H1) i svar.
+        - Använd **fetstil** för kritiska termer, varningar, första förekomst av nyckelbegrepp. Inte dekorativt.
+        - Använd `inline-kod` för: funktionsnamn, variabler, filnamn, klasser, kommandon, paketnamn.
+        - Använd kodblock (```språk) för ALL kod. Inkludera alltid språkidentifierare (swift, js, python, bash…).
+        - Använd tabeller BARA för jämförelse av 3+ objekt med samma attribut.
+        - Inga emoji i tekniska eller formella svar.
+        - Håll svaret proportionellt. En enrads-fråga → kort svar. Putta inte ut onödig text.
+        - Upprepa inte användarens fråga. Sammanfatta inte ditt eget svar i slutet.
+        - Varningar/noter: skriv inline med fetstil: **Obs:** eller **Varning:** — inga speciella block.
+
         ## Verktyg
-        **GitHub:** github_list_repos, github_get_repo, github_list_branches, github_list_commits, github_list_pull_requests, github_create_pull_request, github_get_file_content, github_search_repos, github_get_user
+        **GitHub (kräver GitHub-token i Keychain):**
+        - github_list_repos — lista alla repos
+        - github_get_repo — detaljer om ett repo
+        - github_list_branches — visa branches
+        - github_list_commits — senaste commits
+        - github_list_pull_requests — öppna PRs
+        - github_create_pull_request — skapa PR
+        - github_get_file_content — läs fil direkt från GitHub
+        - github_search_repos — sök repos
+        - github_get_user — GitHub-profilinfo
+
         **Webb:** web_search — sök internet för aktuell info, dokumentation
-        **Server:** server_ask (fråga Brain), server_status (PM2, minne), server_exec (shell), server_repos
-        - Använd ALLTID verktyg för relevanta frågor — gissa aldrig
-        - Du kan anropa FLERA verktyg i sekvens — loopen fortsätter tills slutsvar
-        - Om någon frågar vem som skapat dig: "Jag är Navi, skapad av Ted Svärd."
+
+        **Brain Server (209.38.98.107:3001):**
+        - server_ask — fråga Brain AI (MiniMax/Qwen)
+        - server_status — PM2-processer, minne, CPU
+        - server_exec — kör shell-kommando på servern
+        - server_repos — lista repos på servern
+
+        **Filer (iCloud):**
+        - read_file — läs fil (absolut sökväg eller relativ till projekt)
+        - write_file — skriv/uppdatera fil
+        - list_directory — lista filer i mapp
+        - search_files — sök i filer
 
         ## Minnen
         \(memoryCtx)
@@ -480,6 +533,15 @@ final class ChatManager: ObservableObject {
                 }
                 systemPrompt += "\n\nDu kan läsa och ändra filer direkt i dessa lokala repos utan att behöva hämta från nätet!"
             }
+        }
+
+        // Inject iCloud container path so model can read/write files
+        if let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: Constants.iCloud.containerID) {
+            let naviRoot = containerURL.appendingPathComponent("Documents").appendingPathComponent(Constants.iCloud.rootFolder)
+            systemPrompt += "\n\n**iCLOUD FILER:** Du kan läsa och skriva filer via read_file / write_file / list_directory."
+            systemPrompt += "\n- Navi-rot: \(naviRoot.path)"
+            systemPrompt += "\n- Projekt: \(naviRoot.appendingPathComponent(Constants.iCloud.projectsFolder).path)"
+            systemPrompt += "\n- GitHub-repos: \(containerURL.appendingPathComponent("Documents").appendingPathComponent(Constants.iCloud.githubReposFolder).path)"
         }
 
         // Inject server status for context
@@ -549,6 +611,12 @@ final class ChatManager: ObservableObject {
         if activeConversation?.id == conversation.id {
             activeConversation = conversations.first
         }
+    }
+
+    func deleteAll() async {
+        await store.deleteAll()
+        conversations = []
+        activeConversation = nil
     }
 
     // MARK: - Search

@@ -224,10 +224,16 @@ struct VisualsTest: View {
 // ============================================================
 
 struct Visual1_TerminalPulse: View {
+    /// Dynamic status label — e.g. "Tänker…", "Letar…", "Hämtar data…"
+    var label: String = "Tänker…"
+    /// Terminal sub-text shown below the accent bar
+    var terminalText: String = "resonerar"
+
     @State private var cursorVisible = true
     @State private var lineWidth: CGFloat = 0
     @State private var dotScale: CGFloat = 0.6
     @State private var phase: Double = 0
+    @State private var phaseTimer: Timer?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -240,9 +246,10 @@ struct Visual1_TerminalPulse: View {
                 Image(systemName: "terminal.fill")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(.accentNavi.opacity(0.7))
-                Text("Tänker…")
+                Text(label)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.accentNavi.opacity(0.75))
+                    .animation(.easeInOut(duration: 0.2), value: label)
                 Spacer()
                 // Three pulsing dots
                 HStack(spacing: 3) {
@@ -276,9 +283,10 @@ struct Visual1_TerminalPulse: View {
                 Text(">")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundColor(.accentNavi.opacity(0.5))
-                Text("resonerar")
+                Text(terminalText)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.6))
+                    .animation(.easeInOut(duration: 0.2), value: terminalText)
                 Rectangle()
                     .fill(Color.accentNavi.opacity(cursorVisible ? 0.8 : 0))
                     .frame(width: 7, height: 14)
@@ -305,11 +313,16 @@ struct Visual1_TerminalPulse: View {
             }
             startPhaseTimer()
         }
+        .onDisappear {
+            phaseTimer?.invalidate()
+            phaseTimer = nil
+        }
     }
 
     private func startPhaseTimer() {
-        Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { _ in
-            phase += 0.08
+        phaseTimer?.invalidate()
+        phaseTimer = Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { _ in
+            Task { @MainActor in phase += 0.08 }
         }
     }
 }
@@ -856,6 +869,12 @@ struct Visual6_ParticleSwarm: View {
         ("folder", "Listar filer"),
     ]
 
+    private func particleOffset(index i: Int) -> CGSize {
+        let angle = phase + Double(i) * (.pi * 2 / Double(tools.count))
+        let radius: CGFloat = 32
+        return CGSize(width: cos(angle) * Double(radius), height: sin(angle) * Double(radius) * 0.5)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
@@ -875,11 +894,6 @@ struct Visual6_ParticleSwarm: View {
             ZStack {
                 // Orbital paths
                 ForEach(0..<tools.count, id: \.self) { i in
-                    let angle = phase + Double(i) * (.pi * 2 / Double(tools.count))
-                    let radius: CGFloat = 32
-                    let x = cos(angle) * Double(radius)
-                    let y = sin(angle) * Double(radius) * 0.5
-
                     VStack(spacing: 2) {
                         Image(systemName: tools[i].0)
                             .font(.system(size: 11, weight: .semibold))
@@ -894,7 +908,7 @@ struct Visual6_ParticleSwarm: View {
                             .fill(Color.accentNavi.opacity(0.08))
                             .frame(width: 38, height: 38)
                     )
-                    .offset(x: CGFloat(x), y: CGFloat(y))
+                    .offset(particleOffset(index: i))
                 }
 
                 // Center dot
@@ -1376,20 +1390,6 @@ struct Visual10_GlitchRetry: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Color helper
-
-private extension Color {
-    init(naviHex hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let r = Double((int >> 16) & 0xFF) / 255.0
-        let g = Double((int >> 8) & 0xFF) / 255.0
-        let b = Double(int & 0xFF) / 255.0
-        self.init(red: r, green: g, blue: b)
     }
 }
 

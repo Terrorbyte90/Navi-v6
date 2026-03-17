@@ -44,8 +44,8 @@ struct ChatView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 AssistantAvatar()
                                     .padding(.top, 2)
-                                NaviActivityPill(
-                                    statusText: agent.currentStatus.isEmpty
+                                NaviVisualActivity.forStatus(
+                                    agent.currentStatus.isEmpty
                                         ? "Tänker"
                                         : agent.currentStatus.liveToolPillText
                                 )
@@ -607,23 +607,21 @@ struct AgentStreamingBubble: View {
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
-                // Single unified activity visual — only ONE at a time
-                if let file = activeFiles.first, !codeSnippet.isEmpty {
-                    NaviCodeLiveCard(
-                        fileName: file,
-                        liveCode: codeSnippet
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                // Single unified activity visual — exactly ONE at a time.
+                // Visual only shown while NO text has arrived yet; once text
+                // streams in the visual disappears and text takes over.
+                if !codeSnippet.isEmpty {
+                    // Writing code → Visual 2
+                    Visual2_StreamingCode()
+                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
                 } else if text.isEmpty && buffer.displayText.isEmpty {
-                    // No text yet — show status or "Tänker"
-                    NaviActivityPill(
-                        statusText: statusMessage.isEmpty ? "Tänker" : statusMessage.liveToolPillText
+                    // No text yet — show the most relevant visual for current status
+                    NaviVisualActivity.forStatus(
+                        statusMessage.isEmpty ? "Tänker" : statusMessage
                     )
                     .transition(.opacity)
-                } else if !statusMessage.isEmpty {
-                    NaviActivityPill(statusText: statusMessage.liveToolPillText)
-                        .transition(.opacity)
                 }
+                // When text IS present: no visual — text itself signals activity
 
                 if !text.isEmpty || !buffer.displayText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {

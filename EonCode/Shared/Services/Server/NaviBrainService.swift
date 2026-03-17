@@ -91,6 +91,52 @@ struct BrainLogsResponse: Decodable {
     let total: Int?
 }
 
+// MARK: - ServerMessage
+// Messages sent by Minimax (or other server-side agents) about autonomous runs,
+// server health, scheduled actions, and status updates.
+
+struct ServerMessage: Identifiable, Decodable {
+    var id: String
+    let timestamp: String?
+    /// "info", "warn", "error", "autonomous_run", "health", "task_complete"
+    let type: String?
+    let title: String?
+    let body: String
+    let model: String?
+    let project: String?
+
+    var displayType: String { type ?? "info" }
+    var displayTitle: String { title ?? "Meddelande" }
+    var displayModel: String { model ?? "server" }
+    var displayProject: String { project ?? "" }
+
+    var typeIcon: String {
+        switch (type ?? "info") {
+        case "error":         return "exclamationmark.circle.fill"
+        case "warn":          return "exclamationmark.triangle.fill"
+        case "autonomous_run": return "play.circle.fill"
+        case "health":        return "heart.fill"
+        case "task_complete": return "checkmark.circle.fill"
+        default:              return "info.circle.fill"
+        }
+    }
+
+    var typeColor: String {
+        switch (type ?? "info") {
+        case "error":         return "error"
+        case "warn":          return "warning"
+        case "autonomous_run": return "minimax"
+        case "health":        return "qwen"
+        case "task_complete": return "opus"
+        default:              return "default"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, timestamp, type, title, body, model, project
+    }
+}
+
 struct BrainMessage: Identifiable {
     let id    = UUID()
     let role: BrainRole
@@ -124,7 +170,7 @@ enum BrainSessionMode: String, CaseIterable {
     var displayName: String {
         switch self {
         case .minimax: return "MiniMax M2.5"
-        case .qwen:    return "DeepSeek R1 / Qwen3"
+        case .qwen:    return "Qwen3 Coder (betald)"
         case .opus:    return "Claude Sonnet 4.6"
         }
     }
@@ -134,6 +180,23 @@ enum BrainSessionMode: String, CaseIterable {
         case .minimax: return "/ask"
         case .qwen:    return "/qwen/ask"
         case .opus:    return "/opus/ask"
+        }
+    }
+
+    /// Ordered fallback OpenRouter model IDs tried when the primary endpoint fails.
+    /// Passed as `model` in the request body so the server can override its default.
+    var fallbackModelChain: [(endpoint: String, modelId: String, label: String)] {
+        switch self {
+        case .minimax:
+            return [] // MiniMax has its own API, no OpenRouter fallback
+        case .qwen:
+            return [
+                ("/qwen/ask", "deepseek/deepseek-chat-v3-0324:free",        "DeepSeek V3"),
+                ("/qwen/ask", "google/gemini-2.5-flash:free",               "Gemini 2.5 Flash"),
+                ("/qwen/ask", "meta-llama/llama-3.3-70b-instruct:free",     "Llama 3.3 70B"),
+            ]
+        case .opus:
+            return [] // Opus uses Anthropic directly, no OpenRouter fallback
         }
     }
 
@@ -172,12 +235,28 @@ final class BrainSession: ObservableObject, Identifiable {
     @Published var name: String
     @Published var messages: [BrainMessage] = []
     @Published var isSending = false
+    @Published var elapsedSeconds: Int = 0
     let createdAt = Date()
+
+    private var elapsedTimer: Timer?
 
     init(mode: BrainSessionMode, index: Int) {
         self.mode = mode
         self.sessionId = "ios-\(mode.rawValue)-\(UUID().uuidString.prefix(8))"
         self.name = "Session \(index)"
+    }
+
+    func startElapsedTimer() {
+        elapsedSeconds = 0
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.elapsedSeconds += 1 }
+        }
+    }
+
+    func stopElapsedTimer() {
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
     }
 }
 
@@ -228,6 +307,10 @@ final class NaviBrainService: ObservableObject {
     @Published var logs: [BrainLogEntry] = []
     @Published var isLoadingLogs = false
 
+    // MARK: - Server Messages (Minimax sends updates about autonomous runs, health etc.)
+    @Published var serverMessages: [ServerMessage] = []
+    @Published var isLoadingMessages = false
+
     // MARK: - Live Status (real-time tool call progress)
     @Published var liveStatus: BrainLiveStatus?
     /// ntfy.sh topic for push notifications from Brain
@@ -237,12 +320,30 @@ final class NaviBrainService: ObservableObject {
     @Published var serverTasks: [ServerTask] = []
     @Published var isStartingTask = false
 
+    // MARK: - Sequential Task Queue (up to 100 prompts executed in order)
+    @Published var pendingTaskQueue: [QueuedServerPrompt] = []
+    @Published var isProcessingQueue = false
+
     // MARK: - Private
     private var statusTimer: Timer?
     private var logsTimer: Timer?
+    private var messagesTimer: Timer?
     private var liveStatusTimer: Timer?
     private var taskPollTimer: Timer?
+
+    /// Lightweight session for short polling requests (status, logs etc.)
     private let urlSession = URLSession(configuration: .default)
+
+    /// Long-running session for AI brain requests — waits up to 30 min for a response
+    private static let brainSessionConfig: URLSessionConfiguration = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest  = 1800   // 30 min — max wait between received bytes
+        cfg.timeoutIntervalForResource = 3600   // 1 hr  — absolute cap per request
+        cfg.waitsForConnectivity       = true   // retry if temporarily offline
+        cfg.allowsCellularAccess       = true
+        return cfg
+    }()
+    private let brainSession = URLSession(configuration: NaviBrainService.brainSessionConfig)
 
     private init() {}
 
@@ -252,6 +353,7 @@ final class NaviBrainService: ObservableObject {
         Task { await fetchStatus() }
         Task { await fetchCosts() }
         Task { await fetchLogs() }
+        Task { await fetchServerMessages() }
         Task { await fetchNtfyTopic() }
         Task { await fetchPersistedTasks() }
         // Start ntfy push notification polling
@@ -266,6 +368,12 @@ final class NaviBrainService: ObservableObject {
                 await self?.fetchLogs()
             }
         }
+        // Fetch server messages every 30 seconds
+        messagesTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.fetchServerMessages()
+            }
+        }
     }
 
     func stopPolling() {
@@ -273,6 +381,8 @@ final class NaviBrainService: ObservableObject {
         statusTimer = nil
         logsTimer?.invalidate()
         logsTimer = nil
+        messagesTimer?.invalidate()
+        messagesTimer = nil
         taskPollTimer?.invalidate()
         taskPollTimer = nil
         NotificationManager.shared.stopNtfyPolling()
@@ -358,7 +468,7 @@ final class NaviBrainService: ObservableObject {
         }
     }
 
-    func fetchLogs(limit: Int = 30) async {
+    func fetchLogs(limit: Int = 100) async {
         isLoadingLogs = true
         defer { isLoadingLogs = false }
         guard let url = URL(string: "\(Self.baseURL)/logs?limit=\(limit)") else { return }
@@ -368,6 +478,60 @@ final class NaviBrainService: ObservableObject {
            let resp = try? JSONDecoder().decode(BrainLogsResponse.self, from: data) {
             logs = resp.logs
         }
+    }
+
+    /// Fetch server messages from the /messages endpoint (Minimax autonomous run reports, health alerts).
+    /// Falls back gracefully if the endpoint doesn't exist yet.
+    func fetchServerMessages() async {
+        isLoadingMessages = true
+        defer { isLoadingMessages = false }
+        guard let url = URL(string: "\(Self.baseURL)/messages") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        guard let (data, resp) = try? await urlSession.data(for: req),
+              let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return }
+
+        // Try decoding as an array of ServerMessage
+        if let messages = try? JSONDecoder().decode([ServerMessage].self, from: data) {
+            // Merge: keep existing messages, add new ones
+            let existingIDs = Set(serverMessages.map { $0.id })
+            let newMessages = messages.filter { !existingIDs.contains($0.id) }
+            serverMessages = (newMessages + serverMessages).prefix(200).map { $0 }
+        } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let msgs = json["messages"] as? [[String: Any]] {
+            // Alternative: server wraps in { messages: [...] }
+            let decoder = JSONDecoder()
+            for msgDict in msgs {
+                if let msgData = try? JSONSerialization.data(withJSONObject: msgDict),
+                   let msg = try? decoder.decode(ServerMessage.self, from: msgData) {
+                    if !serverMessages.contains(where: { $0.id == msg.id }) {
+                        serverMessages.insert(msg, at: 0)
+                    }
+                }
+            }
+            // Trim to 200 messages
+            if serverMessages.count > 200 { serverMessages = Array(serverMessages.prefix(200)) }
+        }
+    }
+
+    /// Post a message from client to server /messages (e.g. user-generated notes)
+    func postServerMessage(title: String, body: String, type: String = "info") async {
+        guard let url = URL(string: "\(Self.baseURL)/messages") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let msgBody: [String: Any] = [
+            "title": title,
+            "body": body,
+            "type": type,
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "model": "client"
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: msgBody)
+        _ = try? await urlSession.data(for: req)
+        // Refresh messages after posting
+        Task { await fetchServerMessages() }
     }
 
     // MARK: - Terminal (HTTP /exec)
@@ -413,12 +577,50 @@ final class NaviBrainService: ObservableObject {
     // MARK: - Context Builder (injects GitHub, iCloud, server awareness into brain prompts)
 
     private func buildContextPrefix() -> String {
-        var ctx = "\n[SYSTEM: Du är Navi Brain — en autonom AI-agent skapad av Ted Svärd. Tänk, agera med verktyg, observera — upprepa tills löst.]\n"
+        let hasGitHubToken = !(KeychainManager.shared.githubToken?.isEmpty ?? true)
+
+        var ctx = """
+
+[SYSTEM — NAVI BRAIN]
+Du är Navi Brain, en autonom AI-agent med fullständig verktygstillgång, skapad av Ted Svärd.
+
+IDENTITET OCH KAPACITET:
+- Du är en kraftfull autonom agent med verktyg för att läsa/skriva filer, köra kommandon, söka och modifiera GitHub-repos.
+- Du har admin-tillgång till Ted Svärds GitHub (owner: Terrorbyte90) via API-token i x-github-token headern.
+- Du KAN och SKA använda GitHub API direkt (https://api.github.com) med ditt token — aldrig säg att du saknar åtkomst.
+
+GITHUB-TILLGÅNG:
+- Token finns i x-github-token request-headern.
+- Använd alltid "Authorization: token <värdet från x-github-token>" i GitHub API-anrop.
+- Du har full admin-rätt: läsa repos, skapa/redigera filer, committa, skapa PRs, hantera issues, skapa branches mm.
+- GitHub-ägare: Terrorbyte90
+
+REACT-LOOP (obligatorisk arbetsmetod):
+1. RESONERA — Analysera uppgiften. Identifiera vilka steg och verktyg som behövs.
+2. AGERA — Anropa ett verktyg för att utföra nästa konkreta steg.
+3. OBSERVERA — Läs verktygssvarets output noggrant.
+4. UPPREPA — Fortsätt med nästa steg baserat på observationen.
+5. SLUTFÖR — Ge ett fullständigt svar när uppgiften är löst.
+
+VIKTIGA REGLER:
+- Fortsätt loopen tills uppgiften är helt löst (upp till 50 iterationer).
+- Säg ALDRIG att du saknar tillgång till GitHub, filer eller internet — du har det.
+- Om ett verktyg misslyckas: analysera felet och försök med en annan strategi.
+- Leverera alltid ett konkret resultat — inte bara en plan eller förklaring.
+- Svara på svenska om inget annat begärs.
+[/SYSTEM]
+
+"""
+
+        // GitHub token status
+        if hasGitHubToken {
+            ctx += "\n[GITHUB: Token tillgängligt i x-github-token header — du har admin-åtkomst till Terrorbyte90]\n"
+        }
 
         // GitHub repos
         let ghRepos = GitHubManager.shared.repos
         if !ghRepos.isEmpty {
-            ctx += "\n[KONTEXT — GitHub repos: \(ghRepos.count) st]\n"
+            ctx += "\n[KONTEXT — GitHub repos (\(ghRepos.count) st)]\n"
             for repo in ghRepos.prefix(15) {
                 ctx += "- \(repo.fullName) (\(repo.language ?? "?"))\n"
             }
@@ -428,7 +630,7 @@ final class NaviBrainService: ObservableObject {
         // iCloud repos
         let localRepos = GitHubManager.shared.getLocalRepos()
         if !localRepos.isEmpty {
-            ctx += "\n[KONTEXT — Lokala repos i iCloud: \(localRepos.count) st]\n"
+            ctx += "\n[KONTEXT — Lokala repos i iCloud (\(localRepos.count) st)]\n"
             for repo in localRepos.prefix(10) {
                 let branch = GitHubManager.shared.getLocalCurrentBranch(fullName: repo) ?? "main"
                 ctx += "- \(repo) (branch: \(branch))\n"
@@ -471,10 +673,12 @@ final class NaviBrainService: ObservableObject {
         guard !session.isSending else { return }
         session.messages.append(BrainMessage(role: .user, content: prompt))
         session.isSending = true
+        session.startElapsedTimer()
         syncSendingFlags()
         startLiveStatusPolling()
         defer {
             session.isSending = false
+            session.stopElapsedTimer()
             syncSendingFlags()
             if !isAnySending { stopLiveStatusPolling() }
         }
@@ -484,8 +688,8 @@ final class NaviBrainService: ObservableObject {
             extraHeaders["x-anthropic-key"] = key
         }
 
+        let enrichedPrompt = buildContextPrefix() + prompt
         do {
-            let enrichedPrompt = buildContextPrefix() + prompt
             let r = try await postAskWithRetry(prompt: enrichedPrompt,
                                                endpoint: session.mode.endpoint,
                                                sessionId: session.sessionId,
@@ -503,10 +707,45 @@ final class NaviBrainService: ObservableObject {
                 duration: nil
             )
         } catch {
-            session.messages.append(BrainMessage(role: .assistant,
-                                                 content: "Fel: \(error.localizedDescription)"))
-            NotificationManager.shared.notifyServerError(
-                error: "\(session.mode.displayName): \(error.localizedDescription)")
+            // Primary endpoint failed — try fallback model chain (qwen only)
+            let chain = session.mode.fallbackModelChain
+            var succeeded = false
+            for (fbEndpoint, fbModelId, fbLabel) in chain {
+                do {
+                    var fbHeaders = extraHeaders
+                    fbHeaders["x-model-override"] = fbModelId
+                    let fbBody: [String: Any] = ["prompt": enrichedPrompt,
+                                                  "sessionId": session.sessionId,
+                                                  "model": fbModelId]
+                    let r = try await postAskRaw(body: fbBody,
+                                                 endpoint: fbEndpoint,
+                                                 extraHeaders: fbHeaders)
+                    session.messages.append(BrainMessage(
+                        role: .assistant,
+                        content: r.response,
+                        model: fbLabel,
+                        tokens: r.tokens,
+                        cost: r.cost,
+                        toolCalls: r.toolCalls
+                    ))
+                    succeeded = true
+                    NotificationManager.shared.notifyTaskCompleted(
+                        taskDescription: prompt.prefix(60).description,
+                        model: fbLabel,
+                        duration: nil
+                    )
+                    break
+                } catch {
+                    // Try next fallback
+                    continue
+                }
+            }
+            if !succeeded {
+                session.messages.append(BrainMessage(role: .assistant,
+                                                     content: "Fel: \(error.localizedDescription)"))
+                NotificationManager.shared.notifyServerError(
+                    error: "\(session.mode.displayName): \(error.localizedDescription)")
+            }
         }
         Task { await fetchLogs() }
         if session.mode == .opus { Task { await fetchCosts() } }
@@ -577,12 +816,12 @@ final class NaviBrainService: ObservableObject {
 
     // MARK: - HTTP Helpers
 
-    /// Post with automatic retry (1 retry on timeout/network error)
+    /// Post with automatic retry (up to 3 retries on network/timeout errors)
     private func postAskWithRetry(prompt: String,
                                   endpoint: String,
                                   sessionId: String? = nil,
                                   extraHeaders: [String: String] = [:],
-                                  maxRetries: Int = 1) async throws -> BrainAskResponse {
+                                  maxRetries: Int = 3) async throws -> BrainAskResponse {
         var lastError: Error?
         for attempt in 0...maxRetries {
             do {
@@ -593,10 +832,12 @@ final class NaviBrainService: ObservableObject {
                 let nsError = error as NSError
                 // Only retry on network/timeout errors, not HTTP 4xx/5xx
                 let isRetryable = nsError.domain == NSURLErrorDomain &&
-                    [NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet].contains(nsError.code)
+                    [NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost,
+                     NSURLErrorNotConnectedToInternet, NSURLErrorCannotConnectToHost].contains(nsError.code)
                 if !isRetryable || attempt >= maxRetries { throw error }
-                // Wait before retry
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                // Exponential backoff: 3s, 6s, 12s
+                let backoff = UInt64(3_000_000_000) * UInt64(pow(2.0, Double(attempt)))
+                try? await Task.sleep(nanoseconds: backoff)
             }
         }
         throw lastError ?? URLError(.unknown)
@@ -608,17 +849,41 @@ final class NaviBrainService: ObservableObject {
                          extraHeaders: [String: String] = [:]) async throws -> BrainAskResponse {
         guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { throw URLError(.badURL) }
         let effectiveSessionId = sid ?? sessionId
-        var req = URLRequest(url: url, timeoutInterval: 300)
+        var req = URLRequest(url: url)    // timeout governed by brainSession config (30 min)
         req.httpMethod = "POST"
         req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(effectiveSessionId, forHTTPHeaderField: "x-session-id")
+        // Send GitHub token so server models have admin GitHub access
+        if let githubToken = KeychainManager.shared.githubToken, !githubToken.isEmpty {
+            req.setValue(githubToken, forHTTPHeaderField: "x-github-token")
+        }
         for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
 
         let body: [String: Any] = ["prompt": prompt, "sessionId": effectiveSessionId]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, resp) = try await urlSession.data(for: req)
+        let (data, resp) = try await brainSession.data(for: req)
+        if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
+            let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+            throw NSError(domain: "NaviBrain", code: http.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+        return try JSONDecoder().decode(BrainAskResponse.self, from: data)
+    }
+
+    /// Post with a fully custom body dict — used by fallback model chain
+    private func postAskRaw(body: [String: Any],
+                             endpoint: String,
+                             extraHeaders: [String: String] = [:]) async throws -> BrainAskResponse {
+        guard let url = URL(string: "\(Self.baseURL)\(endpoint)") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url)    // timeout governed by brainSession config (30 min)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await brainSession.data(for: req)
         if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
             let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
             throw NSError(domain: "NaviBrain", code: http.statusCode,
@@ -662,6 +927,9 @@ final class NaviBrainService: ObservableObject {
         req.setValue(sessionId, forHTTPHeaderField: "x-session-id")
         if let key = anthropicKey {
             req.setValue(key, forHTTPHeaderField: "x-anthropic-key")
+        }
+        if let githubToken = KeychainManager.shared.githubToken, !githubToken.isEmpty {
+            req.setValue(githubToken, forHTTPHeaderField: "x-github-token")
         }
 
         let enrichedPrompt = buildContextPrefix() + prompt
@@ -760,6 +1028,8 @@ final class NaviBrainService: ObservableObject {
                                 model: task.model.displayName,
                                 duration: duration
                             )
+                            // Kick off next queued prompt (if any)
+                            Task { await self.processNextQueued() }
                         }
                     case "failed":
                         serverTasks[idx].status = .failed
@@ -768,6 +1038,8 @@ final class NaviBrainService: ObservableObject {
                             NotificationManager.shared.notifyServerError(
                                 error: json["error"] as? String ?? "Uppgiften misslyckades"
                             )
+                            // Also advance queue on failure so we don't block
+                            Task { await self.processNextQueued() }
                         }
                     case "running":
                         if let progress = json["progress"] as? String {
@@ -801,9 +1073,75 @@ final class NaviBrainService: ObservableObject {
         }
     }
 
+    // MARK: - GitHub → Server Sync
+
+    /// Tell the server to pull the latest changes for all known repos.
+    /// Runs a git pull on each cloned repo on the server side.
+    func triggerServerGitSync() async {
+        guard isConnected else { return }
+        // Build a shell command that pulls all repos found in /root (up to 20)
+        let repoNames = GitHubManager.shared.repos.prefix(20).map { $0.name }
+        guard !repoNames.isEmpty else { return }
+        let pullCmds = repoNames
+            .map { "git -C /root/repos/\($0) pull --ff-only 2>/dev/null || true" }
+            .joined(separator: " && ")
+        let cmd = "(\(pullCmds)) && echo 'NAVI_GIT_SYNC_OK'"
+        guard let url = URL(string: "\(Self.baseURL)/exec") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 60)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["cmd": cmd])
+        _ = try? await urlSession.data(for: req)
+        NaviLog.info("NaviBrainService: GitHub→Server git sync triggered")
+    }
+
     func clearCompletedTasks() {
         serverTasks.removeAll { $0.status == .completed || $0.status == .failed || $0.status == .cancelled }
     }
+
+    /// Remove a single task by ID (for swipe-to-delete / dismiss button in UI)
+    func dismissTask(_ id: String) {
+        serverTasks.removeAll { $0.id == id }
+    }
+
+    // MARK: - Sequential Prompt Queue
+
+    /// Add multiple prompts to the sequential queue and start processing.
+    func enqueuePrompts(_ prompts: [String], model: ServerTaskModel, anthropicKey: String? = nil) {
+        let items = prompts.map { QueuedServerPrompt(prompt: $0, model: model, anthropicKey: anthropicKey) }
+        pendingTaskQueue.append(contentsOf: items)
+        Task { await processNextQueued() }
+    }
+
+    func removeQueuedPrompt(_ id: UUID) {
+        pendingTaskQueue.removeAll { $0.id == id }
+    }
+
+    func clearPendingQueue() {
+        pendingTaskQueue.removeAll()
+    }
+
+    /// Called whenever a task finishes — kicks off the next queued prompt.
+    func processNextQueued() async {
+        guard !pendingTaskQueue.isEmpty else { isProcessingQueue = false; return }
+        let hasActive = serverTasks.contains { $0.status.isActive }
+        guard !hasActive else { return } // Wait for running task before starting next
+        isProcessingQueue = true
+        let next = pendingTaskQueue.removeFirst()
+        await startServerTask(prompt: next.prompt, model: next.model, anthropicKey: next.anthropicKey)
+        // Note: after startServerTask the server-side task runs async — processNextQueued is
+        // called again from pollTaskStatuses when the task completes.
+    }
+}
+
+// MARK: - Queued Server Prompt (lightweight input for the sequential queue)
+
+struct QueuedServerPrompt: Identifiable {
+    let id = UUID()
+    let prompt: String
+    let model: ServerTaskModel
+    let anthropicKey: String?
 }
 
 // MARK: - Server Task Model

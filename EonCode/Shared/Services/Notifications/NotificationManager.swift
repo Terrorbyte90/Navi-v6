@@ -27,6 +27,16 @@ final class NotificationManager: NSObject, ObservableObject {
     private var ntfyTask: Task<Void, Never>?
     private var ntfyPollInterval: TimeInterval = 5.0
 
+    // MARK: - Deduplication
+
+    /// Seen ntfy message IDs — prevents the same server message from re-firing on each poll
+    private var seenNtfyMessageIds: Set<String> = []
+    /// Last error text + timestamp — prevents spam of the same error notification
+    private var lastErrorText: String = ""
+    private var lastErrorAt: Date = .distantPast
+    /// Min seconds between identical error notifications
+    private let errorDedupeWindow: TimeInterval = 60
+
     // MARK: - Private
 
     private let center = UNUserNotificationCenter.current()
@@ -107,6 +117,13 @@ final class NotificationManager: NSObject, ObservableObject {
                             if let msgData = line.data(using: .utf8),
                                let json = try? JSONSerialization.jsonObject(with: msgData) as? [String: Any],
                                let event = json["event"] as? String, event == "message" {
+                                // Deduplicate by ntfy message id — prevents re-delivery on repeated polls
+                                let msgId = json["id"] as? String ?? UUID().uuidString
+                                guard !self.seenNtfyMessageIds.contains(msgId) else { continue }
+                                self.seenNtfyMessageIds.insert(msgId)
+                                // Periodic reset to avoid unbounded memory growth (ntfy IDs are ephemeral)
+                                if self.seenNtfyMessageIds.count > 1000 { self.seenNtfyMessageIds.removeAll() }
+
                                 let title = json["title"] as? String ?? "Navi Brain"
                                 let message = json["message"] as? String ?? ""
                                 let tags = json["tags"] as? [String] ?? []
@@ -215,11 +232,21 @@ final class NotificationManager: NSObject, ObservableObject {
         scheduleLocalNotification(notification)
     }
 
-    /// Schedule a notification for a server error
+    /// Schedule a notification for a server error.
+    /// Deduplicates: the same error message won't fire more than once per 60 seconds.
     func notifyServerError(error: String) {
+        let now = Date()
+        let normalized = error.prefix(120).description
+        // Skip if identical error was already notified recently
+        if normalized == lastErrorText && now.timeIntervalSince(lastErrorAt) < errorDedupeWindow {
+            return
+        }
+        lastErrorText = normalized
+        lastErrorAt = now
+
         let notification = NaviNotification(
             title: "Serverfel",
-            body: error.prefix(120).description,
+            body: normalized,
             category: .serverError,
             source: .server,
             priority: 5
@@ -308,17 +335,24 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
+        let categoryRaw = userInfo["category"] as? String
 
+        // Update badge/unread count immediately on the main actor.
         await MainActor.run {
-            // Mark as read when tapped
             if self.unreadCount > 0 {
                 self.unreadCount -= 1
             }
+        }
 
-            // Handle notification tap based on category
-            if let categoryRaw = userInfo["category"] as? String,
+        // Delay navigation so SwiftUI finishes initialising before we post
+        // the notification (avoids the "Call must be made on main thread"
+        // assertion when the app is cold-launched via a notification tap).
+        try? await Task.sleep(nanoseconds: 600_000_000) // 0.6 s
+
+        await MainActor.run {
+            if let categoryRaw,
                let category = NotificationCategory(rawValue: categoryRaw) {
-                handleNotificationTap(category: category, userInfo: userInfo)
+                self.handleNotificationTap(category: category, userInfo: userInfo)
             }
         }
     }

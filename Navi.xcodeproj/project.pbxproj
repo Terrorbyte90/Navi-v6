@@ -61,6 +61,7 @@
 		327B70D3FC9757691A14C430 /* CallModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6064B9D51A64E2736A9E7E6 /* CallModels.swift */; };
 		3413EAA1855E1413032628E2 /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C25D02FEE768B0BEF0DBA9 /* AgentEngine.swift */; };
 		341CB294A84C272832195038 /* CodeAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */; };
+		F8C3A7D6542B91E03C8F1E47 /* CodeServerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */; };
 		346AAF7E1B762BDC3FD943AA /* PremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75E16C42F31EA3521A28B103 /* PremiumComponents.swift */; };
 		347925EBE1D813068F70AF46 /* PureChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA49EBA790A1F0AE1DE761C /* PureChatView.swift */; };
 		34885B0F78701976A6947FD3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E9F974224709EF892C219B9E /* Assets.xcassets */; };
@@ -93,6 +94,7 @@
 		4EDFDC0E22145E26079D1713 /* LocalAgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D7FE88018F0A2EC04931FF /* LocalAgentEngine.swift */; };
 		4F92656D9B07C97D8365BD0C /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C521378620BF312B01C21004 /* VoiceView.swift */; };
 		51564F6ECEAF15A183EB7551 /* CodeAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */; };
+		D5B2E7A4916C3F280B6E59D4 /* CodeServerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */; };
 		5218D37946C4435A749E7397 /* PipelinePhaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC33BB35777F343FE6C25B5D /* PipelinePhaseView.swift */; };
 		52C39ED17C5CD0B069B46D79 /* ScheduledTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA46077E6EF10F3DD954F280 /* ScheduledTaskManager.swift */; };
 		54B8F9A68B6D484F62052B27 /* NaviApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B074907A2FB58C840C223A /* NaviApp.swift */; };
@@ -155,6 +157,8 @@
 		983E3EEDE32FC204F3D13DDA /* BrowserAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377C48BE8E59272A9F8CCC22 /* BrowserAgent.swift */; };
 		98B8DF00784FF65EAF88A672 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81AB7E8B7FB42687CBD3D91 /* BrowserView.swift */; };
 		9A63C510FD4CBB1F38E7BD0C /* NaviActivityPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */; };
+		9BBBC8882F66061900503263 /* VisualsTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBBC8872F66061900503263 /* VisualsTest.swift */; };
+		9BBBC8892F66061900503263 /* VisualsTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBBC8872F66061900503263 /* VisualsTest.swift */; };
 		9BEBC654F5C68DF9D33D4721 /* CheckpointManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E0F32117BD899767E725C6 /* CheckpointManager.swift */; };
 		9E42BEE7328C4D3D9AE198B2 /* VoiceModeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0BF9F678A4C3831B8207D5D /* VoiceModeManager.swift */; };
 		9E4952BBF146103DA9C6E684 /* ExchangeRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433D65180DC56EA603F1EBFB /* ExchangeRate.swift */; };
@@ -297,6 +301,7 @@
 		4CDC27DAA75627B1862F7AD5 /* NaviTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviTheme.swift; sourceTree = "<group>"; };
 		4CE32D3C945BE36EADF319DE /* ServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerView.swift; sourceTree = "<group>"; };
 		4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeAgent.swift; sourceTree = "<group>"; };
+		A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeServerService.swift; sourceTree = "<group>"; };
 		4F18AEF6E1007670FDFFBAA3 /* AgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentView.swift; sourceTree = "<group>"; };
 		5072F6FBC2C8CD6FA6720068 /* SearchEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchEngine.swift; sourceTree = "<group>"; };
 		53CF2D3BCA0E9A334DD6FA8B /* SamtalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamtalView.swift; sourceTree = "<group>"; };
@@ -313,7 +318,7 @@
 		64B074907A2FB58C840C223A /* NaviApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaviApp.swift; sourceTree = "<group>"; };
 		6FD7C47B7A159B2A9A089AB6 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
 		7423689F437F42E5120BB320 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
-		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7547E53210F7158811E0657B /* BrowserAgentLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAgentLogView.swift; sourceTree = "<group>"; };
 		75E16C42F31EA3521A28B103 /* PremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumComponents.swift; sourceTree = "<group>"; };
 		778D08B3D0DD0AD571D93118 /* TerminalExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalExecutor.swift; sourceTree = "<group>"; };
@@ -334,6 +339,7 @@
 		96F45C3172E1F715CA361E70 /* AgentDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDefinition.swift; sourceTree = "<group>"; };
 		97E3DE8BBA1E93EEC542497F /* UserProfileManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileManager.swift; sourceTree = "<group>"; };
 		99E94E2A8CCC206F4C6E351B /* CostTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostTracker.swift; sourceTree = "<group>"; };
+		9BBBC8872F66061900503263 /* VisualsTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualsTest.swift; sourceTree = "<group>"; };
 		9D6C4013EA73950913F95986 /* iCloudChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iCloudChatStore.swift; sourceTree = "<group>"; };
 		9FA49EBA790A1F0AE1DE761C /* PureChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PureChatView.swift; sourceTree = "<group>"; };
 		A05817D0E5784D552157E39D /* BackgroundDaemon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDaemon.swift; sourceTree = "<group>"; };
@@ -550,6 +556,7 @@
 			isa = PBXGroup;
 			children = (
 				4F0F10C9454FCBD6E1EDB015 /* CodeAgent.swift */,
+				A3C9F8E5D42B1670BC357A21 /* CodeServerService.swift */,
 				34EC1EF699FA1656785D274F /* CodeProject.swift */,
 				36CCC756AC4759371B376BAA /* CodeProjectStore.swift */,
 				795B4677DD4BE3CF6FFC1AC9 /* ModelRouter.swift */,
@@ -795,6 +802,7 @@
 		B9F0793DCBAFDCE2DFCDA81A /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				9BBBC8872F66061900503263 /* VisualsTest.swift */,
 				06075E83F58D9C6DB461B918 /* GlassCard.swift */,
 				CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */,
 				75E16C42F31EA3521A28B103 /* PremiumComponents.swift */,
@@ -975,11 +983,9 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					3F5B7BDDBF149AC9EE56BFB9 = {
-						DevelopmentTeam = DV646H5VDP;
 						ProvisioningStyle = Automatic;
 					};
 					DAB8911160F888000AB35966 = {
-						DevelopmentTeam = DV646H5VDP;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -1042,6 +1048,7 @@
 				135435DC340600BE2392322C /* AutonomousAgentRunner.swift in Sources */,
 				6C03B2D47476F8223151D410 /* BackgroundDaemon.swift in Sources */,
 				2C5F257EFF8C7579B561BB7D /* BrowserActionDecider.swift in Sources */,
+				9BBBC8882F66061900503263 /* VisualsTest.swift in Sources */,
 				983E3EEDE32FC204F3D13DDA /* BrowserAgent.swift in Sources */,
 				B939FA7F9419E6074A0076F8 /* BrowserAgentLogView.swift in Sources */,
 				98B8DF00784FF65EAF88A672 /* BrowserView.swift in Sources */,
@@ -1055,6 +1062,7 @@
 				188ECCF97D0F5465E70B8D08 /* ClaudeStreamParser.swift in Sources */,
 				0B927AEAB1E5407184286255 /* CodeActivityConsole.swift in Sources */,
 				51564F6ECEAF15A183EB7551 /* CodeAgent.swift in Sources */,
+				D5B2E7A4916C3F280B6E59D4 /* CodeServerService.swift in Sources */,
 				5D51EA6A5201CCB284E302E1 /* CodeEditorView.swift in Sources */,
 				B2F355C8103BBBD1D9A48BD7 /* CodeProgressCard.swift in Sources */,
 				FC9C841E512757C215142353 /* CodeProject.swift in Sources */,
@@ -1184,6 +1192,7 @@
 				E7596466CBA57674F9E449C8 /* ClaudeStreamParser.swift in Sources */,
 				EED012B5E987F5362A96D24D /* CodeActivityConsole.swift in Sources */,
 				341CB294A84C272832195038 /* CodeAgent.swift in Sources */,
+				F8C3A7D6542B91E03C8F1E47 /* CodeServerService.swift in Sources */,
 				5604A70C387F52B83EA0ED36 /* CodeEditorView.swift in Sources */,
 				0DF3964625D60D7A2CD3C019 /* CodeProgressCard.swift in Sources */,
 				E52E9A063C1B0B6A2C8DC2BC /* CodeProject.swift in Sources */,
@@ -1240,6 +1249,7 @@
 				170826B2A3E4AD2844B3B611 /* ProactiveNotificationManager.swift in Sources */,
 				5DD477B9975194FA53A3DC98 /* ProfileView.swift in Sources */,
 				278EAD6DE903526AD0904CBC /* Project.swift in Sources */,
+				9BBBC8892F66061900503263 /* VisualsTest.swift in Sources */,
 				708A0CEDC5CD88DFAE432071 /* ProjectIndexer.swift in Sources */,
 				16C9B5BBC5EB8525261E9F52 /* ProjectStore.swift in Sources */,
 				7E8F2E7D45A4326D3FE51F51 /* PromptQueue.swift in Sources */,
@@ -1412,7 +1422,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/macOS/Navi-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = EonCode/macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1432,7 +1442,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1453,7 +1463,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/macOS/Navi-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = EonCode/macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1473,7 +1483,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/iOS/Navi-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				INFOPLIST_FILE = EonCode/iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (

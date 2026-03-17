@@ -234,7 +234,11 @@ final class GitHubManager: ObservableObject {
         await saveRepoMetadata()
         
         NaviLog.info("GitHub: Auto-sync klar för \(repos.count) repos")
-        
+
+        // GitHub → Server: tell the server to pull latest code
+        await NaviBrainService.shared.triggerServerGitSync()
+        NaviLog.info("GitHub: Server git-sync triggered")
+
         // Starta periodisk synkning var 5:e minut
         startPeriodicSync()
     }
