@@ -165,7 +165,7 @@ struct CodeView: View {
 
             // Iteration counter
             if session.iteration > 0 {
-                Text("step \(session.iteration)/\(session.maxIteration)")
+                Text("steg \(session.iteration)/\(session.maxIteration)")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundColor(.accentNavi.opacity(0.5))
                     .padding(.horizontal, 5).padding(.vertical, 2)
@@ -191,12 +191,12 @@ struct CodeView: View {
 
     private func phaseLabelFromPhase(_ p: String) -> String {
         switch p {
-        case "thinking": return "Thinking…"
-        case "tools":    return "Using tools…"
-        case "running":  return "Running…"
-        case "done":     return "Done"
-        case "error":    return "Error"
-        default:         return "Working…"
+        case "thinking": return "Tänker…"
+        case "tools":    return "Använder verktyg…"
+        case "running":  return "Kör…"
+        case "done":     return "Klar"
+        case "error":    return "Fel"
+        default:         return "Arbetar…"
         }
     }
 
@@ -410,7 +410,7 @@ struct CodeView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 13))
                 .foregroundColor(NaviTheme.success)
-            Text(session.phaseLabel.isEmpty ? "Done" : session.phaseLabel)
+            Text(session.phaseLabel.isEmpty ? "Klar" : session.phaseLabel)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(NaviTheme.success.opacity(0.85))
         }

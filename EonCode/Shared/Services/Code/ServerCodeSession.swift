@@ -461,7 +461,7 @@ final class ServerCodeSession: ObservableObject {
         case .runStarted:
             isRunning = true
             phase = "running"
-            phaseLabel = "Starting…"
+            phaseLabel = "Startar…"
             if let t = event.task { task = t }
             streamingText = ""
             toolEvents = []
@@ -539,12 +539,12 @@ final class ServerCodeSession: ObservableObject {
             if let p = event.path { lintWarnings.append(p) }
 
         case .compacting:
-            phaseLabel = "Compacting context…"
+            phaseLabel = "Kompakterar kontext…"
 
         case .runFinished:
             isRunning = false
             phase = "done"
-            phaseLabel = event.summary ?? "Done"
+            phaseLabel = event.summary ?? "Klar"
             liveToolName = nil
             streamingText = ""
             // Final commit if any pending text

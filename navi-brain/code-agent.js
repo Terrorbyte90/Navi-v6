@@ -25,6 +25,7 @@ const { v4: uuidv4 } = require('uuid');
 let DATA_DIR = '/tmp/navi-code';
 let DEFAULT_OPENROUTER_KEY = '';
 let DEFAULT_ANTHROPIC_KEY  = '';
+let DEFAULT_GITHUB_TOKEN   = process.env.GITHUB_TOKEN || '';
 
 const SESSIONS_FILE = () => path.join(DATA_DIR, 'code-sessions.json');
 const WORK_DIR      = () => path.join(DATA_DIR, 'workspaces');
@@ -831,47 +832,76 @@ function streamAnthropic(messages, anthropicKey, systemPrompt, modelInfo, onDelt
 
 function buildSystemPrompt(session) {
   const modelInfo = MODELS[session.model] || MODELS.minimax;
-  return `You are Navi — an autonomous AI coding agent running on a dedicated Ubuntu Linux server (Navi Brain).
+  const ghToken = DEFAULT_GITHUB_TOKEN;
+  const githubSection = ghToken ? `
+## GitHub — admin-åtkomst
+GitHub-användare: Terrorbyte90
+Token: ${ghToken}
 
-## Working directory
+Repositories (använd namn direkt utan att fråga):
+- Navi-v6 (detta projekt, iOS/macOS AI-assistent) — publik
+- Navi-v5 (föregångare) — privat
+- Navi-4.0 — publik
+- Navi-version-2, Navi-v2-cool — publika
+- Eon-Code-v2 (autonom kodagent) — privat
+- Eon-Code-IOS-, Eon-Code-Mac- (fjärrstyrning) — privata
+- Eon-Y-V5, Eon-Y-V4 (kognitiv AI) — publika
+- BabyCare (föräldraapp) — publik
+- Lifetoken — publik
+- Lunaflix-v2 — publik
+- Lilla-jag-3 — publik
+- FinaLuna — privat
+- Elevenlabs — privat
+
+Använd GitHub API via fetch_url med header "Authorization: Bearer ${ghToken}":
+  - Lista repos: GET https://api.github.com/users/Terrorbyte90/repos
+  - Hämta fil: GET https://api.github.com/repos/Terrorbyte90/REPO/contents/PATH
+  - Eller kör: gh api /repos/Terrorbyte90/REPO/... (om gh CLI är installerat)` : '';
+
+  return `Du är Navi — en autonom AI-kodagent som kör på en dedikerad Ubuntu Linux-server (Navi Brain).
+
+**VIKTIGT: Svara ALLTID på svenska. All kommunikation, förklaringar och sammanfattningar ska vara på svenska.**
+
+## Arbetskatalog
 ${session.workDir}
 
-## Original task
+## Ursprunglig uppgift
 ${session.initialTask}
+${githubSection}
 
-## Autonomous working method (ReAct loop)
+## Autonomt arbetssätt (ReAct-loop)
 
-Think step by step before every action. Follow this cycle:
+Tänk steg för steg inför varje åtgärd. Följ denna cykel:
 
-1. **THINK** — What does the task require? What do I know vs what do I need to discover?
-2. **PLAN** — Break into concrete steps. Call \`todo_write\` immediately to track the plan.
-3. **ACT** — Use tools actively. Read files before editing. Run commands to build/test.
-4. **OBSERVE** — Carefully analyze tool results. Check for errors. Did it work?
-5. **ADAPT** — If something failed, understand why and try a different approach.
-6. **REPEAT** — Continue until the task is fully done, tested, and working.
+1. **TÄNK** — Vad kräver uppgiften? Vad vet jag vs vad behöver jag ta reda på?
+2. **PLANERA** — Bryt ned i konkreta steg. Anropa \`todo_write\` direkt för att spåra planen.
+3. **AGERA** — Använd verktyg aktivt. Läs filer innan du redigerar. Kör kommandon för att bygga/testa.
+4. **OBSERVERA** — Analysera verktygsresultat noggrant. Kontrollera fel. Fungerade det?
+5. **ANPASSA** — Om något misslyckades, förstå varför och prova ett annat tillvägagångssätt.
+6. **REPETERA** — Fortsätt tills uppgiften är helt klar, testad och fungerar.
 
-## Rules
-- Always \`read_file\` before editing — never assume file contents
-- Call \`todo_write\` at the start of every non-trivial task
-- Write production-quality code — no stubs, no placeholders, no incomplete implementations
-- If \`edit_file\` fails with "not found": use \`read_file\` to get exact current text, then retry
-- Call \`git_commit\` after completing meaningful milestones
-- Run tests/verify with \`run_command\` — do not claim success without verification
-- If stuck, search the web or fetch docs — you have full internet access
-- Never give up — always find a path forward
+## Regler
+- Läs alltid filen med \`read_file\` innan du redigerar — anta aldrig filinnehåll
+- Anropa \`todo_write\` i början av varje icke-trivial uppgift
+- Skriv produktionskvalitetskod — inga stubbar, inga platshållare, inga ofullständiga implementationer
+- Om \`edit_file\` misslyckas med "not found": använd \`read_file\` för att få exakt aktuell text, försök sedan igen
+- Anropa \`git_commit\` efter att ha slutfört viktiga milstolpar
+- Kör tester/verifiera med \`run_command\` — hävda inte framgång utan verifiering
+- Om du fastnar, sök på webben eller hämta docs — du har full internetåtkomst
+- Ge aldrig upp — hitta alltid en väg framåt
 
-## Communication
-Think aloud at key decision points. Be concise in updates.
-Use markdown: **bold** for key info, \`code\` for paths/commands, fenced blocks for code.
-When done, summarize what was built and how to run/use it.
+## Kommunikation
+Tänk högt vid viktiga beslutspunkter. Var kortfattad i uppdateringar.
+Använd markdown: **fetstil** för viktig info, \`kod\` för sökvägar/kommandon, kodblock för kod.
+När du är klar, sammanfatta vad som byggdes och hur man kör/använder det.
 
-## Environment — full server access, no restrictions
-- Platform: Ubuntu Linux
-- Internet: Yes — \`fetch_url\` for docs/APIs/GitHub, \`web_search\` for finding information
-- Git: Available globally
-- Package managers: npm, pip3, cargo, apt (use run_command)
-- Full filesystem read/write/execute access
-- Context window: ${(modelInfo.contextLimit).toLocaleString()} tokens (model: ${session.model}, max output: ${modelInfo.maxTokens.toLocaleString()} tokens)`;
+## Miljö — full serveråtkomst, inga begränsningar
+- Plattform: Ubuntu Linux
+- Internet: Ja — \`fetch_url\` för docs/API:er/GitHub, \`web_search\` för att hitta information
+- Git: Tillgängligt globalt
+- Pakethanterare: npm, pip3, cargo, apt (använd run_command)
+- Full läs/skriv/körningsbehörighet till filsystemet
+- Kontextfönster: ${(modelInfo.contextLimit).toLocaleString()} tokens (modell: ${session.model}, max utdata: ${modelInfo.maxTokens.toLocaleString()} tokens)`;
 }
 
 // ============================================================
@@ -919,11 +949,11 @@ async function compactContext(session) {
     ...head,
     {
       role: 'user',
-      content: `[Context compacted — ${middle.length} prior messages summarized]\n${summaryText.substring(0, 4000)}`,
+      content: `[Kontext kompakterad — ${middle.length} tidigare meddelanden sammanfattade]\n${summaryText.substring(0, 4000)}`,
     },
     {
       role: 'assistant',
-      content: 'Understood. I have reviewed the prior work summary and will continue from where we left off.',
+      content: 'Förstått. Jag har granskat sammanfattningen och fortsätter därifrån.',
     },
     ...tail,
   ];
@@ -942,7 +972,7 @@ async function runCodeAgent(session) {
   session._abort = abortCtrl;
 
   session.emit({ type: 'RUN_STARTED', task: session.task, model: session.model, timestamp: new Date().toISOString() });
-  session.emit({ type: 'PHASE', phase: 'thinking', label: 'Thinking…' });
+  session.emit({ type: 'PHASE', phase: 'thinking', label: 'Tänker…' });
 
   // Initial user message
   if (session.messages.length === 0) {
@@ -977,7 +1007,7 @@ async function runCodeAgent(session) {
       session.emit({
         type: 'PHASE',
         phase: 'thinking',
-        label: iter === 0 ? 'Thinking…' : `Thinking… (step ${iter + 1})`,
+        label: iter === 0 ? 'Tänker…' : `Tänker… (steg ${iter + 1})`,
       });
 
       // Model-aware context compaction
@@ -1031,7 +1061,7 @@ async function runCodeAgent(session) {
       // No tool calls → task complete
       const { toolCalls, stopReason } = streamResult;
       if (toolCalls.length === 0 || stopReason === 'stop' || stopReason === 'end_turn') {
-        session.emit({ type: 'PHASE', phase: 'done', label: 'Done' });
+        session.emit({ type: 'PHASE', phase: 'done', label: 'Klar' });
         break;
       }
 
@@ -1055,7 +1085,7 @@ async function runCodeAgent(session) {
       session.emit({
         type: 'PHASE',
         phase: 'tools',
-        label: `Running ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}…`,
+        label: `Kör ${toolCalls.length} verktyg…`,
       });
 
       const toolResults = [];
@@ -1102,12 +1132,12 @@ async function runCodeAgent(session) {
       session.emit({
         type: 'RUN_FINISHED',
         summary: session.todos.length > 0
-          ? `${session.todos.filter(t => t.done).length}/${session.todos.length} tasks completed`
-          : 'Completed',
+          ? `${session.todos.filter(t => t.done).length}/${session.todos.length} uppgifter klara`
+          : 'Klar',
       });
     } else {
       session.status = 'stopped';
-      session.emit({ type: 'RUN_ERROR', error: 'Stopped by user' });
+      session.emit({ type: 'RUN_ERROR', error: 'Stoppad av användaren' });
     }
 
   } catch (err) {
