@@ -165,7 +165,7 @@ struct CodeView: View {
 
             // Iteration counter
             if session.iteration > 0 {
-                Text("step \(session.iteration)")
+                Text("step \(session.iteration)/\(session.maxIteration)")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundColor(.accentNavi.opacity(0.5))
                     .padding(.horizontal, 5).padding(.vertical, 2)
@@ -245,7 +245,7 @@ struct CodeView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("MiniMax M2.5")
                             .font(.system(size: 14, weight: .medium))
-                        Text("80.2% SWE-bench · fastest")
+                        Text("80.2% SWE-bench · 900K ctx · snabbast")
                             .font(.system(size: 11)).foregroundColor(.secondary)
                     }
                     Spacer()
@@ -259,7 +259,7 @@ struct CodeView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Qwen3-Coder")
                             .font(.system(size: 14, weight: .medium))
-                        Text("Free · coding specialist")
+                        Text("Gratis · 110K ctx · kodspecialist")
                             .font(.system(size: 11)).foregroundColor(.secondary)
                     }
                     Spacer()
@@ -268,13 +268,27 @@ struct CodeView: View {
                     }
                 }
             }
+            Button { selectedModel = "deepseek" } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DeepSeek R1")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("110K ctx · chain-of-thought reasoning")
+                            .font(.system(size: 11)).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if selectedModel == "deepseek" {
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundColor(.accentNavi)
+                    }
+                }
+            }
             Divider()
             Button { selectedModel = "claude" } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Claude Sonnet")
+                        Text("Claude Sonnet 4.6")
                             .font(.system(size: 14, weight: .medium))
-                        Text("Anthropic · highest quality")
+                        Text("Anthropic · 170K ctx · högsta kvalitet")
                             .font(.system(size: 11)).foregroundColor(.secondary)
                     }
                     Spacer()
@@ -299,10 +313,11 @@ struct CodeView: View {
 
     private func modelDisplayName(_ model: String) -> String {
         switch model {
-        case "minimax": return "MiniMax"
-        case "qwen":    return "Qwen3"
-        case "claude":  return "Claude"
-        default:        return model
+        case "minimax":  return "MiniMax"
+        case "qwen":     return "Qwen3"
+        case "deepseek": return "DeepSeek"
+        case "claude":   return "Claude"
+        default:         return model
         }
     }
 
@@ -909,6 +924,7 @@ private func iconForTool(_ name: String) -> String {
     case "todo_write":  return "checklist"
     case "git_commit":  return "arrow.triangle.branch"
     case "web_search":  return "globe"
+    case "fetch_url":   return "globe.americas"
     default:            return "wrench"
     }
 }

@@ -1,5 +1,5 @@
 // ============================================================
-// Navi Code Agent — Server-side autonomous coding agent
+// Navi Code Agent v2 — Server-side autonomous coding agent
 // WebSocket streaming, persistent sessions, runs when iOS closes
 // ============================================================
 // Protocol (server → client):
@@ -11,11 +11,11 @@
 //   STOP, SEND { text }
 // ============================================================
 
-const fs   = require('fs');
-const path = require('path');
+const fs    = require('fs');
+const path  = require('path');
 const https = require('https');
 const http  = require('http');
-const { execSync } = require('child_process');
+const { exec, execFile, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 
 // ============================================================
@@ -30,15 +30,55 @@ const SESSIONS_FILE = () => path.join(DATA_DIR, 'code-sessions.json');
 const WORK_DIR      = () => path.join(DATA_DIR, 'workspaces');
 
 // ============================================================
-// MODELS
+// MODELS — with per-model context window limits
+// MiniMax M2.5:  1 000 000 token context (80.2% SWE-bench)
+// Qwen3-Coder:     128 000 token context (free)
+// DeepSeek-R1:     128 000 token context
+// Claude Sonnet:   200 000 token context
 // ============================================================
 
 const MODELS = {
-  minimax: 'minimax/minimax-m2.5',
-  qwen:    'qwen/qwen3-coder:free',
-  deepseek:'deepseek/deepseek-r1',
-  claude:  'claude-sonnet-4-6',
+  minimax:  { id: 'minimax/minimax-m2.5',   contextLimit: 900000, maxTokens: 32768 },
+  qwen:     { id: 'qwen/qwen3-coder:free',  contextLimit: 110000, maxTokens: 16384 },
+  deepseek: { id: 'deepseek/deepseek-r1',   contextLimit: 110000, maxTokens: 16384 },
+  claude:   { id: 'claude-sonnet-4-6',      contextLimit: 170000, maxTokens: 16384 },
 };
+
+// ============================================================
+// ASYNC HELPERS
+// ============================================================
+
+function asyncExec(cmd, opts = {}) {
+  return new Promise((resolve, reject) => {
+    exec(cmd, { maxBuffer: 4 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+      if (err) {
+        const e = new Error(err.message);
+        e.stdout = stdout || '';
+        e.stderr = stderr || '';
+        e.code = err.code;
+        reject(e);
+      } else {
+        resolve(stdout || '');
+      }
+    });
+  });
+}
+
+function asyncExecFile(file, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { maxBuffer: 4 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+      if (err) {
+        const e = new Error(err.message);
+        e.stdout = stdout || '';
+        e.stderr = stderr || '';
+        e.code = err.code;
+        reject(e);
+      } else {
+        resolve(stdout || '');
+      }
+    });
+  });
+}
 
 // ============================================================
 // TOOLS
@@ -47,11 +87,11 @@ const MODELS = {
 const CODE_TOOLS = [
   {
     name: 'read_file',
-    description: 'Read file contents. Optionally specify start_line/end_line for large files.',
+    description: 'Read file contents with line numbers. Use start_line/end_line for large files.',
     parameters: {
       type: 'object',
       properties: {
-        path:       { type: 'string',  description: 'File path' },
+        path:       { type: 'string',  description: 'Absolute or relative file path' },
         start_line: { type: 'integer', description: 'Start line (1-based, optional)' },
         end_line:   { type: 'integer', description: 'End line (1-based, optional)' },
       },
@@ -60,24 +100,24 @@ const CODE_TOOLS = [
   },
   {
     name: 'write_file',
-    description: 'Write content to a file. Creates parent dirs if needed. Runs lint check after write.',
+    description: 'Write content to a file. Creates parent directories if needed. Runs lint check after.',
     parameters: {
       type: 'object',
       properties: {
         path:    { type: 'string', description: 'File path' },
-        content: { type: 'string', description: 'File content' },
+        content: { type: 'string', description: 'Complete file content' },
       },
       required: ['path', 'content'],
     },
   },
   {
     name: 'edit_file',
-    description: 'Apply a search/replace edit. old_text must exactly match content in file.',
+    description: 'Apply an exact search/replace edit. old_text MUST match verbatim — use read_file first to confirm exact content.',
     parameters: {
       type: 'object',
       properties: {
         path:     { type: 'string', description: 'File path' },
-        old_text: { type: 'string', description: 'Exact text to replace' },
+        old_text: { type: 'string', description: 'Exact text to find and replace (must exist verbatim in file)' },
         new_text: { type: 'string', description: 'Replacement text' },
       },
       required: ['path', 'old_text', 'new_text'],
@@ -85,46 +125,46 @@ const CODE_TOOLS = [
   },
   {
     name: 'run_command',
-    description: 'Run a shell command. Returns stdout+stderr. Default cwd is session workspace.',
+    description: 'Run a shell command asynchronously. Safe for long operations (npm install, cargo build, etc.). Default cwd is session workspace.',
     parameters: {
       type: 'object',
       properties: {
-        command: { type: 'string',  description: 'Shell command' },
-        cwd:     { type: 'string',  description: 'Working directory (optional)' },
-        timeout: { type: 'integer', description: 'Timeout seconds (default 30)' },
+        command: { type: 'string',  description: 'Shell command to execute' },
+        cwd:     { type: 'string',  description: 'Working directory (optional, default: session workspace)' },
+        timeout: { type: 'integer', description: 'Timeout in seconds (default 120, max 600)' },
       },
       required: ['command'],
     },
   },
   {
     name: 'grep',
-    description: 'Search file contents with a regex pattern.',
+    description: 'Search file contents with a regex pattern. Returns matching lines with context.',
     parameters: {
       type: 'object',
       properties: {
-        pattern:      { type: 'string',  description: 'Regex pattern' },
-        path:         { type: 'string',  description: 'File or directory to search' },
-        file_pattern: { type: 'string',  description: 'Glob filter (e.g. "*.js")' },
-        context_lines:{ type: 'integer', description: 'Context lines around each match' },
+        pattern:       { type: 'string',  description: 'Regex pattern to search for' },
+        path:          { type: 'string',  description: 'File or directory to search in' },
+        file_pattern:  { type: 'string',  description: 'Glob filter (e.g. "*.js", "*.py")' },
+        context_lines: { type: 'integer', description: 'Lines of context around each match (default 2)' },
       },
       required: ['pattern', 'path'],
     },
   },
   {
     name: 'list_files',
-    description: 'List files in a directory.',
+    description: 'List files in a directory, optionally recursively (excludes node_modules, .git).',
     parameters: {
       type: 'object',
       properties: {
         path:      { type: 'string',  description: 'Directory path' },
-        recursive: { type: 'boolean', description: 'List recursively (max depth 3)' },
+        recursive: { type: 'boolean', description: 'Recurse into subdirectories (max depth 3)' },
       },
       required: ['path'],
     },
   },
   {
     name: 'todo_write',
-    description: 'Update the agent TODO list. Call this to track your plan and progress.',
+    description: 'Update the agent TODO list. Call at task start and whenever the plan changes. Visible to user in real-time.',
     parameters: {
       type: 'object',
       properties: {
@@ -139,7 +179,7 @@ const CODE_TOOLS = [
             },
             required: ['id', 'title', 'done'],
           },
-          description: 'Complete current TODO list',
+          description: 'Complete TODO list (replaces the current list)',
         },
       },
       required: ['todos'],
@@ -147,25 +187,38 @@ const CODE_TOOLS = [
   },
   {
     name: 'git_commit',
-    description: 'Stage all changes and create a git commit. Returns commit hash.',
+    description: 'Stage all changes and create a git commit. Returns commit hash. Use at meaningful milestones.',
     parameters: {
       type: 'object',
       properties: {
-        message: { type: 'string', description: 'Commit message' },
-        cwd:     { type: 'string', description: 'Repo directory (default: session workspace)' },
+        message: { type: 'string', description: 'Commit message (concise, imperative mood)' },
+        cwd:     { type: 'string', description: 'Git repository directory (default: session workspace)' },
       },
       required: ['message'],
     },
   },
   {
     name: 'web_search',
-    description: 'Search the web. Returns DuckDuckGo instant answer + top results.',
+    description: 'Search the web for documentation, packages, error messages, or current information.',
     parameters: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Search query' },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'fetch_url',
+    description: 'Fetch content from a URL (HTML stripped to text, JSON returned raw). Use for docs, APIs, GitHub files, package registries.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url:    { type: 'string', description: 'URL to fetch (http or https)' },
+        method: { type: 'string', description: 'HTTP method (default: GET)' },
+        body:   { type: 'string', description: 'Request body for POST/PUT (optional)' },
+      },
+      required: ['url'],
     },
   },
 ];
@@ -215,6 +268,8 @@ function lintCheck(filePath, cwd) {
 // TOOL EXECUTOR
 // ============================================================
 
+const TOOL_RESULT_LIMIT = 5000;
+
 async function executeTool(name, args, session) {
   const workDir = session.workDir;
   const cwd = args.cwd || workDir;
@@ -231,9 +286,12 @@ async function executeTool(name, args, session) {
         const slice = lines.slice(start, end);
         const numbered = slice.map((l, i) => `${start + i + 1}\t${l}`).join('\n');
         const result = numbered.substring(0, 20000);
-        return { result: slice.length < lines.length
-          ? `[Lines ${start+1}-${end} of ${lines.length}]\n${result}`
-          : result, isError: false };
+        return {
+          result: slice.length < lines.length
+            ? `[Lines ${start+1}-${end} of ${lines.length}]\n${result}`
+            : result,
+          isError: false,
+        };
       }
 
       case 'write_file': {
@@ -241,8 +299,6 @@ async function executeTool(name, args, session) {
         const dir = path.dirname(fp);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(fp, args.content || '', 'utf8');
-
-        // Lint guardrail
         const lintErr = lintCheck(fp, workDir);
         if (lintErr) {
           session.emit({ type: 'LINT_WARN', path: fp, error: lintErr });
@@ -256,19 +312,16 @@ async function executeTool(name, args, session) {
         if (!fs.existsSync(fp)) return { result: `File not found: ${fp}`, isError: true };
         const original = fs.readFileSync(fp, 'utf8');
         const oldText = args.old_text || '';
+
         if (!original.includes(oldText)) {
-          // Fuzzy: try trimmed whitespace match
-          const normalOrig = original.replace(/[ \t]+/g, ' ');
-          const normalOld  = oldText.replace(/[ \t]+/g, ' ');
-          if (normalOrig.includes(normalOld)) {
-            const updated = normalOrig.replace(normalOld, args.new_text || '');
-            fs.writeFileSync(fp, updated, 'utf8');
-            const lintErr = lintCheck(fp, workDir);
-            if (lintErr) session.emit({ type: 'LINT_WARN', path: fp, error: lintErr });
-            return { result: `File edited: ${fp} (whitespace-fuzzy match)`, isError: false };
-          }
-          return { result: `Edit failed: old_text not found in ${fp}.\nFirst 200 chars of file:\n${original.substring(0,200)}`, isError: true };
+          // Return first 30 lines to help the agent re-read and retry correctly
+          const firstLines = original.split('\n').slice(0, 30).map((l, i) => `${i + 1}\t${l}`).join('\n');
+          return {
+            result: `Edit failed: old_text not found verbatim in ${fp}.\nUse read_file to get the exact current content, then retry.\n\nFirst 30 lines of file:\n${firstLines}`,
+            isError: true,
+          };
         }
+
         const updated = original.replace(oldText, args.new_text || '');
         fs.writeFileSync(fp, updated, 'utf8');
         const lintErr = lintCheck(fp, workDir);
@@ -277,18 +330,14 @@ async function executeTool(name, args, session) {
       }
 
       case 'run_command': {
-        const timeout = (args.timeout || 30) * 1000;
+        // Async — does NOT block the Node.js event loop
+        const timeoutMs = Math.min((args.timeout || 120), 600) * 1000;
         try {
-          const output = execSync(args.command, {
-            cwd,
-            timeout,
-            maxBuffer: 2 * 1024 * 1024,
-            encoding: 'utf8',
-          });
+          const output = await asyncExec(args.command, { cwd, timeout: timeoutMs });
           return { result: output.substring(0, 10000), isError: false };
         } catch (e) {
-          const err = ((e.stderr || '') + (e.stdout || '') + (e.message || '')).substring(0, 5000);
-          return { result: `Exit ${e.status || 1}: ${err}`, isError: true };
+          const err = ((e.stderr || '') + (e.stdout || '') + e.message).substring(0, TOOL_RESULT_LIMIT);
+          return { result: `Exit ${e.code ?? 1}: ${err}`, isError: true };
         }
       }
 
@@ -312,9 +361,10 @@ async function executeTool(name, args, session) {
         if (!fs.existsSync(lsPath)) return { result: `Directory not found: ${lsPath}`, isError: true };
         if (args.recursive) {
           try {
-            const out = execSync(`find "${lsPath}" -maxdepth 3 -not -path "*/node_modules/*" -not -path "*/.git/*" | sort | head -200`, {
-              timeout: 8000, encoding: 'utf8',
-            });
+            const out = execSync(
+              `find "${lsPath}" -maxdepth 3 -not -path "*/node_modules/*" -not -path "*/.git/*" | sort | head -200`,
+              { timeout: 8000, encoding: 'utf8' }
+            );
             return { result: out, isError: false };
           } catch {
             return { result: fs.readdirSync(lsPath).join('\n'), isError: false };
@@ -337,25 +387,27 @@ async function executeTool(name, args, session) {
       case 'git_commit': {
         const gitCwd = args.cwd || workDir;
         try {
-          execSync('git add -A', { cwd: gitCwd, timeout: 10000 });
-          const commitOut = execSync(
-            `git commit -m "${(args.message || 'checkpoint').replace(/"/g, '\\"')}"`,
-            { cwd: gitCwd, timeout: 15000, encoding: 'utf8' }
+          await asyncExecFile('git', ['add', '-A'], { cwd: gitCwd, timeout: 10000 });
+          const commitOut = await asyncExecFile(
+            'git', ['commit', '-m', args.message || 'checkpoint'],
+            { cwd: gitCwd, timeout: 15000 }
           );
           const hashMatch = commitOut.match(/\[.+\s+([a-f0-9]{7,})\]/);
           const hash = hashMatch ? hashMatch[1] : 'unknown';
-          // Count changed files
-          const diffStat = (() => {
-            try { return execSync('git diff HEAD~1 --stat 2>/dev/null', { cwd: gitCwd, encoding: 'utf8', timeout: 5000 }); } catch { return ''; }
-          })();
+          const diffStat = await asyncExecFile('git', ['diff', 'HEAD~1', '--stat'], { cwd: gitCwd, timeout: 5000 }).catch(() => '');
           const filesChanged = (diffStat.match(/\d+ file/) || [''])[0];
-          const checkpoint = { hash, message: args.message || 'checkpoint', filesChanged, timestamp: new Date().toISOString() };
+          const checkpoint = {
+            hash,
+            message: args.message || 'checkpoint',
+            filesChanged,
+            timestamp: new Date().toISOString(),
+          };
           session.gitCheckpoints.push(checkpoint);
           session.emit({ type: 'GIT_COMMIT', ...checkpoint });
           session.save();
           return { result: `Committed: ${hash} — ${args.message}`, isError: false };
         } catch (e) {
-          const msg = (e.stderr || e.message || '').substring(0, 500);
+          const msg = ((e.stderr || '') + e.message).substring(0, 500);
           if (msg.includes('nothing to commit')) {
             return { result: 'Nothing to commit', isError: false };
           }
@@ -370,30 +422,106 @@ async function executeTool(name, args, session) {
             hostname: 'api.duckduckgo.com',
             path: `/?q=${query}&format=json&no_html=1&skip_disambig=1`,
             method: 'GET',
-            timeout: 8000,
+            timeout: 10000,
+            headers: { 'User-Agent': 'Navi-Code-Agent/2.0' },
           }, (res) => {
             let body = '';
             res.on('data', c => body += c);
             res.on('end', () => {
               try {
                 const d = JSON.parse(body);
-                let out = '';
-                if (d.AbstractText) out += `${d.AbstractText}\n\n`;
-                if (d.RelatedTopics) {
-                  out += d.RelatedTopics
-                    .slice(0, 5)
-                    .map(t => t.Text || '')
-                    .filter(Boolean)
-                    .join('\n');
+                const parts = [];
+                if (d.AbstractText) {
+                  parts.push(d.AbstractText);
+                  if (d.AbstractURL) parts.push(`Source: ${d.AbstractURL}`);
                 }
-                resolve(out || 'No results');
-              } catch { resolve('Search failed'); }
+                const results = (d.RelatedTopics || [])
+                  .filter(t => t.Text && t.FirstURL)
+                  .slice(0, 8)
+                  .map(t => `• ${t.Text}\n  ${t.FirstURL}`);
+                if (results.length > 0) {
+                  parts.push('\nRelated:\n' + results.join('\n'));
+                }
+                resolve(parts.join('\n\n') || 'No results found. Try a more specific query.');
+              } catch { resolve('Search failed — could not parse response.'); }
             });
           });
           req.on('error', () => resolve('Search unavailable'));
+          req.on('timeout', () => { req.destroy(); resolve('Search timed out'); });
           req.end();
         });
         return { result, isError: false };
+      }
+
+      case 'fetch_url': {
+        const urlStr = args.url;
+        if (!urlStr) return { result: 'url is required', isError: true };
+
+        const result = await (async () => {
+          let currentUrl = urlStr;
+          let redirects = 0;
+
+          while (redirects < 3) {
+            const urlObj = (() => { try { return new URL(currentUrl); } catch { return null; } })();
+            if (!urlObj) return { text: `Invalid URL: ${currentUrl}`, error: true };
+
+            const lib = urlObj.protocol === 'https:' ? https : http;
+            const response = await new Promise((resolve) => {
+              const reqOpts = {
+                hostname: urlObj.hostname,
+                port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+                path: urlObj.pathname + (urlObj.search || ''),
+                method: args.method || 'GET',
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Navi-Code-Agent/2.0)',
+                  'Accept': 'text/html,application/json,text/plain,*/*',
+                },
+                timeout: 15000,
+              };
+
+              const req = lib.request(reqOpts, (res) => {
+                if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+                  res.resume();
+                  resolve({ redirect: res.headers.location });
+                  return;
+                }
+                let body = '';
+                res.on('data', c => { if (body.length < 500000) body += c; });
+                res.on('end', () => {
+                  const ct = res.headers['content-type'] || '';
+                  if (ct.includes('application/json')) {
+                    resolve({ text: body.substring(0, 20000) });
+                  } else {
+                    const text = body
+                      .replace(/<script[\s\S]*?<\/script>/gi, '')
+                      .replace(/<style[\s\S]*?<\/style>/gi, '')
+                      .replace(/<[^>]+>/g, ' ')
+                      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+                      .replace(/\s{3,}/g, '\n\n')
+                      .trim();
+                    resolve({ text: text.substring(0, 20000) });
+                  }
+                });
+              });
+
+              if (args.body && args.method && args.method !== 'GET') req.write(args.body);
+              req.on('error', (e) => resolve({ text: `Network error: ${e.message}`, error: true }));
+              req.on('timeout', () => { req.destroy(); resolve({ text: 'Request timed out', error: true }); });
+              req.end();
+            });
+
+            if (response.redirect) {
+              currentUrl = response.redirect.startsWith('http') ? response.redirect : new URL(response.redirect, currentUrl).href;
+              redirects++;
+              continue;
+            }
+            return response;
+          }
+          return { text: 'Too many redirects', error: true };
+        })();
+
+        if (result.error) return { result: result.text, isError: true };
+        return { result: result.text || '(empty response)', isError: false };
       }
 
       default:
@@ -410,24 +538,24 @@ async function executeTool(name, args, session) {
 
 class CodeSession {
   constructor(id, task, model) {
-    this.id       = id;
-    this.task     = task;
-    this.model    = model;
-    this.status   = 'idle'; // idle | running | done | error | stopped
-    this.messages = [];     // LLM conversation history
-    this.events   = [];     // all emitted events (for replay)
-    this.todos    = [];
+    this.id          = id;
+    this.task        = task;         // current task (updated on SEND)
+    this.initialTask = task;         // original task (preserved for system prompt context)
+    this.model       = model;
+    this.status      = 'idle';       // idle | running | done | error | stopped
+    this.messages    = [];           // LLM conversation history
+    this.events      = [];           // all emitted events (for replay)
+    this.todos       = [];
     this.gitCheckpoints = [];
-    this.workDir  = path.join(WORK_DIR(), id);
-    this.createdAt = new Date().toISOString();
-    this.updatedAt = new Date().toISOString();
+    this.workDir     = path.join(WORK_DIR(), id);
+    this.createdAt   = new Date().toISOString();
+    this.updatedAt   = new Date().toISOString();
     this.openrouterKey = '';
     this.anthropicKey  = '';
-    this._ws = null;        // active WebSocket (nullable)
+    this._ws      = null;
     this._stopped = false;
-    this._seq = 0;
+    this._seq     = 0;
 
-    // Create workspace directory
     if (!fs.existsSync(this.workDir)) {
       fs.mkdirSync(this.workDir, { recursive: true });
     }
@@ -437,9 +565,7 @@ class CodeSession {
     event.seq = this._seq++;
     event.ts  = Date.now();
     this.events.push(event);
-    // Keep last 1000 events
     if (this.events.length > 1000) this.events.splice(0, this.events.length - 1000);
-
     if (this._ws && this._ws.readyState === 1) {
       try { this._ws.send(JSON.stringify(event)); } catch {}
     }
@@ -464,31 +590,34 @@ class CodeSession {
 
   toJSON() {
     return {
-      id: this.id,
-      task: this.task,
-      model: this.model,
-      status: this.status,
-      messages: this.messages.slice(-40), // persist last 40 msgs
-      events: this.events.slice(-200),    // persist last 200 events
-      todos: this.todos,
+      id:          this.id,
+      task:        this.task,
+      initialTask: this.initialTask,
+      model:       this.model,
+      status:      this.status,
+      messages:    this.messages.slice(-40),
+      events:      this.events.slice(-200),
+      todos:       this.todos,
       gitCheckpoints: this.gitCheckpoints,
-      workDir: this.workDir,
-      createdAt: this.createdAt,
-      updatedAt: this.updatedAt,
+      workDir:     this.workDir,
+      createdAt:   this.createdAt,
+      updatedAt:   this.updatedAt,
     };
   }
 
   static fromJSON(data) {
     const s = new CodeSession(data.id, data.task, data.model);
-    s.status = data.status || 'idle';
-    s.messages = data.messages || [];
-    s.events   = data.events   || [];
-    s.todos    = data.todos    || [];
+    s.initialTask    = data.initialTask || data.task;
+    s.status         = data.status      || 'idle';
+    s.messages       = data.messages    || [];
+    s.events         = data.events      || [];
+    s.todos          = data.todos       || [];
     s.gitCheckpoints = data.gitCheckpoints || [];
-    s.workDir  = data.workDir  || s.workDir;
-    s.createdAt = data.createdAt || s.createdAt;
-    s.updatedAt = data.updatedAt || s.updatedAt;
-    s._seq = s.events.length;
+    s.workDir        = data.workDir     || s.workDir;
+    s.createdAt      = data.createdAt   || s.createdAt;
+    s.updatedAt      = data.updatedAt   || s.updatedAt;
+    // Restore _seq to one past the highest seq in persisted events
+    s._seq = s.events.reduce((m, e) => Math.max(m, (e.seq ?? 0) + 1), 0);
     return s;
   }
 }
@@ -508,7 +637,6 @@ function loadSessions() {
     const all = loadAllSessions();
     for (const [id, data] of Object.entries(all)) {
       const s = CodeSession.fromJSON(data);
-      // Mark running sessions as interrupted
       if (s.status === 'running') {
         s.status = 'error';
         s.emit({ type: 'RUN_ERROR', error: 'Server restarted during execution' });
@@ -525,16 +653,16 @@ function loadSessions() {
 // OPENROUTER STREAMING
 // ============================================================
 
-function streamOpenRouter(messages, model, tools, openrouterKey, onDelta, signal) {
+function streamOpenRouter(messages, modelInfo, tools, openrouterKey, onDelta, signal) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      model,
+      model: modelInfo.id,
       messages,
       tools: tools.length > 0 ? toolsToOpenAI() : undefined,
       tool_choice: tools.length > 0 ? 'auto' : undefined,
       stream: true,
-      max_tokens: 8192,
-      temperature: 1.0,
+      max_tokens: modelInfo.maxTokens,
+      temperature: 0.7,
     });
 
     const req = https.request({
@@ -552,7 +680,7 @@ function streamOpenRouter(messages, model, tools, openrouterKey, onDelta, signal
     }, (res) => {
       let buffer = '';
       let fullText = '';
-      let toolCallMap = {}; // index → { id, name, argsStr }
+      let toolCallMap = {};
       let stopReason = null;
 
       res.on('data', chunk => {
@@ -571,13 +699,11 @@ function streamOpenRouter(messages, model, tools, openrouterKey, onDelta, signal
             if (!choice) continue;
             const delta = choice.delta || {};
 
-            // Text delta
             if (delta.content) {
               fullText += delta.content;
               onDelta(delta.content);
             }
 
-            // Tool call chunks
             if (delta.tool_calls) {
               for (const tc of delta.tool_calls) {
                 const idx = tc.index ?? 0;
@@ -608,7 +734,7 @@ function streamOpenRouter(messages, model, tools, openrouterKey, onDelta, signal
     });
 
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('OpenRouter timeout')); });
     req.write(body);
     req.end();
   });
@@ -618,11 +744,11 @@ function streamOpenRouter(messages, model, tools, openrouterKey, onDelta, signal
 // ANTHROPIC STREAMING
 // ============================================================
 
-function streamAnthropic(messages, anthropicKey, systemPrompt, onDelta, signal) {
+function streamAnthropic(messages, anthropicKey, systemPrompt, modelInfo, onDelta, signal) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
+      model: modelInfo.id,
+      max_tokens: modelInfo.maxTokens,
       system: systemPrompt,
       messages,
       tools: toolsToAnthropic(),
@@ -636,6 +762,7 @@ function streamAnthropic(messages, anthropicKey, systemPrompt, onDelta, signal) 
       headers: {
         'x-api-key': anthropicKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
       },
@@ -643,7 +770,7 @@ function streamAnthropic(messages, anthropicKey, systemPrompt, onDelta, signal) 
     }, (res) => {
       let buffer = '';
       let fullText = '';
-      let toolUses = {}; // id → { id, name, inputStr }
+      let toolUses = {};
       let stopReason = null;
       let currentBlockIdx = null;
       let currentBlockType = null;
@@ -692,7 +819,7 @@ function streamAnthropic(messages, anthropicKey, systemPrompt, onDelta, signal) 
     });
 
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Anthropic timeout')); });
     req.write(body);
     req.end();
   });
@@ -703,38 +830,48 @@ function streamAnthropic(messages, anthropicKey, systemPrompt, onDelta, signal) 
 // ============================================================
 
 function buildSystemPrompt(session) {
-  return `You are Navi — an autonomous AI coding agent running on a dedicated Ubuntu server (Navi Brain).
-You are working in: ${session.workDir}
+  const modelInfo = MODELS[session.model] || MODELS.minimax;
+  return `You are Navi — an autonomous AI coding agent running on a dedicated Ubuntu Linux server (Navi Brain).
 
-## Working method (ReAct loop)
-THINK   Understand the task deeply. Identify what you need to know.
-PLAN    Break it into concrete steps. Call todo_write to track your plan.
-ACT     Use tools actively. Read files before editing. Verify with run_command.
-OBSERVE Analyze tool results. Adapt if unexpected.
-REPEAT  Continue until the task is fully solved and verified.
+## Working directory
+${session.workDir}
+
+## Original task
+${session.initialTask}
+
+## Autonomous working method (ReAct loop)
+
+Think step by step before every action. Follow this cycle:
+
+1. **THINK** — What does the task require? What do I know vs what do I need to discover?
+2. **PLAN** — Break into concrete steps. Call \`todo_write\` immediately to track the plan.
+3. **ACT** — Use tools actively. Read files before editing. Run commands to build/test.
+4. **OBSERVE** — Carefully analyze tool results. Check for errors. Did it work?
+5. **ADAPT** — If something failed, understand why and try a different approach.
+6. **REPEAT** — Continue until the task is fully done, tested, and working.
 
 ## Rules
-- Always read files before editing them (read_file first)
-- Write production-quality code — no placeholders, no TODOs, no stubs
-- Call todo_write at the start of any non-trivial task to create your plan
-- Call git_commit after completing major milestones
-- If an edit fails, read the file again to get current contents, then retry
-- If tests fail, fix them before continuing
-- Use run_command to verify your work (run tests, check syntax, etc.)
-- Never give up — always find a way forward
+- Always \`read_file\` before editing — never assume file contents
+- Call \`todo_write\` at the start of every non-trivial task
+- Write production-quality code — no stubs, no placeholders, no incomplete implementations
+- If \`edit_file\` fails with "not found": use \`read_file\` to get exact current text, then retry
+- Call \`git_commit\` after completing meaningful milestones
+- Run tests/verify with \`run_command\` — do not claim success without verification
+- If stuck, search the web or fetch docs — you have full internet access
+- Never give up — always find a path forward
 
-## Communication style
-Be concise. Short progress updates. Think aloud briefly at key decisions.
-Use markdown: **bold** for key info, \`code\` for paths and commands, code blocks for code.
+## Communication
+Think aloud at key decision points. Be concise in updates.
+Use markdown: **bold** for key info, \`code\` for paths/commands, fenced blocks for code.
+When done, summarize what was built and how to run/use it.
 
-## Environment
-Platform: Ubuntu Linux
-Working directory: ${session.workDir}
-Git: Available (git init if needed)
-Package managers: npm, pip3, cargo available
-
-## Task
-${session.task}`;
+## Environment — full server access, no restrictions
+- Platform: Ubuntu Linux
+- Internet: Yes — \`fetch_url\` for docs/APIs/GitHub, \`web_search\` for finding information
+- Git: Available globally
+- Package managers: npm, pip3, cargo, apt (use run_command)
+- Full filesystem read/write/execute access
+- Context window: ${(modelInfo.contextLimit).toLocaleString()} tokens (model: ${session.model}, max output: ${modelInfo.maxTokens.toLocaleString()} tokens)`;
 }
 
 // ============================================================
@@ -748,29 +885,46 @@ function estimateTokens(messages) {
   }, 0);
 }
 
+function serializeContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(block => {
+      if (block.type === 'text')        return block.text || '';
+      if (block.type === 'tool_use')    return `[tool: ${block.name}(${JSON.stringify(block.input || {}).substring(0, 200)})]`;
+      if (block.type === 'tool_result') return `[result: ${JSON.stringify(block.content).substring(0, 200)}]`;
+      return JSON.stringify(block).substring(0, 200);
+    }).join('\n');
+  }
+  return JSON.stringify(content).substring(0, 500);
+}
+
 async function compactContext(session) {
   const messages = session.messages;
   if (messages.length < 10) return;
 
   session.emit({ type: 'COMPACTING', reason: 'Context window approaching limit' });
 
-  // Keep system-level messages: first user message + last 8 messages
   const head = messages.slice(0, 2);
   const tail = messages.slice(-8);
   const middle = messages.slice(2, -8);
 
   if (middle.length === 0) return;
 
-  // Summarize middle (no tool calling, just summarize)
+  // Serialize ALL message types — including tool_use and tool_result blocks
   const summaryText = middle
-    .filter(m => typeof m.content === 'string')
-    .map(m => `[${m.role}]: ${m.content?.substring(0, 300)}`)
+    .map(m => `[${m.role}]: ${serializeContent(m.content).substring(0, 400)}`)
     .join('\n');
 
   session.messages = [
     ...head,
-    { role: 'user', content: `[Context summary — ${middle.length} messages compacted]\n${summaryText.substring(0, 3000)}` },
-    { role: 'assistant', content: 'Understood. Continuing from where we left off.' },
+    {
+      role: 'user',
+      content: `[Context compacted — ${middle.length} prior messages summarized]\n${summaryText.substring(0, 4000)}`,
+    },
+    {
+      role: 'assistant',
+      content: 'Understood. I have reviewed the prior work summary and will continue from where we left off.',
+    },
     ...tail,
   ];
 }
@@ -807,21 +961,27 @@ async function runCodeAgent(session) {
     return;
   }
 
-  const modelId = isAnthropic ? 'claude-sonnet-4-6' : (MODELS[session.model] || MODELS.minimax);
+  const modelInfo = MODELS[session.model] || MODELS.minimax;
   const systemPrompt = buildSystemPrompt(session);
-  const MAX_ITER = 30;
+  // Compact at 85% of context limit — leaves room for the model's output
+  const compactAt = Math.floor(modelInfo.contextLimit * 0.85);
+  const MAX_ITER = 40;
   let doomCounter = 0;
-  let lastToolNames = [];
+  let lastToolNames = '';
 
   try {
     for (let iter = 0; iter < MAX_ITER; iter++) {
       if (abortCtrl.aborted || session._stopped) break;
 
       session.emit({ type: 'ITERATION', n: iter + 1, maxN: MAX_ITER });
-      session.emit({ type: 'PHASE', phase: 'thinking', label: iter === 0 ? 'Thinking…' : `Thinking… (step ${iter + 1})` });
+      session.emit({
+        type: 'PHASE',
+        phase: 'thinking',
+        label: iter === 0 ? 'Thinking…' : `Thinking… (step ${iter + 1})`,
+      });
 
-      // Context compaction if needed
-      if (estimateTokens(session.messages) > 60000) {
+      // Model-aware context compaction
+      if (estimateTokens(session.messages) > compactAt) {
         await compactContext(session);
       }
 
@@ -832,10 +992,10 @@ async function runCodeAgent(session) {
           session.messages,
           key,
           systemPrompt,
+          modelInfo,
           (delta) => session.emit({ type: 'TEXT_DELTA', delta }),
           abortCtrl
         );
-        // Anthropic: build content array for assistant message
         const assistantContent = [];
         if (streamResult.fullText) assistantContent.push({ type: 'text', text: streamResult.fullText });
         for (const tc of streamResult.toolCalls) {
@@ -843,16 +1003,15 @@ async function runCodeAgent(session) {
         }
         session.messages.push({ role: 'assistant', content: assistantContent });
       } else {
-        // OpenRouter / OpenAI format
         const msgs = [
           { role: 'system', content: systemPrompt },
           ...session.messages,
         ];
-        streamResult = await streamOpenRouter(msgs, modelId, CODE_TOOLS, key,
+        streamResult = await streamOpenRouter(
+          msgs, modelInfo, CODE_TOOLS, key,
           (delta) => session.emit({ type: 'TEXT_DELTA', delta }),
           abortCtrl
         );
-        // Build assistant message
         const assistantMsg = { role: 'assistant', content: streamResult.fullText || '' };
         if (streamResult.toolCalls.length > 0) {
           assistantMsg.tool_calls = streamResult.toolCalls.map(tc => ({
@@ -864,7 +1023,7 @@ async function runCodeAgent(session) {
         session.messages.push(assistantMsg);
       }
 
-      // Commit text block
+      // Commit text block to UI
       if (streamResult.fullText?.trim()) {
         session.emit({ type: 'TEXT_COMMIT', text: streamResult.fullText });
       }
@@ -876,12 +1035,15 @@ async function runCodeAgent(session) {
         break;
       }
 
-      // Doom loop detection
+      // Doom loop detection — same tools 3× in a row
       const toolNames = toolCalls.map(t => t.name).sort().join(',');
       if (toolNames === lastToolNames) {
         doomCounter++;
         if (doomCounter >= 3) {
-          session.messages.push({ role: 'user', content: 'You are repeating the same actions. Stop and take a completely different approach, or report that the task cannot be completed as specified.' });
+          session.messages.push({
+            role: 'user',
+            content: 'You are repeating the same actions without progress. Stop and take a completely different approach, or explain clearly what is blocking you and what you have accomplished so far.',
+          });
           doomCounter = 0;
         }
       } else {
@@ -889,8 +1051,12 @@ async function runCodeAgent(session) {
         lastToolNames = toolNames;
       }
 
-      // Execute tool calls
-      session.emit({ type: 'PHASE', phase: 'tools', label: `Running ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}…` });
+      // Execute tools
+      session.emit({
+        type: 'PHASE',
+        phase: 'tools',
+        label: `Running ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}…`,
+      });
 
       const toolResults = [];
 
@@ -907,7 +1073,7 @@ async function runCodeAgent(session) {
           type: 'TOOL_RESULT',
           toolId: tc.id,
           name: tc.name,
-          result: result.substring(0, 3000),
+          result: result.substring(0, TOOL_RESULT_LIMIT),
           isError,
           durationMs,
         });
@@ -919,7 +1085,7 @@ async function runCodeAgent(session) {
         }
       }
 
-      // Add tool results to history
+      // Add tool results to conversation history
       if (isAnthropic) {
         session.messages.push({ role: 'user', content: toolResults });
       } else {
@@ -933,9 +1099,11 @@ async function runCodeAgent(session) {
 
     if (!abortCtrl.aborted && !session._stopped) {
       session.status = 'done';
-      session.emit({ type: 'RUN_FINISHED', summary: session.todos.length > 0
-        ? session.todos.filter(t => t.done).length + '/' + session.todos.length + ' tasks completed'
-        : 'Completed'
+      session.emit({
+        type: 'RUN_FINISHED',
+        summary: session.todos.length > 0
+          ? `${session.todos.filter(t => t.done).length}/${session.todos.length} tasks completed`
+          : 'Completed',
       });
     } else {
       session.status = 'stopped';
@@ -964,7 +1132,7 @@ function handleWebSocket(ws, req) {
     try { ws.send(JSON.stringify(obj)); } catch {}
   }
 
-  // Heartbeat
+  // Keepalive heartbeat
   pingInterval = setInterval(() => {
     if (ws.readyState === 1) sendRaw({ type: 'PING', ts: Date.now() });
   }, 20000);
@@ -976,7 +1144,6 @@ function handleWebSocket(ws, req) {
     switch (msg.type) {
 
       case 'SUBSCRIBE': {
-        // Reconnect to existing session
         const s = codeSessions[msg.sessionId];
         if (!s) {
           sendRaw({ type: 'ERROR', error: 'Session not found' });
@@ -985,8 +1152,6 @@ function handleWebSocket(ws, req) {
         session = s;
         session._ws = ws;
         sendRaw({ type: 'CONNECTED', sessionId: s.id, hasHistory: s.messages.length > 0 });
-
-        // State snapshot (current session state for UI reconstruction)
         sendRaw({
           type: 'STATE_SNAPSHOT',
           status: s.status,
@@ -996,15 +1161,13 @@ function handleWebSocket(ws, req) {
           model: s.model,
           createdAt: s.createdAt,
         });
-
-        // Replay missed events
-        const lastSeq = msg.lastSeq ?? 0;
+        // parseInt handles both Number and String lastSeq from iOS (fixes the String bug)
+        const lastSeq = parseInt(msg.lastSeq, 10) || 0;
         s.replayFrom(ws, lastSeq);
         break;
       }
 
       case 'START': {
-        // Create new session and start agent
         const id = uuidv4();
         const s = new CodeSession(id, msg.task || '', msg.model || 'minimax');
         s.openrouterKey = msg.openrouterKey || DEFAULT_OPENROUTER_KEY;
@@ -1012,11 +1175,8 @@ function handleWebSocket(ws, req) {
         s._ws = ws;
         session = s;
         codeSessions[id] = s;
-
         sendRaw({ type: 'CONNECTED', sessionId: id, hasHistory: false });
         s.save();
-
-        // Start agent asynchronously (persists when WS disconnects)
         runCodeAgent(s).catch(e => {
           console.error('[CODE-AGENT] Unhandled:', e.message);
         });
@@ -1024,13 +1184,11 @@ function handleWebSocket(ws, req) {
       }
 
       case 'SEND': {
-        // Continue existing session with a new user message
         if (!session) { sendRaw({ type: 'ERROR', error: 'No active session' }); return; }
         if (session.status === 'running') { sendRaw({ type: 'ERROR', error: 'Agent is already running' }); return; }
-
-        // Append user message and continue
         session.messages.push({ role: 'user', content: msg.text || '' });
-        session.task = msg.text; // update task for system prompt
+        // Update current task but preserve initialTask in system prompt
+        session.task = msg.text || session.task;
         session._ws = ws;
         runCodeAgent(session).catch(() => {});
         break;
@@ -1053,17 +1211,12 @@ function handleWebSocket(ws, req) {
 
   ws.on('close', () => {
     clearInterval(pingInterval);
-    // Session keeps running — just detach the ws reference
-    if (session && session._ws === ws) {
-      session._ws = null;
-    }
+    if (session && session._ws === ws) session._ws = null;
   });
 
   ws.on('error', () => {
     clearInterval(pingInterval);
-    if (session && session._ws === ws) {
-      session._ws = null;
-    }
+    if (session && session._ws === ws) session._ws = null;
   });
 }
 
@@ -1074,10 +1227,8 @@ function handleWebSocket(ws, req) {
 function createRouter(express) {
   const router = express.Router();
 
-  // POST /code/start — REST fallback to create a session without WS
+  // POST /code/start — REST fallback (no WebSocket)
   router.post('/start', (req, res) => {
-    const apiKey = req.headers['x-api-key'];
-    // Check is handled by caller
     const { task, model, openrouterKey, anthropicKey } = req.body;
     if (!task) return res.status(400).json({ error: 'task required' });
 
@@ -1087,10 +1238,7 @@ function createRouter(express) {
     s.anthropicKey  = anthropicKey  || req.headers['x-anthropic-key']  || DEFAULT_ANTHROPIC_KEY;
     codeSessions[id] = s;
     s.save();
-
-    // Start agent in background
     runCodeAgent(s).catch(() => {});
-
     res.json({ sessionId: id, workDir: s.workDir, status: 'started' });
   });
 
@@ -1135,6 +1283,11 @@ function createRouter(express) {
     res.json({ ok: true });
   });
 
+  // GET /code/models — model info with context limits
+  router.get('/models', (req, res) => {
+    res.json({ models: MODELS });
+  });
+
   return router;
 }
 
@@ -1143,28 +1296,25 @@ function createRouter(express) {
 // ============================================================
 
 function init(wss, config = {}) {
-  DATA_DIR               = config.dataDir || DATA_DIR;
+  DATA_DIR               = config.dataDir      || DATA_DIR;
   DEFAULT_OPENROUTER_KEY = config.openrouterKey || '';
   DEFAULT_ANTHROPIC_KEY  = config.anthropicKey  || '';
 
-  // Ensure dirs exist
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(DATA_DIR))   fs.mkdirSync(DATA_DIR,   { recursive: true });
   if (!fs.existsSync(WORK_DIR())) fs.mkdirSync(WORK_DIR(), { recursive: true });
 
-  // Load persisted sessions
   loadSessions();
-
-  // WebSocket connections
   wss.on('connection', handleWebSocket);
 
-  // Periodic save
+  // Periodic save every 30 seconds
   setInterval(() => {
-    for (const s of Object.values(codeSessions)) {
-      s.save();
-    }
+    for (const s of Object.values(codeSessions)) s.save();
   }, 30000);
 
-  console.log('[CODE-AGENT] Initialized — sessions:', Object.keys(codeSessions).length);
+  console.log('[CODE-AGENT] v2 initialized — sessions:', Object.keys(codeSessions).length);
+  console.log('[CODE-AGENT] Models:', Object.entries(MODELS)
+    .map(([k, v]) => `${k} (${v.contextLimit.toLocaleString()} ctx)`)
+    .join(', '));
 }
 
-module.exports = { init, createRouter, codeSessions };
+module.exports = { init, createRouter, codeSessions, MODELS };

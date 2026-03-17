@@ -174,6 +174,7 @@ struct ServerToolEvent: Identifiable {
         case "todo_write":     return "checklist"
         case "git_commit":     return "arrow.triangle.branch"
         case "web_search":     return "globe"
+        case "fetch_url":      return "globe.americas"
         default:               return "wrench"
         }
     }
@@ -225,7 +226,7 @@ final class ServerCodeSession: ObservableObject {
     @Published var toolEvents: [ServerToolEvent] = []
     @Published var liveToolName: String? = nil
     @Published var iteration: Int = 0
-    @Published var maxIteration: Int = 30
+    @Published var maxIteration: Int = 40
     @Published var gitCheckpoints: [ServerGitCheckpoint] = []
     @Published var lintWarnings: [String] = []
     @Published var lastError: String?
@@ -340,7 +341,7 @@ final class ServerCodeSession: ObservableObject {
         listenForMessages()
 
         // Send START
-        var startMsg: [String: String] = [
+        var startMsg: [String: Any] = [
             "type": "START",
             "task": task,
             "model": model,
@@ -366,7 +367,7 @@ final class ServerCodeSession: ObservableObject {
         connectionState = .connected
 
         listenForMessages()
-        sendMessage(["type": "SUBSCRIBE", "sessionId": sessionId, "lastSeq": String(lastSeq)])
+        sendMessage(["type": "SUBSCRIBE", "sessionId": sessionId, "lastSeq": lastSeq])
     }
 
     private func listenForMessages() {
@@ -415,7 +416,7 @@ final class ServerCodeSession: ObservableObject {
 
     // MARK: - Send
 
-    private func sendMessage(_ dict: [String: String]) {
+    private func sendMessage(_ dict: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let text = String(data: data, encoding: .utf8) else { return }
         wsTask?.send(.string(text)) { _ in }
