@@ -470,10 +470,10 @@ struct PureChatBubble: View, Equatable {
 
     var body: some View {
         if isUser {
-            // Right-aligned warm user bubble
+            // Right-aligned warm user bubble — generous padding, tight leading
             HStack(alignment: .top) {
-                Spacer(minLength: 80)
-                VStack(alignment: .trailing, spacing: 6) {
+                Spacer(minLength: 72)
+                VStack(alignment: .trailing, spacing: 8) {
                     if let imgs = message.imageData, !imgs.isEmpty {
                         imageRow(imgs)
                     }
@@ -481,25 +481,29 @@ struct PureChatBubble: View, Equatable {
                         .font(NaviTheme.bodyFont(size: 17))
                         .foregroundColor(.primary)
                         .lineSpacing(5)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 18).fill(Color.userBubble))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.userBubble)
+                        )
                         .textSelection(.enabled)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
         } else {
-            // Left-aligned: glass orb avatar, no bubble background
-            HStack(alignment: .top, spacing: 10) {
-                ThinkingOrb(size: 24, isAnimating: false)
-                    .padding(.top, 2)
+            // Left-aligned: glass orb avatar, full-width content area
+            HStack(alignment: .top, spacing: 12) {
+                ThinkingOrb(size: 26, isAnimating: false)
+                    .padding(.top, 3)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     // Tool call pill — shown when model executed tools
                     if let tools = message.toolCallNames, !tools.isEmpty {
                         NaviActivityPill(
-                            statusText: tools.count == 1 ? "1 verktyg" : "\(tools.count) verktyg",
+                            statusText: tools.count == 1 ? "1 verktyg användes" : "\(tools.count) verktyg användes",
                             items: tools,
                             isLive: false
                         )
@@ -509,44 +513,8 @@ struct PureChatBubble: View, Equatable {
                         .equatable()
                         .textSelection(.enabled)
 
-                    // Actions row
-                    HStack(spacing: 12) {
-                        Button {
-                            #if os(iOS)
-                            UIPasteboard.general.string = message.content
-                            #else
-                            NSPasteboard.general.setString(message.content, forType: .string)
-                            #endif
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            if isSpeaking {
-                                ElevenLabsClient.shared.stop()
-                                isSpeaking = false
-                            } else {
-                                isSpeaking = true
-                                Task {
-                                    await ElevenLabsClient.shared.speak(message.content)
-                                    isSpeaking = false
-                                }
-                            }
-                        } label: {
-                            Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.1")
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-
-                        // Cost badge
-                        if let cost = message.costSEK, cost > 0 {
-                            CostBadge(costSEK: cost, usage: message.tokenUsage, model: message.model)
-                        }
-                    }
-                    .foregroundColor(.secondary.opacity(0.5))
-                    .padding(.top, 2)
+                    // Actions row — subtle, appears below message
+                    assistantActionsRow
 
                     // Memory chips
                     if !message.memoriesInContext.isEmpty {
@@ -554,11 +522,62 @@ struct PureChatBubble: View, Equatable {
                     }
                 }
 
-                Spacer(minLength: 40)
+                Spacer(minLength: 32)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
         }
+    }
+
+    // MARK: - Assistant action row (extracted for readability)
+
+    @ViewBuilder
+    private var assistantActionsRow: some View {
+        HStack(spacing: 4) {
+            // Copy button
+            Button {
+                #if os(iOS)
+                UIPasteboard.general.string = message.content
+                #else
+                NSPasteboard.general.setString(message.content, forType: .string)
+                #endif
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary.opacity(0.45))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // TTS button
+            Button {
+                if isSpeaking {
+                    ElevenLabsClient.shared.stop()
+                    isSpeaking = false
+                } else {
+                    isSpeaking = true
+                    Task {
+                        await ElevenLabsClient.shared.speak(message.content)
+                        isSpeaking = false
+                    }
+                }
+            } label: {
+                Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.1")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSpeaking ? Color.accentNavi : .secondary.opacity(0.45))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // Cost badge
+            if let cost = message.costSEK, cost > 0 {
+                CostBadge(costSEK: cost, usage: message.tokenUsage, model: message.model)
+            }
+        }
+        .padding(.top, 2)
     }
 
     @ViewBuilder
@@ -583,7 +602,7 @@ struct PureChatBubble: View, Equatable {
     }
 }
 
-// MARK: - Streaming Bubble — glass orb breathing animation
+// MARK: - Streaming Bubble — glass orb with live typing cursor
 
 struct StreamingBubble: View {
     let text: String
@@ -592,6 +611,8 @@ struct StreamingBubble: View {
     var codeSnippet: String = ""
     var todoItems: [ProjectAgent.AgentTodoItem] = []
 
+    @State private var cursorVisible = true
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             ThinkingOrb(size: 24, isAnimating: true)
@@ -599,10 +620,21 @@ struct StreamingBubble: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if text.isEmpty {
-                    NaviActivityPill(statusText: "Tänker")
+                    // Empty state: three-bar wave animation
+                    StreamingThinkingView()
                 } else {
-                    MarkdownTextView(text: text)
-                        .textSelection(.enabled)
+                    // Text is streaming: render markdown + blinking cursor at end
+                    VStack(alignment: .leading, spacing: 0) {
+                        MarkdownTextView(text: text)
+                            .textSelection(.enabled)
+
+                        // Blinking cursor appended after last line
+                        Rectangle()
+                            .fill(Color.accentNavi.opacity(cursorVisible ? 0.7 : 0.0))
+                            .frame(width: 2, height: 16)
+                            .cornerRadius(1)
+                            .padding(.top, 3)
+                    }
                 }
             }
 
@@ -610,6 +642,35 @@ struct StreamingBubble: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.52).repeatForever(autoreverses: true)) {
+                cursorVisible = false
+            }
+        }
+    }
+}
+
+// MARK: - Streaming Thinking View — three dot wave shown before text arrives
+
+private struct StreamingThinkingView: View {
+    @State private var phase = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.accentNavi.opacity(0.55))
+                    .frame(width: 5, height: phase ? 14 : 5)
+                    .animation(
+                        .spring(response: 0.45, dampingFraction: 0.55)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.14),
+                        value: phase
+                    )
+            }
+        }
+        .frame(height: 18, alignment: .center)
+        .onAppear { phase = true }
     }
 }
 
@@ -754,18 +815,53 @@ struct MarkdownTextView: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { i, block in
                 switch block {
                 case .text(let t):
                     Self.renderMarkdownText(t)
                         .fixedSize(horizontal: false, vertical: true)
                 case .code(let lang, let code):
                     MarkdownCodeBlock(language: lang, code: code)
+                case .header(let level, let t):
+                    Self.renderHeader(level: level, text: t)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, i > 0 ? (level <= 2 ? 10 : 4) : 0)
+                case .divider:
+                    Divider()
+                        .padding(.vertical, 4)
+                case .bulletList(let items):
+                    Self.renderBulletList(items)
+                case .numberedList(let items):
+                    Self.renderNumberedList(items)
+                case .blockquote(let t):
+                    Self.renderBlockquote(t)
+                case .table(let headers, let rows):
+                    Self.renderTable(headers: headers, rows: rows)
                 }
             }
         }
     }
+
+    // MARK: - Block types
+
+    struct ListItem {
+        let level: Int  // 0 = top-level, 1 = sub-item
+        let text: String
+    }
+
+    enum Block {
+        case text(String)
+        case code(String, String)
+        case header(Int, String)   // level 1-3, content
+        case divider
+        case bulletList([ListItem])
+        case numberedList([ListItem])
+        case blockquote(String)
+        case table([String], [[String]])  // headers, rows
+    }
+
+    // MARK: - Renderers
 
     @ViewBuilder
     private static func renderMarkdownText(_ raw: String) -> some View {
@@ -783,7 +879,203 @@ struct MarkdownTextView: View, Equatable {
         }
     }
 
-    enum Block { case text(String); case code(String, String) }
+    @ViewBuilder
+    private static func renderHeader(level: Int, text: String) -> some View {
+        let font: Font = {
+            switch level {
+            case 1: return .system(size: 20, weight: .bold, design: .default)
+            case 2: return .system(size: 17, weight: .semibold, design: .default)
+            default: return .system(size: 15, weight: .semibold, design: .default)
+            }
+        }()
+
+        VStack(alignment: .leading, spacing: level == 1 ? 5 : 0) {
+            if let attributed = try? AttributedString(
+                markdown: text,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            ) {
+                Text(attributed)
+                    .font(font)
+                    .lineSpacing(3)
+                    .padding(.top, level <= 2 ? 4 : 2)
+            } else {
+                Text(text)
+                    .font(font)
+                    .padding(.top, level <= 2 ? 4 : 2)
+            }
+
+            // Subtle separator under h1 only
+            if level == 1 {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 0.75)
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private static func renderBulletList(_ items: [ListItem]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .top, spacing: 10) {
+                    // Filled circle for top-level, hollow for sub-items
+                    Group {
+                        if item.level == 0 {
+                            Circle()
+                                .fill(Color.primary.opacity(0.5))
+                                .frame(width: 5, height: 5)
+                                .padding(.top, 7)
+                        } else {
+                            Circle()
+                                .strokeBorder(Color.primary.opacity(0.35), lineWidth: 1.5)
+                                .frame(width: 4, height: 4)
+                                .padding(.top, 7)
+                        }
+                    }
+                    .frame(width: 14, alignment: .center)
+                    .padding(.leading, item.level == 0 ? 0 : 16)
+
+                    if let attributed = try? AttributedString(
+                        markdown: item.text,
+                        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+                    ) {
+                        Text(attributed)
+                            .font(NaviTheme.bodyFont(size: 17))
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(item.text)
+                            .font(NaviTheme.bodyFont(size: 17))
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private static func renderNumberedList(_ items: [ListItem]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\(idx + 1).")
+                        .font(NaviTheme.bodyFont(size: 17))
+                        .foregroundColor(.secondary)
+                        .frame(width: item.level == 0 ? 22 : 18, alignment: .trailing)
+                        .padding(.leading, item.level == 0 ? 0 : 16)
+                    if let attributed = try? AttributedString(
+                        markdown: item.text,
+                        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+                    ) {
+                        Text(attributed)
+                            .font(NaviTheme.bodyFont(size: 17))
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(item.text)
+                            .font(NaviTheme.bodyFont(size: 17))
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private static func renderBlockquote(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.accentNavi.opacity(0.45))
+                .frame(width: 3)
+
+            if let attributed = try? AttributedString(
+                markdown: text,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            ) {
+                Text(attributed)
+                    .font(NaviTheme.bodyFont(size: 16))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(4)
+                    .padding(.leading, 12)
+                    .padding(.vertical, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(text)
+                    .font(NaviTheme.bodyFont(size: 16))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(4)
+                    .padding(.leading, 12)
+                    .padding(.vertical, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 2)
+        .background(Color.accentNavi.opacity(0.04))
+        .cornerRadius(4)
+    }
+
+    @ViewBuilder
+    private static func renderTable(headers: [String], rows: [[String]]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Header row
+                if !headers.isEmpty {
+                    HStack(spacing: 0) {
+                        ForEach(Array(headers.enumerated()), id: \.offset) { _, header in
+                            Text(header)
+                                .font(.system(size: 13, weight: .semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(minWidth: 80, alignment: .leading)
+                            Divider().frame(maxHeight: 36)
+                        }
+                    }
+                    .background(Color.primary.opacity(0.05))
+                    Divider()
+                }
+                // Data rows
+                ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
+                    HStack(spacing: 0) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { colIdx, cell in
+                            if let attributed = try? AttributedString(
+                                markdown: cell,
+                                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+                            ) {
+                                Text(attributed)
+                                    .font(.system(size: 13))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .frame(minWidth: 80, alignment: .leading)
+                            } else {
+                                Text(cell)
+                                    .font(.system(size: 13))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .frame(minWidth: 80, alignment: .leading)
+                            }
+                            if colIdx < row.count - 1 {
+                                Divider().frame(maxHeight: 34)
+                            }
+                        }
+                    }
+                    .background(rowIdx % 2 == 0 ? Color.clear : Color.primary.opacity(0.03))
+                    Divider()
+                }
+            }
+        }
+        .background(NaviTheme.codeBG)
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(NaviTheme.codeBorder, lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Parser
 
     static func parseBlocks(_ raw: String) -> [Block] {
         var blocks: [Block] = []
@@ -792,28 +1084,152 @@ struct MarkdownTextView: View, Equatable {
         var lang = ""
         var codeBuf: [String] = []
         var textBuf: [String] = []
+        var listItems: [ListItem] = []
+        var isNumberedList = false
+        var tableRows: [[String]] = []
+
+        func flushText() {
+            let joined = textBuf.joined(separator: "\n")
+            if !joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                blocks.append(.text(joined))
+            }
+            textBuf = []
+        }
+        func flushList() {
+            if !listItems.isEmpty {
+                if isNumberedList {
+                    blocks.append(.numberedList(listItems))
+                } else {
+                    blocks.append(.bulletList(listItems))
+                }
+                listItems = []
+                isNumberedList = false
+            }
+        }
+        func flushTable() {
+            guard !tableRows.isEmpty else { return }
+            if tableRows.count == 1 {
+                blocks.append(.table(tableRows[0], []))
+            } else {
+                blocks.append(.table(tableRows[0], Array(tableRows.dropFirst())))
+            }
+            tableRows = []
+        }
 
         for line in lines {
+            // Code fence
             if line.hasPrefix("```") {
                 if inCode {
+                    flushText(); flushList(); flushTable()
                     blocks.append(.code(lang, codeBuf.joined(separator: "\n")))
                     codeBuf = []; inCode = false; lang = ""
                 } else {
-                    if !textBuf.isEmpty {
-                        blocks.append(.text(textBuf.joined(separator: "\n")))
-                        textBuf = []
-                    }
+                    flushText(); flushList(); flushTable()
                     lang = String(line.dropFirst(3))
                     inCode = true
                 }
-            } else if inCode {
-                codeBuf.append(line)
-            } else {
-                textBuf.append(line)
+                continue
             }
+            if inCode { codeBuf.append(line); continue }
+
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Headers
+            if trimmed.hasPrefix("### ") {
+                flushText(); flushList(); flushTable()
+                blocks.append(.header(3, String(trimmed.dropFirst(4))))
+                continue
+            }
+            if trimmed.hasPrefix("## ") {
+                flushText(); flushList(); flushTable()
+                blocks.append(.header(2, String(trimmed.dropFirst(3))))
+                continue
+            }
+            if trimmed.hasPrefix("# ") {
+                flushText(); flushList(); flushTable()
+                blocks.append(.header(1, String(trimmed.dropFirst(2))))
+                continue
+            }
+
+            // Divider
+            if trimmed == "---" || trimmed == "***" || trimmed == "===" {
+                flushText(); flushList(); flushTable()
+                blocks.append(.divider)
+                continue
+            }
+
+            // Blockquote
+            if trimmed.hasPrefix("> ") {
+                flushText(); flushList(); flushTable()
+                let quoteText = String(trimmed.dropFirst(2))
+                blocks.append(.blockquote(quoteText))
+                continue
+            }
+
+            // Table rows (start and end with |)
+            if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") {
+                let cells = trimmed.dropFirst().dropLast()
+                    .components(separatedBy: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                // Skip separator rows like |---|---|
+                let isSeparator = cells.allSatisfy { cell in
+                    cell.allSatisfy { c in c == "-" || c == ":" || c == " " }
+                }
+                if !isSeparator {
+                    flushText(); flushList()
+                    tableRows.append(cells)
+                }
+                continue
+            }
+            // Non-table line — flush pending table
+            flushTable()
+
+            // Bullet list — sub-items (4-space or 2-space indent)
+            if line.hasPrefix("    - ") || line.hasPrefix("    * ") || line.hasPrefix("    • ") {
+                flushText()
+                if isNumberedList { flushList() }
+                listItems.append(ListItem(level: 1, text: String(line.dropFirst(6))))
+                continue
+            }
+            if line.hasPrefix("  - ") || line.hasPrefix("  * ") || line.hasPrefix("  • ") {
+                flushText()
+                if isNumberedList { flushList() }
+                listItems.append(ListItem(level: 1, text: String(line.dropFirst(4))))
+                continue
+            }
+            // Bullet list — top-level
+            if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("• ") {
+                flushText()
+                if isNumberedList { flushList() }
+                listItems.append(ListItem(level: 0, text: String(trimmed.dropFirst(2))))
+                continue
+            }
+
+            // Numbered list — "1. ", "2. ", etc. (up to 3-digit numbers)
+            var didMatchNumbered = false
+            for digitCount in 1...3 {
+                let candidatePrefix = String(trimmed.prefix(digitCount + 2))
+                let digits = String(candidatePrefix.dropLast(2))
+                if !digits.isEmpty && digits.allSatisfy({ $0.isNumber }) && candidatePrefix.hasSuffix(". ") {
+                    flushText()
+                    if !isNumberedList && !listItems.isEmpty { flushList() }
+                    isNumberedList = true
+                    listItems.append(ListItem(level: 0, text: String(trimmed.dropFirst(digitCount + 2))))
+                    didMatchNumbered = true
+                    break
+                }
+            }
+            if didMatchNumbered { continue }
+
+            // Regular text — flush pending list
+            flushList()
+            textBuf.append(line)
         }
+
         if !codeBuf.isEmpty { blocks.append(.code(lang, codeBuf.joined(separator: "\n"))) }
-        if !textBuf.isEmpty { blocks.append(.text(textBuf.joined(separator: "\n"))) }
+        flushList()
+        flushTable()
+        flushText()
         return blocks
     }
 }
@@ -1222,25 +1638,41 @@ struct ChatToolCallStrip: View {
 
 struct CompletionIndicator: View {
     @State private var appeared = false
+    @State private var checkScale: CGFloat = 0.4
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13))
-                .foregroundColor(NaviTheme.success)
+        HStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .fill(NaviTheme.success.opacity(0.12))
+                    .frame(width: 22, height: 22)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(NaviTheme.success)
+                    .scaleEffect(checkScale)
+            }
             Text("Klar")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(NaviTheme.success.opacity(0.8))
+                .foregroundStyle(NaviTheme.success.opacity(0.85))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(NaviTheme.success.opacity(0.08))
-        .cornerRadius(8)
-        .scaleEffect(appeared ? 1.0 : 0.8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(NaviTheme.success.opacity(0.08))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(NaviTheme.success.opacity(0.2), lineWidth: 0.75)
+                )
+        )
+        .scaleEffect(appeared ? 1.0 : 0.75)
         .opacity(appeared ? 1.0 : 0)
         .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
                 appeared = true
+            }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.55).delay(0.1)) {
+                checkScale = 1.0
             }
         }
     }

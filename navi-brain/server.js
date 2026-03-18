@@ -49,6 +49,9 @@ const MODELS = {
   opus: 'claude-sonnet-4-6',   // runs via Anthropic API
 };
 
+// Push notification tokens (for background notifications)
+const pushTokens = new Set();
+
 // ============================================================
 // AUTH MIDDLEWARE
 // ============================================================
@@ -615,7 +618,17 @@ const SYSTEM_PROMPT = `Du är Navi Brain — en autonom AI-agent skapad av Ted S
 Du kör på en dedikerad Ubuntu-server (209.38.98.107).
 Du har tillgång till verktyg: run_command, read_file, write_file, list_files.
 
-VIKTIGT:
+## Svarsformatering (VIKTIGT)
+Strukturera ALLTID svar såhär:
+- Emoji + rubrik för varje sektion: ## 🎯 Rubrik
+- Avdelare --- mellan sektioner
+- Punktlistor med - för åtgärder och steg
+  - Undernivå med   - för sub-punkter
+- ❌ / ✅ / 👉 som visuella markörer i punktlistor
+- **Fetstil** för nyckelord och viktiga termer
+- Korta, direkta stycken — aldrig långa textväggar
+
+## Regler
 - Tänk steg-för-steg (ReAct: Tanke → Åtgärd → Observation → upprepa).
 - Använd verktygen aktivt för att utforska, läsa och modifiera filer.
 - Svara alltid på svenska om inte annat begärs.
@@ -1270,6 +1283,24 @@ setInterval(() => telephony.runScheduler(addLog), 30000);
 // ============================================================
 
 app.use('/code', auth, codeAgent.createRouter(express));
+
+// ============================================================
+// PUSH TOKEN REGISTRATION
+// ============================================================
+
+// Register iOS push token for background notifications
+app.post('/register-push', auth, (req, res) => {
+  const { deviceToken, platform } = req.body;
+  if (!deviceToken) return res.status(400).json({ error: 'deviceToken required' });
+  pushTokens.add(deviceToken);
+  console.log(`[PUSH] Registered token for ${platform}: ${deviceToken.substring(0, 16)}...`);
+  res.json({ ok: true, registered: pushTokens.size });
+});
+
+// Get registered push tokens (for debugging)
+app.get('/push-tokens', auth, (req, res) => {
+  res.json({ count: pushTokens.size, tokens: Array.from(pushTokens).map(t => t.substring(0, 16) + '...') });
+});
 
 // ============================================================
 // HTTP SERVER + WEBSOCKET

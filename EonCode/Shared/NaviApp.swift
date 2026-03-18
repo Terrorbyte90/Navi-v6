@@ -5,8 +5,46 @@ import UIKit
 import BackgroundTasks
 #endif
 
+// MARK: - AppDelegate (handles APNs device token + background remote notifications)
+
+#if os(iOS)
+class NaviAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { @MainActor in
+            NotificationManager.shared.handleDeviceToken(deviceToken)
+        }
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        Task { @MainActor in
+            NotificationManager.shared.handleRegistrationError(error)
+        }
+    }
+
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let title = userInfo["title"] as? String ?? "Navi"
+        let message = userInfo["message"] as? String ?? ""
+        let tags = userInfo["tags"] as? [String] ?? []
+        let priority = userInfo["priority"] as? Int ?? 3
+
+        Task { @MainActor in
+            await NotificationManager.shared.handleNtfyMessage(
+                title: title, message: message, tags: tags, priority: priority)
+        }
+        completionHandler(.newData)
+    }
+}
+#endif
+
 @main
 struct NaviApp: App {
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(NaviAppDelegate.self) private var appDelegate
+    #endif
     @StateObject private var projectStore = ProjectStore.shared
     @StateObject private var icloud = iCloudSyncEngine.shared
     @Environment(\.scenePhase) private var scenePhase

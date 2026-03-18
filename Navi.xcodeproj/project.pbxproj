@@ -1051,7 +1051,6 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					3F5B7BDDBF149AC9EE56BFB9 = {
-						DevelopmentTeam = DV646H5VDP;
 						ProvisioningStyle = Automatic;
 					};
 					931CC4A8DE62604BF63B4C0D = {
@@ -1554,7 +1553,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/macOS/Navi-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = EonCode/macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1595,7 +1594,7 @@
 				CODE_SIGN_ENTITLEMENTS = "EonCode/macOS/Navi-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = DV646H5VDP;
+				DEVELOPMENT_TEAM = G648H762LD;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = EonCode/macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
