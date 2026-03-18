@@ -72,7 +72,7 @@ struct CodeView: View {
                 if session.sessionId != nil {
                     Button {
                         withAnimation(NaviTheme.Spring.smooth) {
-                            session.disconnect()
+                            session.resetForNewSession()
                         }
                     } label: {
                         Image(systemName: "square.and.pencil")
@@ -325,7 +325,8 @@ struct CodeView: View {
 
     private var mainArea: some View {
         Group {
-            if session.messages.isEmpty && !session.isRunning && session.sessionId == nil {
+            if session.messages.isEmpty && !session.isRunning
+                && session.sessionId == nil && session.connectionState == .disconnected {
                 ScrollView { emptyState }
                     .scrollDismissesKeyboard(.interactively)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -348,16 +349,7 @@ struct CodeView: View {
                             .id(msg.id)
                     }
 
-                    // Streaming text (live response being written)
-                    if !session.streamingText.isEmpty {
-                        ServerStreamingRow(
-                            text: session.streamingText,
-                            phaseLabel: session.phaseLabel
-                        )
-                        .id("streaming")
-                    }
-
-                    // Activity indicator when running but no text yet
+                    // Activity indicator when running but streaming hasn't started yet
                     if session.isRunning && session.streamingText.isEmpty {
                         ServerActivityRow(
                             phaseLabel: session.phaseLabel.isEmpty ? phaseLabelFromPhase(session.phase) : session.phaseLabel,
@@ -365,6 +357,15 @@ struct CodeView: View {
                         )
                         .padding(.horizontal, 16).padding(.vertical, 6)
                         .id("activity")
+                    }
+
+                    // Streaming text (live response being revealed)
+                    if !session.streamingText.isEmpty {
+                        ServerStreamingRow(
+                            text: session.streamingText,
+                            phaseLabel: session.phaseLabel
+                        )
+                        .id("streaming")
                     }
 
                     // Done badge
@@ -379,26 +380,30 @@ struct CodeView: View {
                             .id("error")
                     }
 
-                    Color.clear.frame(height: 8).id("bottom")
+                    // Bottom spacer so last message clears the input bar
+                    Color.clear.frame(height: 16).id("bottom")
                 }
-                .padding(.vertical, 8)
+                .padding(.top, 8)
             }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 inputBar.background(Color.chatBackground)
             }
-            .onChange(of: session.streamingText) { _, _ in
-                withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo("streaming", anchor: .bottom)
-                }
+            .onChange(of: session.streamingText) { _, new in
+                guard !new.isEmpty else { return }
+                proxy.scrollTo("streaming", anchor: .bottom)
             }
             .onChange(of: session.messages.count) { _, _ in
                 if let last = session.messages.last {
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
                 }
             }
             .onChange(of: session.isRunning) { _, running in
-                if running { proxy.scrollTo("activity", anchor: .bottom) }
+                if running {
+                    withAnimation { proxy.scrollTo("activity", anchor: .bottom) }
+                }
             }
         }
     }

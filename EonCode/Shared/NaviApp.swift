@@ -2,6 +2,7 @@ import SwiftUI
 #if os(iOS)
 import UserNotifications
 import UIKit
+import BackgroundTasks
 #endif
 
 @main
@@ -22,6 +23,21 @@ struct NaviApp: App {
 
         // Set notification delegate before requesting permission
         UNUserNotificationCenter.current().delegate = NotificationManager.shared
+
+        // Register BGAppRefreshTask for Code Agent background status check
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: "com.tedsvard.navi.ios.refresh",
+            using: nil
+        ) { task in
+            guard let refreshTask = task as? BGAppRefreshTask else { task.setTaskCompleted(success: false); return }
+            refreshTask.expirationHandler = { refreshTask.setTaskCompleted(success: false) }
+            Task {
+                _ = await CodeSessionsStore.backgroundCheckAndNotify()
+                refreshTask.setTaskCompleted(success: true)
+                // Schedule next refresh if sessions are still running
+                NaviApp.scheduleCodeSessionRefresh()
+            }
+        }
 
         Task { @MainActor in
             // Delay network init until after the UI renders to keep startup snappy
@@ -99,12 +115,32 @@ struct NaviApp: App {
                     } else if newPhase == .background {
                         // Stop ntfy polling in background (system will wake us for remote notifications)
                         NotificationManager.shared.stopNtfyPolling()
+                        // Schedule BGAppRefresh so we can notify when code sessions finish
+                        NaviApp.scheduleCodeSessionRefresh()
                     }
                 }
         }
         #endif
     }
 }
+
+// MARK: - Background Task Scheduling
+
+#if os(iOS)
+extension NaviApp {
+    /// Schedule a BGAppRefreshTask to fire in ~15 minutes so we can check
+    /// code-session status and send local notifications when the app is closed.
+    static func scheduleCodeSessionRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: "com.tedsvard.navi.ios.refresh")
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 min
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            NaviLog.warning("BGAppRefresh submit failed: \(error.localizedDescription)")
+        }
+    }
+}
+#endif
 
 // MARK: - macOS Menu Commands
 

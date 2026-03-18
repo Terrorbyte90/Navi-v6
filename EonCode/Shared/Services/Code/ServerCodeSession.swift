@@ -220,7 +220,7 @@ final class ServerCodeSession: ObservableObject {
     @Published var isRunning: Bool = false
     @Published var phase: String = "idle"
     @Published var phaseLabel: String = ""
-    @Published var streamingText: String = ""
+    @Published var streamingText: String = ""   // Smoothly revealed text for UI
     @Published var messages: [ServerChatMessage] = []
     @Published var todos: [ServerTodoItem] = []
     @Published var toolEvents: [ServerToolEvent] = []
@@ -235,7 +235,6 @@ final class ServerCodeSession: ObservableObject {
     // MARK: Singleton
     static let shared = ServerCodeSession()
     private init() {
-        // Load saved sessionId
         if let saved = UserDefaults.standard.string(forKey: "serverCodeSessionId") {
             sessionId = saved
         }
@@ -248,8 +247,19 @@ final class ServerCodeSession: ObservableObject {
     private var reconnectDelay: TimeInterval = 1
     private var lastSeq: Int = 0
     private var isIntentionalStop = false
-    private var accumulatedText: String = ""
+    private var accumulatedText: String = ""       // Full raw text for commit
     private var pendingToolEvents: [ServerToolEvent] = []
+
+    // Smooth text reveal — 1 second delay before display, then smooth drain
+    private var rawTextBuffer: String = ""          // Waiting to be revealed
+    private var firstDeltaTime: Date?               // When this burst of deltas started
+    private var displayTimer: Timer?
+    private let textRevealDelay: TimeInterval = 1.0 // 1s before revealing
+    private let charsPerTick: Int = 18              // ~600 chars/sec at 30ms tick
+    private let tickInterval: TimeInterval = 0.03
+
+    // Notification dedup — only fire once per session, not on history replay
+    private var suppressNotification = false        // Set when stateSnapshot shows session already done
 
     private var serverURL: String {
         UserDefaults.standard.string(forKey: "naviServerURL") ?? "http://209.38.98.107:3001"
@@ -269,28 +279,31 @@ final class ServerCodeSession: ObservableObject {
 
     // MARK: - Public API
 
+    /// Start a brand-new session, clearing all previous state.
     func startNewSession(task: String, model: String) {
         isIntentionalStop = false
+        suppressNotification = false
         self.task = task
-        // Clear old state
-        messages = []
-        todos = []
-        toolEvents = []
-        gitCheckpoints = []
-        lintWarnings = []
-        streamingText = ""
-        iteration = 0
-        lastError = nil
-        accumulatedText = ""
-        pendingToolEvents = []
-        sessionId = nil
-        lastSeq = 0
-
+        clearAllState()
         connectAndStart(task: task, model: model)
+    }
+
+    /// Fully reset to empty — disconnect, clear everything, go back to empty state.
+    func resetForNewSession() {
+        isIntentionalStop = true
+        reconnectTask?.cancel()
+        wsTask?.cancel(with: .normalClosure, reason: nil)
+        wsTask = nil
+        stopDisplayTimer()
+        clearAllState()
+        sessionId = nil
+        UserDefaults.standard.removeObject(forKey: "serverCodeSessionId")
+        connectionState = .disconnected
     }
 
     func resumeSession(_ id: String) {
         guard sessionId != id || connectionState == .disconnected else { return }
+        if id != sessionId { suppressNotification = false }
         sessionId = id
         lastSeq = 0
         connect(sessionId: id)
@@ -304,7 +317,6 @@ final class ServerCodeSession: ObservableObject {
     func sendUserMessage(_ text: String) {
         guard connectionState == .connected, let _ = sessionId else { return }
         sendMessage(["type": "SEND", "text": text])
-        // Add user message optimistically
         let msg = ServerChatMessage(id: UUID(), role: ServerChatRole.user, text: text, toolEvents: [], gitCheckpoint: nil, createdAt: Date())
         messages.append(msg)
     }
@@ -317,15 +329,74 @@ final class ServerCodeSession: ObservableObject {
         connectionState = .disconnected
     }
 
+    // MARK: - Private helpers
+
+    private func clearAllState() {
+        messages = []
+        todos = []
+        toolEvents = []
+        gitCheckpoints = []
+        lintWarnings = []
+        streamingText = ""
+        rawTextBuffer = ""
+        firstDeltaTime = nil
+        iteration = 0
+        lastError = nil
+        accumulatedText = ""
+        pendingToolEvents = []
+        lastSeq = 0
+        phase = "idle"
+        phaseLabel = ""
+        liveToolName = nil
+        isRunning = false
+        stopDisplayTimer()
+    }
+
+    // MARK: - Smooth text reveal
+
+    private func startDisplayTimer() {
+        guard displayTimer == nil else { return }
+        displayTimer = Timer.scheduledTimer(withTimeInterval: tickInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.tickReveal() }
+        }
+    }
+
+    private func stopDisplayTimer() {
+        displayTimer?.invalidate()
+        displayTimer = nil
+        firstDeltaTime = nil
+    }
+
+    private func tickReveal() {
+        guard !rawTextBuffer.isEmpty else {
+            stopDisplayTimer()
+            return
+        }
+        guard let start = firstDeltaTime,
+              Date().timeIntervalSince(start) >= textRevealDelay else { return }
+
+        let n = min(charsPerTick, rawTextBuffer.count)
+        streamingText += String(rawTextBuffer.prefix(n))
+        rawTextBuffer.removeFirst(n)
+    }
+
+    /// Flush remaining buffer to streamingText immediately (used on commit/finish).
+    private func flushTextBuffer() {
+        streamingText += rawTextBuffer
+        rawTextBuffer = ""
+        stopDisplayTimer()
+    }
+
     // MARK: - Connection
 
     private func connectAndStart(task: String, model: String) {
-        let openrouterKey = openRouterKey
-        let anthropicKey  = anthropicAPIKey
+        let orKey  = openRouterKey
+        let antKey = anthropicAPIKey
 
         connectionState = .connecting
-        let wsURL = serverURL.replacingOccurrences(of: "http://", with: "ws://")
-                             .replacingOccurrences(of: "https://", with: "wss://")
+        let wsURL = serverURL
+            .replacingOccurrences(of: "http://", with: "ws://")
+            .replacingOccurrences(of: "https://", with: "wss://")
         guard let url = URL(string: "\(wsURL)/code/ws?key=\(apiKey)") else {
             connectionState = .disconnected
             lastError = "Invalid server URL"
@@ -340,21 +411,17 @@ final class ServerCodeSession: ObservableObject {
 
         listenForMessages()
 
-        // Send START
-        var startMsg: [String: Any] = [
-            "type": "START",
-            "task": task,
-            "model": model,
-        ]
-        if !openrouterKey.isEmpty { startMsg["openrouterKey"] = openrouterKey }
-        if !anthropicKey.isEmpty  { startMsg["anthropicKey"]  = anthropicKey  }
+        var startMsg: [String: Any] = ["type": "START", "task": task, "model": model]
+        if !orKey.isEmpty  { startMsg["openrouterKey"] = orKey  }
+        if !antKey.isEmpty { startMsg["anthropicKey"]  = antKey }
         sendMessage(startMsg)
     }
 
     private func connect(sessionId: String) {
         connectionState = .connecting
-        let wsURL = serverURL.replacingOccurrences(of: "http://", with: "ws://")
-                             .replacingOccurrences(of: "https://", with: "wss://")
+        let wsURL = serverURL
+            .replacingOccurrences(of: "http://", with: "ws://")
+            .replacingOccurrences(of: "https://", with: "wss://")
         guard let url = URL(string: "\(wsURL)/code/ws?key=\(apiKey)") else {
             connectionState = .disconnected
             return
@@ -377,23 +444,15 @@ final class ServerCodeSession: ObservableObject {
                 switch result {
                 case .success(let msg):
                     switch msg {
-                    case .string(let text):
-                        self.handleRawMessage(text)
+                    case .string(let text): self.handleRawMessage(text)
                     case .data(let data):
-                        if let text = String(data: data, encoding: .utf8) {
-                            self.handleRawMessage(text)
-                        }
+                        if let text = String(data: data, encoding: .utf8) { self.handleRawMessage(text) }
                     @unknown default: break
                     }
-                    // Continue listening
                     self.listenForMessages()
-
-                case .failure(let err):
+                case .failure:
                     self.connectionState = .disconnected
-                    if !self.isIntentionalStop {
-                        self.scheduleReconnect()
-                    }
-                    _ = err
+                    if !self.isIntentionalStop { self.scheduleReconnect() }
                 }
             }
         }
@@ -428,11 +487,7 @@ final class ServerCodeSession: ObservableObject {
         guard let data = raw.data(using: .utf8),
               let event = try? JSONDecoder().decode(ServerEvent.self, from: data)
         else { return }
-
-        if let seq = event.seq {
-            lastSeq = max(lastSeq, seq + 1)
-        }
-
+        if let seq = event.seq { lastSeq = max(lastSeq, seq + 1) }
         handleEvent(event)
     }
 
@@ -454,28 +509,41 @@ final class ServerCodeSession: ObservableObject {
             if let status = event.status {
                 isRunning = (status == "running")
                 phase = status
+                // Suppress notification if session is already finished when we subscribe
+                if status == "done" || status == "error" || status == "stopped" {
+                    suppressNotification = true
+                }
             }
             if let t = event.task { task = t }
-            // todos/gitCheckpoints come in their own events
 
         case .runStarted:
+            // Live session is starting — allow notification
+            suppressNotification = false
             isRunning = true
             phase = "running"
             phaseLabel = "Startar…"
             if let t = event.task { task = t }
             streamingText = ""
+            rawTextBuffer = ""
             toolEvents = []
             pendingToolEvents = []
             accumulatedText = ""
+            stopDisplayTimer()
 
         case .textDelta:
             if let d = event.delta {
-                streamingText += d
                 accumulatedText += d
+                rawTextBuffer += d
+                if firstDeltaTime == nil {
+                    firstDeltaTime = Date()
+                    startDisplayTimer()
+                }
             }
 
         case .textCommit:
             let committed = event.text ?? accumulatedText
+            // Flush any remaining buffered text before committing
+            flushTextBuffer()
             if !committed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 commitCurrentText(text: committed)
             }
@@ -501,7 +569,6 @@ final class ServerCodeSession: ObservableObject {
                 toolEvents[idx].isComplete = true
                 toolEvents[idx].durationMs = event.durationMs ?? 0
             }
-            // Also update in pending
             if let idx = pendingToolEvents.lastIndex(where: { $0.toolId == toolId }) {
                 pendingToolEvents[idx].result     = event.result ?? ""
                 pendingToolEvents[idx].isError    = event.isError ?? false
@@ -526,10 +593,11 @@ final class ServerCodeSession: ObservableObject {
                 timestamp: event.timestamp ?? ""
             )
             gitCheckpoints.append(cp)
-            // Attach to current message context
             commitCurrentText(text: streamingText.isEmpty ? nil : streamingText, gitCheckpoint: cp)
             streamingText = ""
+            rawTextBuffer = ""
             accumulatedText = ""
+            stopDisplayTimer()
 
         case .iteration:
             iteration    = event.n ?? iteration
@@ -542,34 +610,41 @@ final class ServerCodeSession: ObservableObject {
             phaseLabel = "Kompakterar kontext…"
 
         case .runFinished:
+            flushTextBuffer()
             isRunning = false
             phase = "done"
             phaseLabel = event.summary ?? "Klar"
             liveToolName = nil
-            streamingText = ""
-            // Final commit if any pending text
             if !accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 commitCurrentText(text: accumulatedText)
-                accumulatedText = ""
             }
-            // Local notification
-            let taskSnap    = task
-            let summarySnap = event.summary ?? "Klar"
-            Task {
-                await CodeNotificationHelper.sendCompletionNotification(
-                    task: taskSnap, summary: summarySnap
-                )
+            streamingText = ""
+            accumulatedText = ""
+
+            // Only notify once per session, not on history replay
+            if !suppressNotification {
+                suppressNotification = true
+                let taskSnap    = task
+                let summarySnap = event.summary ?? "Klar"
+                Task {
+                    await CodeNotificationHelper.sendCompletionNotification(
+                        task: taskSnap, summary: summarySnap
+                    )
+                }
             }
 
         case .runError:
+            flushTextBuffer()
             isRunning = false
             phase = "error"
             lastError = event.error
             liveToolName = nil
             streamingText = ""
-            // Notification only for real errors (not user-stopped)
+            accumulatedText = ""
+
             let errMsg = event.error ?? ""
-            if !errMsg.contains("Stoppad av användaren") {
+            if !suppressNotification && !errMsg.contains("Stoppad av användaren") {
+                suppressNotification = true
                 let taskSnap = task
                 Task { await CodeNotificationHelper.sendErrorNotification(task: taskSnap, error: errMsg) }
             }
