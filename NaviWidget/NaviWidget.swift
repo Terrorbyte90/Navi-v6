@@ -313,3 +313,190 @@ extension Color {
         self.init(red: r, green: g, blue: b)
     }
 }
+
+// MARK: - Live Activity Attributes
+
+import ActivityKit
+
+@available(iOS 16.2, *)
+struct NaviLiveActivityAttributes: ActivityAttributes {
+    struct ContentState: Codable, Hashable {
+        var phase: String           // "thinking" | "tools" | "done" | "error"
+        var phaseLabel: String      // "Tänker…" | "Kör 3 verktyg…"
+        var iteration: Int
+        var maxIteration: Int
+        var todosDone: Int
+        var todosTotal: Int
+        var currentTool: String?    // e.g. "write_file"
+    }
+    var task: String                // Original task (static)
+    var model: String               // "MiniMax" | "Claude" etc.
+}
+
+// MARK: - Live Activity Lock Screen View
+
+@available(iOS 16.2, *)
+struct NaviLockScreenLiveView: View {
+    let context: ActivityViewContext<NaviLiveActivityAttributes>
+
+    private var phaseColor: Color {
+        switch context.state.phase {
+        case "done":  return .green
+        case "error": return .red
+        default:      return .orange
+        }
+    }
+
+    private var progress: Double {
+        let total = context.state.todosTotal
+        guard total > 0 else { return context.state.phase == "done" ? 1.0 : 0.3 }
+        return Double(context.state.todosDone) / Double(total)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Circle().fill(phaseColor).frame(width: 8, height: 8)
+                    Text("NAVI").font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundColor(Color(hex: "C4825A"))
+                    Text("·").foregroundColor(.secondary)
+                    Text(context.attributes.model)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Text("steg \(context.state.iteration)/\(context.state.maxIteration)")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            // Task
+            Text(String(context.attributes.task.prefix(80)))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white)
+                .lineLimit(2)
+
+            // Progress bar + todo count
+            VStack(alignment: .leading, spacing: 5) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.15))
+                            .frame(height: 5)
+                        RoundedRectangle(cornerRadius: 3).fill(phaseColor)
+                            .frame(width: geo.size.width * progress, height: 5)
+                            .animation(.easeInOut(duration: 0.4), value: progress)
+                    }
+                }
+                .frame(height: 5)
+
+                HStack {
+                    Text(context.state.phaseLabel.isEmpty ? phaseText : context.state.phaseLabel)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(phaseColor)
+                    Spacer()
+                    if context.state.todosTotal > 0 {
+                        Text("\(context.state.todosDone)/\(context.state.todosTotal) uppgifter")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    if let tool = context.state.currentTool {
+                        Text(tool)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(14)
+    }
+
+    private var phaseText: String {
+        switch context.state.phase {
+        case "thinking": return "Tänker…"
+        case "tools":    return "Kör verktyg…"
+        case "done":     return "Klar ✓"
+        case "error":    return "Fel"
+        default:         return "Arbetar…"
+        }
+    }
+}
+
+// MARK: - Live Activity Widget
+
+@available(iOS 16.2, *)
+struct NaviLiveActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: NaviLiveActivityAttributes.self) { context in
+            NaviLockScreenLiveView(context: context)
+                .activityBackgroundTint(Color.black.opacity(0.82))
+                .activitySystemActionForegroundColor(.white)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                // Expanded — shows when user long-presses or swipes down
+                DynamicIslandExpandedRegion(.leading) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(context.state.phase == "done" ? Color.green :
+                                  context.state.phase == "error" ? Color.red : Color.orange)
+                            .frame(width: 9, height: 9)
+                        Text("NAVI")
+                            .font(.system(size: 14, weight: .black, design: .rounded))
+                            .foregroundColor(Color(hex: "C4825A"))
+                    }
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text("\(context.state.iteration)/\(context.state.maxIteration)")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(context.attributes.task.prefix(55)))
+                            .font(.system(size: 12, weight: .medium))
+                            .lineLimit(1)
+                        HStack(spacing: 8) {
+                            // Progress bar
+                            GeometryReader { geo in
+                                let p = context.state.todosTotal > 0
+                                    ? Double(context.state.todosDone) / Double(context.state.todosTotal)
+                                    : (context.state.phase == "done" ? 1.0 : 0.3)
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.12))
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(context.state.phase == "done" ? Color.green : Color.orange)
+                                        .frame(width: geo.size.width * p)
+                                }
+                            }
+                            .frame(height: 4)
+                            if let tool = context.state.currentTool {
+                                Text(tool)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 90)
+                            }
+                        }
+                    }
+                }
+            } compactLeading: {
+                Circle()
+                    .fill(context.state.phase == "done" ? Color.green :
+                          context.state.phase == "error" ? Color.red : Color.orange)
+                    .frame(width: 9, height: 9)
+            } compactTrailing: {
+                Text("\(context.state.iteration)")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+            } minimal: {
+                Circle()
+                    .fill(context.state.phase == "done" ? Color.green :
+                          context.state.phase == "error" ? Color.red : Color.orange)
+                    .frame(width: 11, height: 11)
+            }
+            .keylineTint(Color(hex: "C4825A"))
+        }
+    }
+}

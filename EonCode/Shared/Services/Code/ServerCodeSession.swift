@@ -1,5 +1,8 @@
 import Foundation
 import SwiftUI
+#if os(iOS)
+import ActivityKit
+#endif
 
 // MARK: - Event types (mirrors server AG-UI protocol)
 
@@ -541,6 +544,12 @@ final class ServerCodeSession: ObservableObject {
             pendingToolEvents = []
             accumulatedText = ""
             stopDisplayTimer()
+            // Start Live Activity
+            #if os(iOS)
+            if #available(iOS 16.2, *) {
+                startLiveActivity(task: task, model: event.model ?? "MiniMax")
+            }
+            #endif
 
         case .textDelta:
             if let d = event.delta {
@@ -592,9 +601,15 @@ final class ServerCodeSession: ObservableObject {
             phase = event.phase ?? phase
             if let lbl = event.label { phaseLabel = lbl }
             if phase == "done" { liveToolName = nil }
+            #if os(iOS)
+            if #available(iOS 16.2, *) { updateLiveActivity() }
+            #endif
 
         case .todo:
             if let items = event.todos { todos = items }
+            #if os(iOS)
+            if #available(iOS 16.2, *) { updateLiveActivity() }
+            #endif
 
         case .gitCommit:
             let cp = ServerGitCheckpoint(
@@ -614,6 +629,9 @@ final class ServerCodeSession: ObservableObject {
         case .iteration:
             iteration    = event.n ?? iteration
             maxIteration = event.maxN ?? maxIteration
+            #if os(iOS)
+            if #available(iOS 16.2, *) { updateLiveActivity() }
+            #endif
 
         case .lintWarn:
             if let p = event.path { lintWarnings.append(p) }
@@ -645,6 +663,10 @@ final class ServerCodeSession: ObservableObject {
             streamingText = ""
             accumulatedText = ""
 
+            // End Live Activity
+            #if os(iOS)
+            if #available(iOS 16.2, *) { endLiveActivity(done: true) }
+            #endif
             // Only notify once per session, not on history replay
             if !suppressNotification {
                 suppressNotification = true
@@ -666,6 +688,10 @@ final class ServerCodeSession: ObservableObject {
             streamingText = ""
             accumulatedText = ""
 
+            // End Live Activity
+            #if os(iOS)
+            if #available(iOS 16.2, *) { endLiveActivity(done: false) }
+            #endif
             let errMsg = event.error ?? ""
             if !suppressNotification && !errMsg.contains("Stoppad av användaren") {
                 suppressNotification = true
@@ -698,4 +724,89 @@ final class ServerCodeSession: ObservableObject {
         messages.append(msg)
         pendingToolEvents = []
     }
+
+    // MARK: - Live Activity (iOS 16.2+)
+
+#if os(iOS)
+    /// Type-erased storage so we can hold Activity<NaviLiveActivityAttributes> without @available on the property
+    private var _liveActivity: Any? = nil
+
+    @available(iOS 16.2, *)
+    private var liveActivity: Activity<NaviLiveActivityAttributes>? {
+        get { _liveActivity as? Activity<NaviLiveActivityAttributes> }
+        set { _liveActivity = newValue }
+    }
+
+    @available(iOS 16.2, *)
+    func startLiveActivity(task: String, model: String) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let attrs = NaviLiveActivityAttributes(task: task, model: model)
+        let state = NaviLiveActivityAttributes.ContentState(
+            phase: "thinking", phaseLabel: "Startar…",
+            iteration: 0, maxIteration: 40,
+            todosDone: 0, todosTotal: 0, currentTool: nil
+        )
+        do {
+            liveActivity = try Activity.request(
+                attributes: attrs,
+                content: .init(state: state, staleDate: nil),
+                pushType: nil
+            )
+        } catch {
+            print("[LiveActivity] Failed to start: \(error.localizedDescription)")
+        }
+    }
+
+    @available(iOS 16.2, *)
+    func updateLiveActivity() {
+        guard let activity = liveActivity else { return }
+        let state = NaviLiveActivityAttributes.ContentState(
+            phase: phase,
+            phaseLabel: phaseLabel,
+            iteration: iteration,
+            maxIteration: maxIteration,
+            todosDone: todos.filter { $0.done }.count,
+            todosTotal: todos.count,
+            currentTool: liveToolName
+        )
+        Task { await activity.update(.init(state: state, staleDate: nil)) }
+    }
+
+    @available(iOS 16.2, *)
+    func endLiveActivity(done: Bool) {
+        guard let activity = liveActivity else { return }
+        let state = NaviLiveActivityAttributes.ContentState(
+            phase: done ? "done" : "error",
+            phaseLabel: done ? "Klar ✓" : "Fel",
+            iteration: iteration,
+            maxIteration: maxIteration,
+            todosDone: todos.filter { $0.done }.count,
+            todosTotal: todos.count,
+            currentTool: nil
+        )
+        Task {
+            await activity.end(.init(state: state, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(30)))
+        }
+        _liveActivity = nil
+    }
+#endif
 }
+
+// MARK: - Live Activity Attributes (must match NaviWidget definition exactly)
+
+#if os(iOS)
+@available(iOS 16.2, *)
+struct NaviLiveActivityAttributes: ActivityAttributes {
+    struct ContentState: Codable, Hashable {
+        var phase: String
+        var phaseLabel: String
+        var iteration: Int
+        var maxIteration: Int
+        var todosDone: Int
+        var todosTotal: Int
+        var currentTool: String?
+    }
+    var task: String
+    var model: String
+}
+#endif
