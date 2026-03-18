@@ -885,7 +885,7 @@ Använd GitHub API via fetch_url med header "Authorization: Bearer ${ghToken}":
   - Hämta fil: GET https://api.github.com/repos/Terrorbyte90/REPO/contents/PATH
   - Eller kör: gh api /repos/Terrorbyte90/REPO/... (om gh CLI är installerat)` : '';
 
-  return `Du är Navi — en autonom AI-kodagent som kör på en dedikerad Ubuntu Linux-server (Navi Brain).
+  return `Du är Navi — en expert-kodagent på nivå med Devin och Cursor. Du kör på en dedikerad Ubuntu Linux-server (Navi Brain) med full autonomi.
 
 **VIKTIGT: Svara ALLTID på svenska. All kommunikation, förklaringar och sammanfattningar ska vara på svenska.**
 
@@ -896,31 +896,42 @@ ${session.workDir}
 ${session.initialTask}
 ${githubSection}
 
-## Autonomt arbetssätt (ReAct-loop)
+## Expertarbetssätt — ReAct-loop med kvalitetssäkring
 
-Tänk steg för steg inför varje åtgärd. Följ denna cykel:
+Följ denna cykel strikt för varje steg:
 
-1. **TÄNK** — Vad kräver uppgiften? Vad vet jag vs vad behöver jag ta reda på?
-2. **PLANERA** — Bryt ned i konkreta steg. Anropa \`todo_write\` direkt för att spåra planen.
-3. **AGERA** — Använd verktyg aktivt. Läs filer innan du redigerar. Kör kommandon för att bygga/testa.
-4. **OBSERVERA** — Analysera verktygsresultat noggrant. Kontrollera fel. Fungerade det?
-5. **ANPASSA** — Om något misslyckades, förstå varför och prova ett annat tillvägagångssätt.
-6. **REPETERA** — Fortsätt tills uppgiften är helt klar, testad och fungerar.
+1. **UTFORSKA** — Börja ALLTID med att förstå projektet: läs README, package.json/go.mod/Cargo.toml, lista filstruktur
+2. **PLANERA** — Anropa \`todo_write\` med tydlig nedbrytning innan du skriver en enda rad kod
+3. **IMPLEMENTERA** — Skriv komplett, produktionsklar kod. Läs alltid filer innan du redigerar
+4. **TESTA** — Kör tester/lint/build efter varje modul: \`npm test\`, \`go test ./...\`, \`cargo check\` etc.
+5. **VERIFIERA** — Bekräfta att koden fungerar med riktiga kommandon — påstå aldrig framgång utan bevis
+6. **COMMIT** — Anropa \`git_commit\` vid varje viktig milstolpe (en fungerande feature, bugfix etc.)
+7. **REPETERA** — Fortsätt tills hela uppgiften är klar, testad och verifierad
 
-## Regler
-- Läs alltid filen med \`read_file\` innan du redigerar — anta aldrig filinnehåll
-- Anropa \`todo_write\` i början av varje icke-trivial uppgift
-- Skriv produktionskvalitetskod — inga stubbar, inga platshållare, inga ofullständiga implementationer
-- Om \`edit_file\` misslyckas med "not found": använd \`read_file\` för att få exakt aktuell text, försök sedan igen
-- Anropa \`git_commit\` efter att ha slutfört viktiga milstolpar
-- Kör tester/verifiera med \`run_command\` — hävda inte framgång utan verifiering
-- Om du fastnar, sök på webben eller hämta docs — du har full internetåtkomst
-- Ge aldrig upp — hitta alltid en väg framåt
+## Kodkvalitetsstandarder (obligatoriska)
+- **Inga platshållare** — aldrig "// TODO", "// implement later", "pass", stub-funktioner
+- **Komplett implementation** — alla edge cases, felhantering, validering
+- **Produktionsklar** — säker, effektiv, läsbar kod med vettiga variabelnamn
+- **Testad** — kör alltid tester/build efter ändringar, fixa alla fel innan du går vidare
+- **Beroenden** — installera saknade paket med npm/pip/cargo/apt innan du använder dem
+
+## Felsökningsregler
+- Om \`edit_file\` misslyckas: använd \`read_file\` för att hämta exakt aktuell text, försök igen
+- Om ett kommando misslyckas: läs felmeddelandet noggrant, förstå rotorsaken, åtgärda den
+- Om du fastnar >2 iterationer på samma problem: sök på webben, hämta docs, prova helt annat tillvägagångssätt
+- Ge ALDRIG upp — varje problem har en lösning
+
+## Projektstrategi för nya projekt
+1. Skapa tydlig mappstruktur (src/, tests/, docs/)
+2. Lägg till README.md med setup-instruktioner
+3. Lägg till .gitignore för rätt språk/framework
+4. Initiera git om det saknas: \`git init && git add -A && git commit -m "Initial commit"\`
+5. Installera beroenden och verifiera att projektet bygger
 
 ## Kommunikation
-Tänk högt vid viktiga beslutspunkter. Var kortfattad i uppdateringar.
-Använd markdown: **fetstil** för viktig info, \`kod\` för sökvägar/kommandon, kodblock för kod.
-När du är klar, sammanfatta vad som byggdes och hur man kör/använder det.
+Rapportera tydligt vid varje milstolpe med emoji + rubrik (## ✅ Rubrik).
+Använd markdown: **fetstil** för viktig info, \`kod\` för kommandon/sökvägar.
+När du är klar: sammanfatta exakt vad som byggdes, hur man startar det, och eventuella nästa steg.
 
 ## Lokal AI-modell — Qwen3-1.7B (för appar med inbyggd AI och perfekt integritet)
 
@@ -1026,6 +1037,101 @@ async function compactContext(session) {
     },
     ...tail,
   ];
+}
+
+// ============================================================
+// WATCHER — quality control agent that runs every N iterations
+// Detects: loops, goal drift, premature completion, stuck errors
+// ============================================================
+
+const WATCH_EVERY = 5; // Run watcher every N iterations
+
+// Simple non-streaming OpenRouter call (for watcher — no tools, low latency)
+function callOpenRouterSimple(messages, openrouterKey, modelId) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      model: modelId,
+      messages,
+      stream: false,
+      max_tokens: 300,
+      temperature: 0.1,
+    });
+    const req = https.request({
+      hostname: 'openrouter.ai',
+      path: '/api/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openrouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://navi.app',
+        'X-Title': 'Navi Watcher',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: 25000,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk.toString(); });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data).choices?.[0]?.message?.content || '{"ok":true}'); }
+        catch { resolve('{"ok":true}'); }
+      });
+    });
+    req.on('error', () => resolve('{"ok":true}'));
+    req.on('timeout', () => { req.destroy(); resolve('{"ok":true}'); });
+    req.write(body);
+    req.end();
+  });
+}
+
+function buildWatcherPrompt(session, iter) {
+  const recentMsgs = session.messages.slice(-12).map(m => {
+    const role = m.role.toUpperCase();
+    const content = typeof m.content === 'string'
+      ? m.content.substring(0, 500)
+      : JSON.stringify(m.content).substring(0, 500);
+    return `[${role}] ${content}`;
+  }).join('\n\n');
+
+  const todos = session.todos.length > 0
+    ? session.todos.map(t => `${t.done ? '✅' : '⬜'} ${t.title}`).join('\n')
+    : '(ingen plan definierad än)';
+
+  return `Du är en kvalitetskontrollant för en AI-kodagent. Ge ett snabbt omdöme.
+
+## Ursprunglig uppgift
+${session.initialTask}
+
+## TODO-plan
+${todos}
+
+## Pågående (iteration ${iter}/40)
+${recentMsgs}
+
+## Din uppgift
+Avgör vilket av dessa som stämmer:
+A) Agenten gör verkliga framsteg → { "ok": true }
+B) Agenten fastnat i ett semantiskt loop (upprepar samma misstag) → { "intervene": true, "prompt": "specifik korrektiv instruktion" }
+C) Agenten avklarat uppgiften för tidigt (sagt klar men är inte) → { "intervene": true, "prompt": "Du avslutade för tidigt. Uppgiften kräver fortfarande: ..." }
+D) Agenten kör på ett felspår (irrelevanta åtgärder) → { "intervene": true, "prompt": "Du avviker. Fokusera på: ..." }
+
+Svara BARA med JSON — ingenting annat.`;
+}
+
+async function watcherCheck(session, iter) {
+  const key = session.openrouterKey || DEFAULT_OPENROUTER_KEY;
+  if (!key) return { ok: true };
+  try {
+    const raw = await callOpenRouterSimple(
+      [{ role: 'user', content: buildWatcherPrompt(session, iter) }],
+      key,
+      MODELS.minimax.id
+    );
+    const match = raw.match(/\{[\s\S]*?\}/);
+    if (match) return JSON.parse(match[0]);
+  } catch (e) {
+    console.error('[WATCHER]', e.message);
+  }
+  return { ok: true };
 }
 
 // ============================================================
@@ -1190,6 +1296,20 @@ async function runCodeAgent(session) {
       } else {
         for (const tr of toolResults) {
           session.messages.push(tr);
+        }
+      }
+
+      // === WATCHER CHECK (every WATCH_EVERY iterations, non-blocking on errors) ===
+      if ((iter + 1) % WATCH_EVERY === 0 && iter > 0 && !isAnthropic) {
+        session.emit({ type: 'WATCHER_CHECK', status: 'checking', iter: iter + 1 });
+        const verdict = await watcherCheck(session, iter + 1);
+        session.emit({ type: 'WATCHER_CHECK', status: 'done', ok: verdict.ok === true, intervene: !!verdict.intervene, iter: iter + 1 });
+        if (verdict.intervene && verdict.prompt) {
+          console.log(`[WATCHER] Intervening at iter ${iter + 1}: ${verdict.prompt.substring(0, 80)}`);
+          session.messages.push({
+            role: 'user',
+            content: `[Kvalitetskontroll] ${verdict.prompt}`,
+          });
         }
       }
 

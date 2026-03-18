@@ -184,7 +184,35 @@ struct CodeView: View {
                 .foregroundColor(.secondary.opacity(0.6))
                 .lineLimit(1)
             }
+
+            // Watcher status badge
+            if session.watcherIntervened {
+                HStack(spacing: 3) {
+                    Image(systemName: "eye.trianglebadge.exclamationmark")
+                        .font(.system(size: 9))
+                    Text("Watcher ingrep")
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundColor(.orange)
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(4)
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            } else if session.watcherChecking {
+                HStack(spacing: 3) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 9))
+                    Text("Watcher")
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundColor(.secondary.opacity(0.5))
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(Color.secondary.opacity(0.06))
+                .cornerRadius(4)
+            }
         }
+        .animation(NaviTheme.Spring.smooth, value: session.watcherChecking)
+        .animation(NaviTheme.Spring.smooth, value: session.watcherIntervened)
         .padding(.horizontal, 16)
         .padding(.bottom, 7)
     }

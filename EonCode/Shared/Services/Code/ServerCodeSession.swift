@@ -19,6 +19,7 @@ enum ServerEventType: String, Decodable {
     case runError     = "RUN_ERROR"
     case lintWarn     = "LINT_WARN"
     case compacting   = "COMPACTING"
+    case watcherCheck = "WATCHER_CHECK"
     case ping         = "PING"
     case error        = "ERROR"
     case unknown
@@ -58,6 +59,10 @@ struct ServerEvent: Decodable {
     let n: Int?
     let maxN: Int?
 
+    // WATCHER_CHECK
+    let ok: Bool?
+    let intervene: Bool?
+
     // RUN_STARTED
     let task: String?
     let model: String?
@@ -82,6 +87,7 @@ struct ServerEvent: Decodable {
         case isError, durationMs, phase, label, todos, hash, message
         case filesChanged, timestamp, n, maxN, task, model, summary
         case path, error, sessionId, hasHistory, status, createdAt
+        case ok, intervene
     }
 
     init(from decoder: Decoder) throws {
@@ -115,6 +121,8 @@ struct ServerEvent: Decodable {
         hasHistory   = try? c.decode(Bool.self,   forKey: .hasHistory)
         status       = try? c.decode(String.self, forKey: .status)
         createdAt    = try? c.decode(String.self, forKey: .createdAt)
+        ok           = try? c.decode(Bool.self,   forKey: .ok)
+        intervene    = try? c.decode(Bool.self,   forKey: .intervene)
     }
 }
 
@@ -231,6 +239,8 @@ final class ServerCodeSession: ObservableObject {
     @Published var lintWarnings: [String] = []
     @Published var lastError: String?
     @Published var task: String = ""
+    @Published var watcherChecking: Bool = false
+    @Published var watcherIntervened: Bool = false
 
     // MARK: Singleton
     static let shared = ServerCodeSession()
@@ -349,6 +359,8 @@ final class ServerCodeSession: ObservableObject {
         phaseLabel = ""
         liveToolName = nil
         isRunning = false
+        watcherChecking = false
+        watcherIntervened = false
         stopDisplayTimer()
     }
 
@@ -605,6 +617,18 @@ final class ServerCodeSession: ObservableObject {
 
         case .lintWarn:
             if let p = event.path { lintWarnings.append(p) }
+
+        case .watcherCheck:
+            if let status = event.status {
+                watcherChecking = (status == "checking")
+                if status == "done" {
+                    watcherIntervened = event.intervene ?? false
+                    // Clear intervention indicator after 4 seconds
+                    if watcherIntervened {
+                        Task { try? await Task.sleep(nanoseconds: 4_000_000_000); self.watcherIntervened = false }
+                    }
+                }
+            }
 
         case .compacting:
             phaseLabel = "Kompakterar kontext…"
