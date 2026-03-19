@@ -150,82 +150,101 @@ struct CodeView: View {
     // MARK: - Phase strip
 
     private var phaseStrip: some View {
-        HStack(spacing: 8) {
-            // Spinner
-            ProgressView()
-                .scaleEffect(0.65)
-                .tint(.accentNavi)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                // Spinner
+                ProgressView()
+                    .scaleEffect(0.65)
+                    .tint(.accentNavi)
 
-            // Label
-            Text(session.phaseLabel.isEmpty ? phaseLabelFromPhase(session.phase) : session.phaseLabel)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.accentNavi.opacity(0.8))
+                // Label
+                Text(session.phaseLabel.isEmpty ? phaseLabelFromPhase(session.phase) : session.phaseLabel)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.accentNavi.opacity(0.8))
 
-            Spacer()
+                Spacer()
 
-            // Iteration counter
-            if session.iteration > 0 {
-                Text("steg \(session.iteration)/\(session.maxIteration)")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundColor(.accentNavi.opacity(0.5))
+                // Iteration counter
+                if session.iteration > 0 {
+                    Text("steg \(session.iteration)/\(session.maxIteration)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.accentNavi.opacity(0.5))
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Color.accentNavi.opacity(0.08))
+                        .cornerRadius(4)
+                }
+
+                // Live tool indicator
+                if let toolName = session.liveToolName {
+                    HStack(spacing: 4) {
+                        Image(systemName: iconForTool(toolName))
+                            .font(.system(size: 9))
+                        Text(toolName)
+                            .font(.system(size: 10, design: .monospaced))
+                    }
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .lineLimit(1)
+                }
+
+                // Watcher status badge
+                if session.watcherIntervened {
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye.trianglebadge.exclamationmark")
+                            .font(.system(size: 9))
+                        Text("Watcher ingrep")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundColor(.orange)
                     .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Color.accentNavi.opacity(0.08))
+                    .background(Color.orange.opacity(0.1))
                     .cornerRadius(4)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                } else if session.watcherChecking {
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye")
+                            .font(.system(size: 9))
+                        Text("Watcher")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.06))
+                    .cornerRadius(4)
+                }
             }
+            .animation(NaviTheme.Spring.smooth, value: session.watcherChecking)
+            .animation(NaviTheme.Spring.smooth, value: session.watcherIntervened)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 5)
 
-            // Live tool indicator
-            if let toolName = session.liveToolName {
-                HStack(spacing: 4) {
-                    Image(systemName: iconForTool(toolName))
-                        .font(.system(size: 9))
-                    Text(toolName)
-                        .font(.system(size: 10, design: .monospaced))
+            // Thin progress bar
+            GeometryReader { geo in
+                if session.isRunning {
+                    Rectangle()
+                        .fill(Color.accentColor.opacity(0.8))
+                        .frame(width: geo.size.width * progressFraction, height: 3)
+                        .animation(.linear(duration: 0.3), value: progressFraction)
                 }
-                .foregroundColor(.secondary.opacity(0.6))
-                .lineLimit(1)
             }
-
-            // Watcher status badge
-            if session.watcherIntervened {
-                HStack(spacing: 3) {
-                    Image(systemName: "eye.trianglebadge.exclamationmark")
-                        .font(.system(size: 9))
-                    Text("Watcher ingrep")
-                        .font(.system(size: 9, weight: .medium))
-                }
-                .foregroundColor(.orange)
-                .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(4)
-                .transition(.opacity.combined(with: .scale(scale: 0.8)))
-            } else if session.watcherChecking {
-                HStack(spacing: 3) {
-                    Image(systemName: "eye")
-                        .font(.system(size: 9))
-                    Text("Watcher")
-                        .font(.system(size: 9, weight: .medium))
-                }
-                .foregroundColor(.secondary.opacity(0.5))
-                .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.06))
-                .cornerRadius(4)
-            }
+            .frame(height: 3)
         }
-        .animation(NaviTheme.Spring.smooth, value: session.watcherChecking)
-        .animation(NaviTheme.Spring.smooth, value: session.watcherIntervened)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 7)
     }
 
     private func phaseLabelFromPhase(_ p: String) -> String {
         switch p {
-        case "thinking": return "Tänker…"
-        case "tools":    return "Använder verktyg…"
-        case "running":  return "Kör…"
-        case "done":     return "Klar"
-        case "error":    return "Fel"
-        default:         return "Arbetar…"
+        case "thinking":  return "Tänker…"
+        case "reviewing": return "Granskar kod..."
+        case "tools":     return "Använder verktyg…"
+        case "running":   return "Kör…"
+        case "done":      return "Klar"
+        case "error":     return "Fel"
+        default:          return "Arbetar…"
         }
+    }
+
+    private var progressFraction: Double {
+        let maxIter = Double(session.maxIteration > 0 ? session.maxIteration : 30)
+        return min(Double(session.iteration) / maxIter, 1.0)
     }
 
     // MARK: - TODO panel
@@ -705,61 +724,101 @@ struct ServerMessageRow: View {
     }
 }
 
+// MARK: - ToolPill — compact inline pill for a single tool event
+
+struct ToolPill: View {
+    let event: ServerToolEvent
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: event.isError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 11))
+                .foregroundColor(event.isError ? .red : .green)
+            Text(pillLabel)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(.primary.opacity(0.85))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.07))
+        .cornerRadius(6)
+    }
+
+    private var pillLabel: String {
+        let name = event.name
+        let param = event.params.values.first ?? ""
+        let duration = event.durationMs > 0 ? " · \(event.durationMs < 1000 ? "\(event.durationMs)ms" : String(format: "%.1fs", Double(event.durationMs)/1000))" : ""
+        return param.isEmpty ? "\(name)\(duration)" : "\(name) \(param)\(duration)"
+    }
+}
+
 // MARK: - ToolEventsSummary — collapsible tool call list
 
 struct ToolEventsSummary: View {
     let events: [ServerToolEvent]
     @State private var isExpanded = false
 
+    private static let pillThreshold = 3
+
     var completedCount: Int { events.filter { $0.isComplete }.count }
     var errorCount:     Int { events.filter { $0.isError    }.count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Summary pill (tap to expand)
-            Button {
-                withAnimation(NaviTheme.Spring.quick) { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: errorCount > 0 ? "exclamationmark.circle" : "wrench.adjustable")
-                        .font(.system(size: 10))
-                        .foregroundColor(errorCount > 0 ? NaviTheme.error : .accentNavi.opacity(0.6))
-                    Text("\(events.count) verktyg")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary.opacity(0.7))
-                    if errorCount > 0 {
-                        Text("· \(errorCount) fel")
-                            .font(.system(size: 10))
-                            .foregroundColor(NaviTheme.error.opacity(0.8))
-                    }
-                    Spacer()
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 8))
-                        .foregroundColor(.secondary.opacity(0.3))
-                }
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.primary.opacity(0.025))
-                        .overlay(RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Expanded: individual tool call rows
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 4) {
+            if events.count <= Self.pillThreshold {
+                // Show individual pills for small sets
+                FlowLayout(spacing: 4) {
                     ForEach(events) { ev in
-                        ToolEventRow(event: ev)
+                        ToolPill(event: ev)
                     }
                 }
-                .padding(.top, 2)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                // Summary pill (tap to expand) for larger sets
+                Button {
+                    withAnimation(NaviTheme.Spring.quick) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: errorCount > 0 ? "exclamationmark.circle" : "wrench.adjustable")
+                            .font(.system(size: 10))
+                            .foregroundColor(errorCount > 0 ? NaviTheme.error : .accentNavi.opacity(0.6))
+                        Text("\(events.count) verktyg")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary.opacity(0.7))
+                        if errorCount > 0 {
+                            Text("· \(errorCount) fel")
+                                .font(.system(size: 10))
+                                .foregroundColor(NaviTheme.error.opacity(0.8))
+                        }
+                        Spacer()
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary.opacity(0.3))
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.primary.opacity(0.025))
+                            .overlay(RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+                    )
+                }
+                .buttonStyle(.plain)
+
+                // Expanded: individual tool call rows
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(events) { ev in
+                            ToolEventRow(event: ev)
+                        }
+                    }
+                    .padding(.top, 2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
         }
     }
 }
+
 
 // MARK: - ToolEventRow
 
@@ -830,6 +889,8 @@ struct ToolEventRow: View {
 
 struct GitCheckpointBadge: View {
     let checkpoint: ServerGitCheckpoint
+    // TODO: Add @State private var showDiff = false and a .sheet once
+    // ServerGitCheckpoint exposes a diff property or a fetch endpoint is available.
 
     var body: some View {
         HStack(spacing: 6) {
