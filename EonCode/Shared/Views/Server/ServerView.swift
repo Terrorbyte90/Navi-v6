@@ -575,7 +575,7 @@ struct TerminalView: View {
             prefix = "  "
         }
 
-        return Text(prefix + text)
+        Text(prefix + text)
             .font(.system(size: 12, design: .monospaced))
             .foregroundColor(color)
             .frame(maxWidth: .infinity, alignment: .leading)

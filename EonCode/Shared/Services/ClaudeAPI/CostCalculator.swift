@@ -54,7 +54,7 @@ final class CostCalculator {
     }
 
     func costDescription(usage: TokenUsage, model: ClaudeModel) -> String {
-        let (usd, sek) = calculate(usage: usage, model: model)
+        let (_, sek) = calculate(usage: usage, model: model)
         return "\(formatSEK(sek)) · \(usage.inputTokens)→\(usage.outputTokens) tok"
     }
 }
