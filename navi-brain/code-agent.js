@@ -547,54 +547,60 @@ async function executeTool(name, args, session) {
           let currentUrl = urlStr;
           let redirects = 0;
 
-          while (redirects < 3) {
+          while (redirects < 5) {
             const urlObj = (() => { try { return new URL(currentUrl); } catch { return null; } })();
             if (!urlObj) return { text: `Invalid URL: ${currentUrl}`, error: true };
 
             const lib = urlObj.protocol === 'https:' ? https : http;
-            const response = await new Promise((resolve) => {
-              const reqOpts = {
-                hostname: urlObj.hostname,
-                port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-                path: urlObj.pathname + (urlObj.search || ''),
-                method: args.method || 'GET',
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Navi-Code-Agent/2.0)',
-                  'Accept': 'text/html,application/json,text/plain,*/*',
-                },
-                timeout: 15000,
-              };
+            let response;
+            for (let attempt = 0; attempt <= 2; attempt++) {
+              response = await new Promise((resolve) => {
+                const reqOpts = {
+                  hostname: urlObj.hostname,
+                  port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+                  path: urlObj.pathname + (urlObj.search || ''),
+                  method: args.method || 'GET',
+                  headers: {
+                    'User-Agent': 'Mozilla/5.0 (Navi-Code-Agent/2.0)',
+                    'Accept': 'text/html,application/json,text/plain,*/*',
+                  },
+                  timeout: 30000,
+                };
 
-              const req = lib.request(reqOpts, (res) => {
-                if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-                  res.resume();
-                  resolve({ redirect: res.headers.location });
-                  return;
-                }
-                let body = '';
-                res.on('data', c => { if (body.length < 500000) body += c; });
-                res.on('end', () => {
-                  const ct = res.headers['content-type'] || '';
-                  if (ct.includes('application/json')) {
-                    resolve({ text: body.substring(0, 20000) });
-                  } else {
-                    const text = body
-                      .replace(/<script[\s\S]*?<\/script>/gi, '')
-                      .replace(/<style[\s\S]*?<\/style>/gi, '')
-                      .replace(/<[^>]+>/g, ' ')
-                      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
-                      .replace(/\s{3,}/g, '\n\n')
-                      .trim();
-                    resolve({ text: text.substring(0, 20000) });
+                const req = lib.request(reqOpts, (res) => {
+                  if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+                    res.resume();
+                    resolve({ redirect: res.headers.location });
+                    return;
                   }
+                  let body = '';
+                  res.on('data', c => { if (body.length < 500000) body += c; });
+                  res.on('end', () => {
+                    const ct = res.headers['content-type'] || '';
+                    if (ct.includes('application/json')) {
+                      resolve({ text: body.substring(0, 20000) });
+                    } else {
+                      const text = body
+                        .replace(/<script[\s\S]*?<\/script>/gi, '')
+                        .replace(/<style[\s\S]*?<\/style>/gi, '')
+                        .replace(/<[^>]+>/g, ' ')
+                        .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+                        .replace(/\s{3,}/g, '\n\n')
+                        .trim();
+                      resolve({ text: text.substring(0, 20000) });
+                    }
+                  });
                 });
-              });
 
-              if (args.body && args.method && args.method !== 'GET') req.write(args.body);
-              req.on('error', (e) => resolve({ text: `Network error: ${e.message}`, error: true }));
-              req.on('timeout', () => { req.destroy(); resolve({ text: 'Request timed out', error: true }); });
-              req.end();
-            });
+                if (args.body && args.method && args.method !== 'GET') req.write(args.body);
+                req.on('error', (e) => resolve({ text: `Network error: ${e.message}`, error: true }));
+                req.on('timeout', () => { req.destroy(); resolve({ text: 'Request timed out', error: true, isTimeout: true }); });
+                req.end();
+              });
+              // Retry only on timeout, not on other errors
+              if (response.isTimeout && attempt < 2) continue;
+              break;
+            }
 
             if (response.redirect) {
               currentUrl = response.redirect.startsWith('http') ? response.redirect : new URL(response.redirect, currentUrl).href;
