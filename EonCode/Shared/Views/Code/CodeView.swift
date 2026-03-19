@@ -4,422 +4,568 @@ import PhotosUI
 #endif
 
 // MARK: - CodeView
-// Code generation with pipeline agent. Model selection now properly syncs.
+// Autonomous coding agent — powered by server-side ReAct loop.
+// Agent runs on Navi Brain server and persists when iOS closes.
 
 struct CodeView: View {
-    @StateObject private var agent = CodeAgent.shared
+    @StateObject private var session = ServerCodeSession.shared
     @StateObject private var settings = SettingsStore.shared
     @State private var inputText = ""
-    @State private var showModelPicker = false
-    @State private var selectedImages: [Data] = []
-    @State private var isShowingFilePicker = false
     @FocusState private var inputFocused: Bool
+    @State private var selectedModel: String = "minimax"
+    @State private var showTodoPanel = false
     #if os(iOS)
     @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var selectedImages: [Data] = []
     #endif
-
-    /// The model to use — persisted via settings.defaultModel
-    @State private var selectedModel: ClaudeModel = .sonnet46
-    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            Divider().opacity(0.08)
-
-            if agent.usedFallback {
-                fallbackNotice
-            }
-
-            if let error = errorMessage {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12))
-                    Text(error)
-                        .font(NaviTheme.bodyFont(size: 12.5))
-                        .lineLimit(3)
-                    Spacer()
-                    Button { errorMessage = nil } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(NaviTheme.error.opacity(0.6))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .foregroundColor(NaviTheme.error)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(NaviTheme.error.opacity(0.06))
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            messagesArea
+            Divider().opacity(0.06)
+            mainArea
         }
         .background(Color.chatBackground)
         .onAppear {
-            selectedModel = settings.defaultModel
+            // Resume last session if we have one and not connected
+            if let sid = session.sessionId, session.connectionState == .disconnected {
+                session.resumeSession(sid)
+            }
         }
     }
 
-    // MARK: - Top bar — Claude style with inline phase progress
+    // MARK: - Top bar
 
     private var topBar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Kod")
-                    .font(NaviTheme.headingFont(size: 17))
-                    .foregroundColor(.primary)
+            HStack(spacing: 10) {
+                // Title + server indicator
+                HStack(spacing: 6) {
+                    Text("Kod")
+                        .font(NaviTheme.headingFont(size: 17))
+                        .foregroundColor(.primary)
+
+                    serverBadge
+                }
 
                 Spacer()
 
+                // TODO toggle (shows only when there are todos)
+                if !session.todos.isEmpty {
+                    Button {
+                        withAnimation(NaviTheme.Spring.smooth) { showTodoPanel.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checklist")
+                                .font(.system(size: 12))
+                            Text("\(session.todos.filter { $0.done }.count)/\(session.todos.count)")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                        }
+                        .foregroundColor(showTodoPanel ? .accentNavi : .secondary.opacity(0.6))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Capsule().fill(showTodoPanel ? Color.accentNavi.opacity(0.1) : Color.primary.opacity(0.05)))
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 // New session button
-                if agent.activeProject != nil {
+                if session.sessionId != nil {
                     Button {
                         withAnimation(NaviTheme.Spring.smooth) {
-                            agent.activeProject = nil
+                            session.resetForNewSession()
                         }
                     } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 15))
-                            .foregroundColor(.secondary.opacity(0.55))
+                            .foregroundColor(.secondary.opacity(0.5))
                             .frame(width: 32, height: 32)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    #if os(macOS)
-                    .help("Ny kodsession")
-                    #endif
                 }
 
-                // Model picker — shows current model, grouped by provider
-                Menu {
-                    Section("Anthropic") {
-                        ForEach(ClaudeModel.anthropicModels) { model in
-                            modelButton(model)
-                        }
-                    }
-                    Section("xAI / Grok") {
-                        ForEach(ClaudeModel.xaiModels) { model in
-                            modelButton(model)
-                        }
-                    }
-                    Section("OpenRouter") {
-                        ForEach(ClaudeModel.openRouterModels) { model in
-                            modelButton(model)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(selectedModel.displayName)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9))
-                    }
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule().fill(Color.surfaceHover)
-                    )
-                }
-                .buttonStyle(.plain)
+                // Model picker
+                modelPicker
 
-                // Opus review toggle
+                // Stop button
                 Button {
-                    agent.opusReviewEnabled.toggle()
+                    if session.isRunning { session.stop() }
                 } label: {
-                    Image(systemName: agent.opusReviewEnabled ? "shield.checkmark.fill" : "shield")
+                    Image(systemName: session.isRunning ? "stop.fill" : "stop")
                         .font(.system(size: 14))
-                        .foregroundColor(agent.opusReviewEnabled ? .accentNavi : .secondary.opacity(0.5))
+                        .foregroundColor(session.isRunning ? NaviTheme.error : .secondary.opacity(0.2))
                 }
                 .buttonStyle(.plain)
-                #if os(macOS)
-                .help(agent.opusReviewEnabled ? "Opus-granskning aktiv" : "Aktivera Opus-kodgranskning")
-                #endif
-
-                // Stop button — always visible per spec
-                Button {
-                    if agent.isRunning { agent.stop() }
-                } label: {
-                    Image(systemName: agent.isRunning ? "stop.fill" : "stop")
-                        .font(.system(size: 14))
-                        .foregroundColor(agent.isRunning ? NaviTheme.error : .secondary.opacity(0.25))
-                }
-                .buttonStyle(.plain)
-                .disabled(!agent.isRunning)
-                #if os(macOS)
-                .help(agent.isRunning ? "Stopp" : "Inget pågår")
-                #endif
+                .disabled(!session.isRunning)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .frame(minHeight: 44)
 
-            // Phase progress bar + iteration counter when running
-            if agent.isRunning && agent.phase != .idle {
-                HStack(spacing: 8) {
-                    PhaseProgressBar(currentPhase: agent.phase)
-                    if agent.currentIteration > 0 {
-                        Text("iter \(agent.currentIteration)")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.accentNavi.opacity(0.6))
-                            .padding(.trailing, 16)
-                    }
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
+            // Phase progress strip — visible while running
+            if session.isRunning {
+                phaseStrip
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // TODO panel — inline expandable
+            if showTodoPanel && !session.todos.isEmpty {
+                todoPanelView
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .animation(NaviTheme.Spring.smooth, value: agent.isRunning)
-        .animation(NaviTheme.Spring.smooth, value: agent.phase)
+        .animation(NaviTheme.Spring.smooth, value: session.isRunning)
+        .animation(NaviTheme.Spring.smooth, value: showTodoPanel)
     }
 
-    @ViewBuilder
-    private func modelButton(_ model: ClaudeModel) -> some View {
-        let hasKey = Self.hasAPIKey(for: model)
-        Button {
-            selectedModel = model
-            settings.defaultModel = model
-            errorMessage = nil
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(model.displayName)
-                            .font(.system(size: 14, weight: .medium))
-                        if !hasKey {
-                            Image(systemName: "key.slash")
-                                .font(.system(size: 9))
-                                .foregroundColor(.orange)
-                        }
-                    }
-                    Text(hasKey ? model.description : "Saknar API-nyckel")
-                        .font(.system(size: 11))
-                        .foregroundColor(hasKey ? .secondary : .orange)
-                }
+    // MARK: - Server badge
+
+    private var serverBadge: some View {
+        HStack(spacing: 3) {
+            connectionDot
+            Text("SERVER")
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .tracking(0.6)
+        }
+        .foregroundColor(connectionBadgeColor)
+        .padding(.horizontal, 5).padding(.vertical, 2)
+        .background(Capsule().fill(connectionBadgeColor.opacity(0.1)))
+    }
+
+    private var connectionDot: some View {
+        Circle()
+            .fill(connectionBadgeColor)
+            .frame(width: 5, height: 5)
+    }
+
+    private var connectionBadgeColor: Color {
+        switch session.connectionState {
+        case .connected:             return NaviTheme.success
+        case .connecting:            return NaviTheme.warning
+        case .reconnecting:          return NaviTheme.warning
+        case .disconnected:          return Color.secondary.opacity(0.4)
+        }
+    }
+
+    // MARK: - Phase strip
+
+    private var phaseStrip: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                // Spinner
+                ProgressView()
+                    .scaleEffect(0.65)
+                    .tint(.accentNavi)
+
+                // Label
+                Text(session.phaseLabel.isEmpty ? phaseLabelFromPhase(session.phase) : session.phaseLabel)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.accentNavi.opacity(0.8))
+
                 Spacer()
-                if selectedModel == model {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.accentNavi)
+
+                // Iteration counter
+                if session.iteration > 0 {
+                    Text("steg \(session.iteration)/\(session.maxIteration)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.accentNavi.opacity(0.5))
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Color.accentNavi.opacity(0.08))
+                        .cornerRadius(4)
                 }
+
+                // Live tool indicator
+                if let toolName = session.liveToolName {
+                    HStack(spacing: 4) {
+                        Image(systemName: iconForTool(toolName))
+                            .font(.system(size: 9))
+                        Text(toolName)
+                            .font(.system(size: 10, design: .monospaced))
+                    }
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .lineLimit(1)
+                }
+
+                // Watcher status badge
+                if session.watcherIntervened {
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye.trianglebadge.exclamationmark")
+                            .font(.system(size: 9))
+                        Text("Watcher ingrep")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(4)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                } else if session.watcherChecking {
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye")
+                            .font(.system(size: 9))
+                        Text("Watcher")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.06))
+                    .cornerRadius(4)
+                }
+            }
+            .animation(NaviTheme.Spring.smooth, value: session.watcherChecking)
+            .animation(NaviTheme.Spring.smooth, value: session.watcherIntervened)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 5)
+
+            // Thin progress bar
+            GeometryReader { geo in
+                if session.isRunning {
+                    Rectangle()
+                        .fill(Color.accentColor.opacity(0.8))
+                        .frame(width: geo.size.width * progressFraction, height: 3)
+                        .animation(.linear(duration: 0.3), value: progressFraction)
+                }
+            }
+            .frame(height: 3)
+        }
+    }
+
+    private func phaseLabelFromPhase(_ p: String) -> String {
+        switch p {
+        case "thinking":  return "Tänker…"
+        case "reviewing": return "Granskar kod..."
+        case "tools":     return "Använder verktyg…"
+        case "running":   return "Kör…"
+        case "done":      return "Klar"
+        case "error":     return "Fel"
+        default:          return "Arbetar…"
+        }
+    }
+
+    private var progressFraction: Double {
+        let maxIter = Double(session.maxIteration > 0 ? session.maxIteration : 30)
+        return min(Double(session.iteration) / maxIter, 1.0)
+    }
+
+    // MARK: - TODO panel
+
+    private var todoPanelView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().opacity(0.06)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(session.todos) { todo in
+                        todoPill(todo)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
         }
     }
 
-    private static func hasAPIKey(for model: ClaudeModel) -> Bool {
-        switch model.provider {
-        case .anthropic:   return KeychainManager.shared.anthropicAPIKey?.isEmpty == false
-        case .xai:         return KeychainManager.shared.xaiAPIKey?.isEmpty == false
-        case .openRouter:  return KeychainManager.shared.openRouterAPIKey?.isEmpty == false
+    private func todoPill(_ todo: ServerTodoItem) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: todo.done ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 10))
+                .foregroundColor(todo.done ? NaviTheme.success : Color.secondary.opacity(0.4))
+            Text(todo.title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(todo.done ? Color.secondary.opacity(0.5) : Color.primary.opacity(0.8))
+                .strikethrough(todo.done)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(todo.done ? NaviTheme.success.opacity(0.06) : Color.primary.opacity(0.04))
+                .overlay(RoundedRectangle(cornerRadius: 7)
+                    .stroke(todo.done ? NaviTheme.success.opacity(0.2) : Color.primary.opacity(0.07), lineWidth: 0.5))
+        )
+    }
+
+    // MARK: - Model picker
+
+    private var modelPicker: some View {
+        Menu {
+            Button { selectedModel = "minimax" } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("MiniMax M2.5")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("80.2% SWE-bench · 900K ctx · snabbast")
+                            .font(.system(size: 11)).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if selectedModel == "minimax" {
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundColor(.accentNavi)
+                    }
+                }
+            }
+            Button { selectedModel = "qwen" } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Qwen3-Coder")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Gratis · 110K ctx · kodspecialist")
+                            .font(.system(size: 11)).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if selectedModel == "qwen" {
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundColor(.accentNavi)
+                    }
+                }
+            }
+            Button { selectedModel = "deepseek" } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DeepSeek R1")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("110K ctx · chain-of-thought reasoning")
+                            .font(.system(size: 11)).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if selectedModel == "deepseek" {
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundColor(.accentNavi)
+                    }
+                }
+            }
+            Divider()
+            Button { selectedModel = "claude" } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Claude Sonnet 4.6")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Anthropic · 170K ctx · högsta kvalitet")
+                            .font(.system(size: 11)).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if selectedModel == "claude" {
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundColor(.accentNavi)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(modelDisplayName(selectedModel))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9))
+            }
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(Capsule().fill(Color.primary.opacity(0.05)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func modelDisplayName(_ model: String) -> String {
+        switch model {
+        case "minimax":  return "MiniMax"
+        case "qwen":     return "Qwen3"
+        case "deepseek": return "DeepSeek"
+        case "claude":   return "Claude"
+        default:         return model
+        }
+    }
+
+    // MARK: - Main area
+
+    private var mainArea: some View {
+        Group {
+            if session.messages.isEmpty && !session.isRunning
+                && session.sessionId == nil && session.connectionState == .disconnected {
+                ScrollView { emptyState }
+                    .scrollDismissesKeyboard(.interactively)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        inputBar.background(Color.chatBackground)
+                    }
+            } else {
+                messagesArea
+            }
         }
     }
 
     // MARK: - Messages area
 
     private var messagesArea: some View {
-        Group {
-            if let proj = agent.activeProject, !proj.messages.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(proj.messages) { msg in
-                                CodeMessageRow(message: msg)
-                                    .equatable()
-                                    .id(msg.id)
-                            }
-                            if !agent.streamingText.isEmpty {
-                                CodeStreamingRow(text: agent.streamingText, phase: agent.phase)
-                                    .id("streaming")
-                            }
-                            // Single unified activity visual — priority:
-                            // 1. Code writing card (build phase)
-                            // 2. Live tool call pill
-                            // 3. Pipeline phase pill
-                            // 4. Thinking phase pill
-                            if agent.isRunning && agent.streamingText.isEmpty {
-                                Group {
-                                    if agent.phase == .build,
-                                       let status = agent.workerStatuses.first(where: { $0.isActive && $0.currentFile != nil }),
-                                       let file = status.currentFile {
-                                        // Large code writing card
-                                        NaviCodeLiveCard(
-                                            fileName: file,
-                                            liveCode: status.liveCode
-                                        )
-                                        .transition(.asymmetric(
-                                            insertion: .move(edge: .top).combined(with: .opacity),
-                                            removal: .opacity
-                                        ))
-                                    } else if let toolName = agent.liveToolCall {
-                                        NaviActivityPill(
-                                            statusText: toolName.liveToolPillText,
-                                            items: [toolName]
-                                        )
-                                    } else if agent.phase != .idle && agent.phase != .done {
-                                        NaviActivityPill(statusText: agent.phase.pillText)
-                                    } else if !agent.thinkingPhase.isEmpty {
-                                        NaviActivityPill(statusText: agent.thinkingPhase)
-                                    } else {
-                                        NaviActivityPill(statusText: "Tänker")
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .id("activityPill")
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                .animation(.easeInOut(duration: 0.25), value: agent.liveToolCall ?? "")
-                                .animation(.easeInOut(duration: 0.25), value: agent.phase)
-                            }
-                            // Completion state
-                            if !agent.isRunning && agent.phase == .done {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(NaviTheme.success)
-                                    Text("Projektet klart")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundColor(NaviTheme.success.opacity(0.8))
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(NaviTheme.success.opacity(0.08))
-                                .cornerRadius(10)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 6)
-                                .transition(.scale.combined(with: .opacity))
-                                .id("codeDone")
-                            }
-                            Color.clear.frame(height: 8).id("bottomAnchor")
-                        }
-                        .padding(.vertical, 8)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(session.messages) { msg in
+                        ServerMessageRow(message: msg)
+                            .id(msg.id)
                     }
-                    .scrollDismissesKeyboard(.interactively)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        inputBar.background(Color.chatBackground)
+
+                    // Activity indicator when running but streaming hasn't started yet
+                    if session.isRunning && session.streamingText.isEmpty {
+                        ServerActivityRow(
+                            phaseLabel: session.phaseLabel.isEmpty ? phaseLabelFromPhase(session.phase) : session.phaseLabel,
+                            toolName: session.liveToolName
+                        )
+                        .padding(.horizontal, 16).padding(.vertical, 6)
+                        .id("activity")
                     }
-                    .onChange(of: agent.streamingText) { _, _ in
-                        proxy.scrollTo("streaming", anchor: .bottom)
+
+                    // Streaming text (live response being revealed)
+                    if !session.streamingText.isEmpty {
+                        ServerStreamingRow(
+                            text: session.streamingText,
+                            phaseLabel: session.phaseLabel
+                        )
+                        .id("streaming")
                     }
-                    .onChange(of: agent.isRunning) { _, running in
-                        if running { proxy.scrollTo("progressCard", anchor: .bottom) }
+
+                    // Done badge
+                    if !session.isRunning && session.phase == "done" && session.sessionId != nil {
+                        doneBadge
+                            .id("done")
                     }
-                    .onChange(of: proj.messages.count) { _, _ in
-                        if let last = proj.messages.last {
-                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                        }
+
+                    // Error display
+                    if let err = session.lastError, !session.isRunning {
+                        errorBadge(err)
+                            .id("error")
+                    }
+
+                    // Bottom spacer so last message clears the input bar
+                    Color.clear.frame(height: 16).id("bottom")
+                }
+                .padding(.top, 8)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                inputBar.background(Color.chatBackground)
+            }
+            .onChange(of: session.streamingText) { _, new in
+                guard !new.isEmpty else { return }
+                proxy.scrollTo("streaming", anchor: .bottom)
+            }
+            .onChange(of: session.messages.count) { _, _ in
+                if let last = session.messages.last {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
-            } else {
-                ScrollView { emptyState }
-                    .scrollDismissesKeyboard(.interactively)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        inputBar.background(Color.chatBackground)
-                    }
+            }
+            .onChange(of: session.isRunning) { _, running in
+                if running {
+                    withAnimation { proxy.scrollTo("activity", anchor: .bottom) }
+                }
             }
         }
+    }
+
+    // MARK: - Done / Error badges
+
+    private var doneBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13))
+                .foregroundColor(NaviTheme.success)
+            Text(session.phaseLabel.isEmpty ? "Klar" : session.phaseLabel)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(NaviTheme.success.opacity(0.85))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(NaviTheme.success.opacity(0.08))
+        .cornerRadius(9)
+        .padding(.horizontal, 16).padding(.vertical, 4)
+        .transition(.scale(scale: 0.92).combined(with: .opacity))
+    }
+
+    private func errorBadge(_ msg: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+            Text(msg)
+                .font(.system(size: 12)).lineLimit(2)
+        }
+        .foregroundColor(NaviTheme.error)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(NaviTheme.error.opacity(0.06))
+        .cornerRadius(9)
+        .padding(.horizontal, 16).padding(.vertical, 4)
     }
 
     // MARK: - Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 28) {
             Spacer()
 
-            ThinkingOrb(size: 72, isAnimating: false)
+            VStack(spacing: 16) {
+                // Server orb
+                ZStack {
+                    Circle()
+                        .fill(Color.accentNavi.opacity(0.07))
+                        .frame(width: 80, height: 80)
+                    Image(systemName: "server.rack")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundColor(.accentNavi.opacity(0.7))
+                }
 
-            VStack(spacing: 10) {
-                Text("Kod")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Beskriv ett projekt — Navi planerar, bygger\noch pushar till GitHub åt dig.")
-                    .font(.system(size: 14, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
+                VStack(spacing: 8) {
+                    Text("Kod")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text("Agent kör på servern — fortsätter\näven när du stänger appen.")
+                        .font(.system(size: 14, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
+                }
             }
 
-            VStack(spacing: 8) {
-                quickStartChip("Starta en iOS ToDo-app med iCloud sync", icon: "iphone")
-                quickStartChip("Python CLI-tool för JSON-transformation", icon: "terminal")
-                quickStartChip("React dashboard för realtidsdata", icon: "chart.bar")
+            VStack(spacing: 7) {
+                quickChip("Bygg ett React dashboard för realtidsdata", icon: "chart.xyaxis.line")
+                quickChip("Python API med FastAPI och PostgreSQL", icon: "terminal")
+                quickChip("iOS app med SwiftUI och iCloud sync", icon: "iphone")
+                quickChip("Next.js landing page med Tailwind", icon: "globe")
             }
-            .padding(.top, 4)
 
             Spacer()
         }
-        .padding(.horizontal, 32)
+        .padding(.horizontal, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func quickStartChip(_ text: String, icon: String = "sparkle") -> some View {
-        Button {
-            inputText = text
-            inputFocused = true
-        } label: {
+    private func quickChip(_ text: String, icon: String) -> some View {
+        Button { inputText = text; inputFocused = true } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 12))
-                    .foregroundColor(.accentNavi.opacity(0.6))
-                    .frame(width: 20)
+                    .foregroundColor(.accentNavi.opacity(0.55))
+                    .frame(width: 18)
                 Text(text)
                     .font(.system(size: 13, design: .rounded))
                     .foregroundColor(.secondary)
                 Spacer()
                 Image(systemName: "arrow.right")
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.3))
+                    .foregroundColor(.secondary.opacity(0.25))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 14).padding(.vertical, 11)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.surfaceHover.opacity(0.5))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+                RoundedRectangle(cornerRadius: 11)
+                    .fill(Color.primary.opacity(0.03))
+                    .overlay(RoundedRectangle(cornerRadius: 11)
+                        .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
             )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Fallback notice
-
-    private var fallbackNotice: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 11))
-            Text("Qwen3-Coder timeout — \(agent.actualModel.displayName) används")
-                .font(.system(size: 12))
-        }
-        .foregroundColor(NaviTheme.warning)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(NaviTheme.warningBg)
-    }
-
-    // MARK: - Input bar — with attachment support
+    // MARK: - Input bar
 
     private var inputBar: some View {
-        VStack(spacing: 8) {
-            // Image thumbnails
-            if !selectedImages.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, data in
-                            InputImageThumb(data: data) { selectedImages.remove(at: idx) }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 4)
-                }
-            }
-
+        VStack(spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
                 #if os(iOS)
-                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 5, matching: .images) {
+                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 3, matching: .images) {
                     ZStack {
-                        Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
-                        Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.checkmark")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.5))
+                        Circle().fill(Color.primary.opacity(0.04)).frame(width: 32, height: 32)
+                        Image(systemName: "photo")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.primary.opacity(0.4))
                     }
                 }
                 .buttonStyle(.plain)
@@ -435,30 +581,8 @@ struct CodeView: View {
                 }
                 #endif
 
-                // Attachment menu
-                Menu {
-                    #if os(macOS)
-                    Button { } label: { Label("Bild", systemImage: "photo") }
-                    #endif
-                    Button { isShowingFilePicker = true } label: {
-                        Label("Fil", systemImage: "doc")
-                    }
-                } label: {
-                    ZStack {
-                        Circle().fill(Color.primary.opacity(0.05)).frame(width: 32, height: 32)
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.4))
-                    }
-                }
-                #if os(macOS)
-                .menuStyle(.borderlessButton)
-                #endif
-
                 TextField(
-                    agent.activeProject == nil
-                        ? "Beskriv ett projekt att bygga…"
-                        : "Fortsätt konversationen…",
+                    session.sessionId == nil ? "Beskriv ett projekt att bygga…" : "Fortsätt…",
                     text: $inputText,
                     axis: .vertical
                 )
@@ -474,382 +598,428 @@ struct CodeView: View {
                 Button { sendMessage() } label: {
                     ZStack {
                         Circle()
-                            .fill(sendDisabled ? Color.secondary.opacity(0.2) : Color.accentNavi)
+                            .fill(sendDisabled ? Color.secondary.opacity(0.18) : Color.accentNavi)
                             .frame(width: 32, height: 32)
                         Image(systemName: "arrow.up")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(sendDisabled ? .secondary.opacity(0.5) : .white)
+                            .foregroundColor(sendDisabled ? .secondary.opacity(0.4) : .white)
                     }
                 }
                 .buttonStyle(.plain)
                 .disabled(sendDisabled)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12).padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color.inputBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-                    )
+                    .overlay(RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
             )
 
-            Text("Navi kan göra fel. Verifiera viktig information.")
+            Text("Agent kör på Navi Brain · \(connectionStateLabel)")
                 .font(.system(size: 10))
-                .foregroundColor(.secondary.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .center)
+                .foregroundColor(.secondary.opacity(0.35))
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, 16).padding(.bottom, 16).padding(.top, 8)
+    }
+
+    private var connectionStateLabel: String {
+        switch session.connectionState {
+        case .connected:           return "Ansluten"
+        case .connecting:          return "Ansluter…"
+        case .reconnecting(let n): return "Återansluter (\(n))…"
+        case .disconnected:        return "Frånkopplad"
+        }
     }
 
     private var sendDisabled: Bool {
-        inputText.trimmingCharacters(in: .whitespaces).isEmpty || agent.isRunning
+        inputText.trimmingCharacters(in: .whitespaces).isEmpty || session.isRunning
     }
-
-    // MARK: - Send — passes selected model to agent
 
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty, !agent.isRunning else { return }
-
-        // Validate API key
-        if !Self.hasAPIKey(for: selectedModel) {
-            let provider = selectedModel.providerDisplayName
-            errorMessage = "Ingen \(provider) API-nyckel. Gå till Inställningar."
-            return
-        }
-
+        guard !text.isEmpty, !session.isRunning else { return }
         inputText = ""
-        errorMessage = nil
         dismissKeyboard()
 
-        if agent.activeProject == nil {
-            agent.handleMessage(text: text, model: selectedModel)
+        if session.sessionId == nil || session.connectionState == .disconnected {
+            session.startNewSession(task: text, model: selectedModel)
         } else {
-            agent.continueChat(text: text, model: selectedModel)
+            session.sendUserMessage(text)
         }
     }
 }
 
-// MARK: - CodeMessageRow
+// MARK: - ServerMessageRow
 
-struct CodeMessageRow: View, Equatable {
-    let message: PureChatMessage
-
-    static func == (lhs: CodeMessageRow, rhs: CodeMessageRow) -> Bool {
-        lhs.message.id == rhs.message.id && lhs.message.content == rhs.message.content
-    }
+struct ServerMessageRow: View {
+    let message: ServerChatMessage
 
     var body: some View {
-        Group {
-            if message.role == .user {
-                userRow
-            } else {
-                assistantRow
-            }
+        if message.role == .user {  // ServerChatRole.user
+            userRow
+        } else {
+            assistantRow
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
     }
 
     private var userRow: some View {
         HStack {
             Spacer(minLength: 60)
-            Text(message.content)
+            Text(message.text)
                 .font(NaviTheme.bodyFont(size: 16))
                 .foregroundColor(.primary)
                 .lineSpacing(4)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color.userBubble)
-                )
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 18).fill(Color.userBubble))
                 .textSelection(.enabled)
         }
+        .padding(.horizontal, 16).padding(.vertical, 5)
     }
 
     private var assistantRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: false)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 6) {
-                // Tool call pill — shown when model executed tools
-                if let tools = message.toolCallNames, !tools.isEmpty {
-                    NaviActivityPill(
-                        statusText: tools.count == 1 ? "1 verktyg" : "\(tools.count) verktyg",
-                        items: tools,
-                        isLive: false
-                    )
+            ThinkingOrb(size: 22, isAnimating: false)
+                .padding(.top, 3)
+
+            VStack(alignment: .leading, spacing: 8) {
+                // Tool events (collapsed pill showing count + expandable)
+                if !message.toolEvents.isEmpty {
+                    ToolEventsSummary(events: message.toolEvents)
                 }
-                MarkdownTextView(text: message.content)
-                    .equatable()
-                    .textSelection(.enabled)
 
-                // Copy button
-                Button {
-                    #if os(iOS)
-                    UIPasteboard.general.string = message.content
-                    #else
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(message.content, forType: .string)
-                    #endif
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary.opacity(0.4))
+                // Message text (markdown)
+                if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    MarkdownTextView(text: message.text)
+                        .textSelection(.enabled)
                 }
-                .buttonStyle(.plain)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Spacer(minLength: 40)
-        }
-    }
-}
 
-// MARK: - CodeStreamingRow
+                // Git checkpoint badge
+                if let cp = message.gitCheckpoint {
+                    GitCheckpointBadge(checkpoint: cp)
+                }
 
-struct CodeStreamingRow: View {
-    let text: String
-    let phase: PipelinePhase
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
-
-            VStack(alignment: .leading, spacing: 6) {
-                if text.isEmpty {
-                    NaviActivityPill(statusText: phase.pillText)
-                } else {
-                    MarkdownTextView(text: text)
+                // Copy
+                HStack(spacing: 0) {
+                    Button {
+                        #if os(iOS)
+                        UIPasteboard.general.string = message.text
+                        #else
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(message.text, forType: .string)
+                        #endif
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.35))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 32)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 16).padding(.vertical, 5)
     }
 }
 
-// MARK: - PhasePill — compact inline phase badge
+// MARK: - ToolPill — compact inline pill for a single tool event
 
-struct PhasePill: View {
-    let phase: PipelinePhase
-    @State private var pulse = false
+struct ToolPill: View {
+    let event: ServerToolEvent
 
     var body: some View {
         HStack(spacing: 5) {
-            Circle()
-                .fill(Color.accentNavi)
-                .frame(width: 6, height: 6)
-                .scaleEffect(pulse ? 1.4 : 1.0)
-                .opacity(pulse ? 0.6 : 1.0)
-
-            Text(phase.displayName.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(0.8)
+            Image(systemName: event.isError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 11))
+                .foregroundColor(event.isError ? .red : .green)
+            Text(pillLabel)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(.primary.opacity(0.85))
         }
-        .foregroundColor(.accentNavi.opacity(0.8))
         .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(
-            Capsule().fill(Color.accentNavi.opacity(0.08))
-        )
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.07))
+        .cornerRadius(6)
+    }
+
+    private var pillLabel: String {
+        let name = event.name
+        let param = event.params.values.first ?? ""
+        let duration = event.durationMs > 0 ? " · \(event.durationMs < 1000 ? "\(event.durationMs)ms" : String(format: "%.1fs", Double(event.durationMs)/1000))" : ""
+        return param.isEmpty ? "\(name)\(duration)" : "\(name) \(param)\(duration)"
     }
 }
 
-// MARK: - PhaseProgressBar — compact horizontal phase indicator
+// MARK: - ToolEventsSummary — collapsible tool call list
 
-struct PhaseProgressBar: View {
-    let currentPhase: PipelinePhase
-    private let phases: [PipelinePhase] = [.spec, .research, .setup, .plan, .build, .push]
+struct ToolEventsSummary: View {
+    let events: [ServerToolEvent]
+    @State private var isExpanded = false
+
+    private static let pillThreshold = 3
+
+    var completedCount: Int { events.filter { $0.isComplete }.count }
+    var errorCount:     Int { events.filter { $0.isError    }.count }
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(phases, id: \.self) { phase in
-                VStack(spacing: 3) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(barColor(for: phase))
-                        .frame(height: 3)
+        VStack(alignment: .leading, spacing: 4) {
+            if events.count <= Self.pillThreshold {
+                // Show individual pills for small sets
+                FlowLayout(spacing: 4) {
+                    ForEach(events) { ev in
+                        ToolPill(event: ev)
+                    }
+                }
+            } else {
+                // Summary pill (tap to expand) for larger sets
+                Button {
+                    withAnimation(NaviTheme.Spring.quick) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: errorCount > 0 ? "exclamationmark.circle" : "wrench.adjustable")
+                            .font(.system(size: 10))
+                            .foregroundColor(errorCount > 0 ? NaviTheme.error : .accentNavi.opacity(0.6))
+                        Text("\(events.count) verktyg")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary.opacity(0.7))
+                        if errorCount > 0 {
+                            Text("· \(errorCount) fel")
+                                .font(.system(size: 10))
+                                .foregroundColor(NaviTheme.error.opacity(0.8))
+                        }
+                        Spacer()
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary.opacity(0.3))
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.primary.opacity(0.025))
+                            .overlay(RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+                    )
+                }
+                .buttonStyle(.plain)
 
-                    Text(phase.shortName)
-                        .font(.system(size: 8, weight: .medium, design: .rounded))
-                        .foregroundColor(labelColor(for: phase))
+                // Expanded: individual tool call rows
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(events) { ev in
+                            ToolEventRow(event: ev)
+                        }
+                    }
+                    .padding(.top, 2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
-    }
-
-    private func barColor(for phase: PipelinePhase) -> Color {
-        if phase.ordinal < currentPhase.ordinal { return NaviTheme.success }
-        if phase.ordinal == currentPhase.ordinal { return Color.accentNavi }
-        return Color.secondary.opacity(0.15)
-    }
-
-    private func labelColor(for phase: PipelinePhase) -> Color {
-        if phase.ordinal == currentPhase.ordinal { return .accentNavi }
-        if phase.ordinal < currentPhase.ordinal { return NaviTheme.success.opacity(0.7) }
-        return .secondary.opacity(0.3)
     }
 }
 
-// MARK: - CodeAPIInfoCard — shows current API request info
 
-struct CodeAPIInfoCard: View {
-    let info: CodeAPIInfo
+// MARK: - ToolEventRow
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.up.right.circle.fill")
-                .font(.system(size: 11))
-                .foregroundColor(.accentNavi.opacity(0.6))
-            Text("POST")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(.accentNavi.opacity(0.7))
-            Text(info.provider.capitalized)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.6))
-            Spacer()
-            Text(info.model)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundColor(.secondary.opacity(0.5))
-            if info.toolCount > 0 {
-                Text("\(info.toolCount) tools")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.4))
-            }
-            if info.iteration > 1 {
-                Text("iter \(info.iteration)")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundColor(.accentNavi.opacity(0.5))
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Color.accentNavi.opacity(0.08))
-                    .cornerRadius(4)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.accentNavi.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.accentNavi.opacity(0.1), lineWidth: 0.5)
-                )
-        )
-        .padding(.horizontal, 16)
-        .padding(.vertical, 2)
-    }
-}
-
-// MARK: - CodeThinkingCard — shows what the agent is thinking/doing
-
-struct CodeThinkingCard: View {
-    let phase: String
-    @State private var pulse = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(Color.accentNavi)
-                .frame(width: 6, height: 6)
-                .scaleEffect(pulse ? 1.3 : 1.0)
-                .opacity(pulse ? 0.5 : 1.0)
-            Text(phase)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.7))
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
-    }
-}
-
-// MARK: - CodeToolCallCard — shows completed tool call with result
-
-struct CodeToolCallCard: View {
-    let event: CodeToolCallEvent
-    @State private var isExpanded = false
+struct ToolEventRow: View {
+    let event: ServerToolEvent
+    @State private var showResult = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header row
             Button {
-                withAnimation(NaviTheme.Spring.quick) { isExpanded.toggle() }
+                withAnimation(NaviTheme.Spring.quick) { showResult.toggle() }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: event.isError ? "xmark.circle.fill" : "checkmark.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundColor(event.isError ? NaviTheme.error : NaviTheme.success)
 
                     Image(systemName: event.icon)
-                        .font(.system(size: 10))
-                        .foregroundColor(.accentNavi.opacity(0.6))
+                        .font(.system(size: 9))
+                        .foregroundColor(.accentNavi.opacity(0.55))
 
-                    Text(event.toolName)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(.primary.opacity(0.7))
+                    Text(event.name)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.primary.opacity(0.65))
 
-                    // Show key param
-                    if let path = event.params["path"] ?? event.params["query"] ?? event.params["cmd"] ?? event.params["repo"] {
-                        Text(URL(fileURLWithPath: path).lastPathComponent)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.5))
+                    if let paramVal = event.params["path"] ?? event.params["command"] ?? event.params["pattern"] ?? event.params["query"] {
+                        Text(URL(fileURLWithPath: paramVal).lastPathComponent)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.45))
                             .lineLimit(1)
                     }
 
                     Spacer()
 
-                    if event.duration > 0 {
-                        Text(String(format: "%.1fs", event.duration))
+                    if event.durationMs > 0 {
+                        Text(event.durationMs < 1000 ? "\(event.durationMs)ms" : String(format: "%.1fs", Double(event.durationMs)/1000))
                             .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.4))
+                            .foregroundColor(.secondary.opacity(0.35))
                     }
 
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 8))
-                        .foregroundColor(.secondary.opacity(0.3))
+                    Image(systemName: showResult ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 7))
+                        .foregroundColor(.secondary.opacity(0.25))
                 }
+                .padding(.horizontal, 10).padding(.vertical, 5)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
 
-            // Expanded result
-            if isExpanded && !event.result.isEmpty {
-                Divider().opacity(0.1)
-                Text(event.result.prefix(800))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .lineLimit(12)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+            if showResult && !event.result.isEmpty {
+                Divider().opacity(0.07)
+                Text(event.result.prefix(600))
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.55))
+                    .lineLimit(14)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(event.isError ? NaviTheme.error.opacity(0.04) : Color.primary.opacity(0.02))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(event.isError ? NaviTheme.error.opacity(0.15) : Color.primary.opacity(0.06), lineWidth: 0.5)
-                )
+            RoundedRectangle(cornerRadius: 6)
+                .fill(event.isError ? NaviTheme.error.opacity(0.03) : Color.clear)
+                .overlay(RoundedRectangle(cornerRadius: 6)
+                    .stroke(event.isError ? NaviTheme.error.opacity(0.12) : Color.primary.opacity(0.04), lineWidth: 0.5))
         )
-        .padding(.horizontal, 16)
-        .padding(.vertical, 1)
+    }
+}
+
+// MARK: - GitCheckpointBadge
+
+struct GitCheckpointBadge: View {
+    let checkpoint: ServerGitCheckpoint
+    // TODO: Add @State private var showDiff = false and a .sheet once
+    // ServerGitCheckpoint exposes a diff property or a fetch endpoint is available.
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 9))
+                .foregroundColor(.accentNavi.opacity(0.6))
+            Text(checkpoint.hash)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(.accentNavi.opacity(0.7))
+            Text(checkpoint.message)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary.opacity(0.6))
+                .lineLimit(1)
+            if !checkpoint.filesChanged.isEmpty {
+                Text(checkpoint.filesChanged)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary.opacity(0.4))
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.accentNavi.opacity(0.05))
+                .overlay(RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.accentNavi.opacity(0.12), lineWidth: 0.5))
+        )
+    }
+}
+
+// MARK: - ServerStreamingRow — live text with animated cursor
+
+struct ServerStreamingRow: View {
+    let text: String
+    let phaseLabel: String
+    @StateObject private var markdownBuffer = StreamingMarkdownBuffer()
+    @State private var cursorVisible = true
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ThinkingOrb(size: 22, isAnimating: true)
+                .padding(.top, 3)
+
+            VStack(alignment: .leading, spacing: 4) {
+                if text.isEmpty {
+                    Text(phaseLabel)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary.opacity(0.5))
+                } else {
+                    // Streaming markdown with blinking cursor
+                    HStack(alignment: .bottom, spacing: 0) {
+                        MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
+                        Rectangle()
+                            .fill(Color.accentNavi)
+                            .frame(width: 1.5, height: 16)
+                            .opacity(cursorVisible ? 1 : 0)
+                            .padding(.bottom, 2)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 32)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 5)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
+                cursorVisible = false
+            }
+        }
+    }
+}
+
+// MARK: - ServerActivityRow — thinking/tool activity indicator
+
+struct ServerActivityRow: View {
+    let phaseLabel: String
+    let toolName: String?
+    @State private var dot = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ThinkingOrb(size: 22, isAnimating: true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(phaseLabel)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary.opacity(0.6))
+                    // Animated dots
+                    HStack(spacing: 3) {
+                        ForEach(0..<3, id: \.self) { i in
+                            Circle()
+                                .fill(Color.accentNavi.opacity(dot ? 0.8 : 0.25))
+                                .frame(width: 4, height: 4)
+                                .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: dot)
+                        }
+                    }
+                }
+                if let tool = toolName {
+                    HStack(spacing: 4) {
+                        Image(systemName: iconForTool(tool))
+                            .font(.system(size: 9))
+                        Text(tool)
+                            .font(.system(size: 10, design: .monospaced))
+                    }
+                    .foregroundColor(.accentNavi.opacity(0.55))
+                }
+            }
+
+            Spacer()
+        }
+        .onAppear { dot = true }
+    }
+}
+
+// MARK: - Helpers
+
+private func iconForTool(_ name: String) -> String {
+    switch name {
+    case "read_file":   return "doc.text"
+    case "write_file":  return "square.and.pencil"
+    case "edit_file":   return "pencil.and.outline"
+    case "run_command": return "terminal"
+    case "grep":        return "magnifyingglass"
+    case "list_files":  return "folder"
+    case "todo_write":  return "checklist"
+    case "git_commit":  return "arrow.triangle.branch"
+    case "web_search":  return "globe"
+    case "fetch_url":   return "globe.americas"
+    default:            return "wrench"
     }
 }

@@ -31,6 +31,16 @@ struct SettingsView: View {
                 .tabItem { Label("API-nycklar", systemImage: "key") }
                 .padding()
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    costSection
+                    Divider().opacity(0.2)
+                    modelPickersSection
+                }
+                .padding()
+            }
+            .tabItem { Label("Kostnad & Modell", systemImage: "dollarsign.circle") }
+
             VStack(alignment: .leading, spacing: 20) {
                 modelSection
                 Divider().opacity(0.2)
@@ -69,6 +79,9 @@ struct SettingsView: View {
     var iOSSettings: some View {
         Form {
             Section("API-nycklar") { apiKeysSection }
+            Section("API-nyckel status") { apiKeyStatusSection }
+            Section("Kostnad") { costSection }
+            Section("Chatt-modell & Kodmodell") { modelPickersSection }
             Section("Claude-modell") { modelSection }
             Section("iOS Agent-läge") { iOSAgentModeSection }
             Section("Mac Remote") {
@@ -453,6 +466,109 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
+        }
+    }
+
+    // MARK: - Cost section
+
+    var costSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            let tracker = CostTracker.shared
+            let rate = ExchangeRateService.shared.usdToSEK
+            let monthlySEK = tracker.monthlyUSD * rate
+            let totalSEK   = tracker.totalUSD   * rate
+
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Denna månad")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                    Text(String(format: "%.2f kr", monthlySEK))
+                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    Text(String(format: "$%.4f", tracker.monthlyUSD))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("Totalt")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                    Text(String(format: "%.2f kr", totalSEK))
+                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    Text(String(format: "$%.4f", tracker.totalUSD))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Button("Återställ statistik") {
+                CostTracker.shared.resetAll()
+            }
+            .font(.system(size: 12))
+            .foregroundColor(.red.opacity(0.7))
+        }
+    }
+
+    // MARK: - Model pickers section
+
+    var modelPickersSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Chatt-modell")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Picker("Chatt-modell", selection: $settings.chatModel) {
+                    Text("Claude Sonnet 4.6").tag("claude-sonnet-4-6")
+                    Text("Claude Haiku 3.5").tag("claude-haiku-3-5")
+                    Text("Claude Opus 4").tag("claude-opus-4")
+                    Text("Grok 3").tag("grok-3")
+                    Text("MiniMax M2.5").tag("minimax")
+                    Text("Qwen3 Coder").tag("qwen")
+                }
+                .pickerStyle(.menu)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Kodmodell (server)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Picker("Kodmodell", selection: $settings.codeModel) {
+                    Text("MiniMax M2.5").tag("minimax")
+                    Text("Qwen3 Coder (gratis)").tag("qwen")
+                    Text("DeepSeek Coder").tag("deepseek")
+                    Text("Claude Sonnet 4.6").tag("claude-sonnet-4-6")
+                }
+                .pickerStyle(.menu)
+            }
+        }
+    }
+
+    // MARK: - API key status section
+
+    var apiKeyStatusSection: some View {
+        let km = KeychainManager.shared
+        return VStack(alignment: .leading, spacing: 10) {
+            apiKeyStatusRow(label: "Anthropic", hasKey: km.anthropicAPIKey?.isEmpty == false)
+            apiKeyStatusRow(label: "OpenRouter", hasKey: km.openRouterAPIKey?.isEmpty == false)
+            apiKeyStatusRow(label: "xAI (Grok)", hasKey: km.xaiAPIKey?.isEmpty == false)
+            apiKeyStatusRow(label: "GitHub", hasKey: km.githubToken?.isEmpty == false)
+            apiKeyStatusRow(label: "ElevenLabs", hasKey: km.elevenLabsAPIKey?.isEmpty == false)
+        }
+    }
+
+    @ViewBuilder
+    private func apiKeyStatusRow(label: String, hasKey: Bool) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(hasKey ? Color.green : Color.secondary.opacity(0.3))
+                .frame(width: 7, height: 7)
+            Text(label)
+                .font(.system(size: 13))
+            Spacer()
+            Text(hasKey ? "Konfigurerat" : "Saknas")
+                .font(.system(size: 12))
+                .foregroundColor(hasKey ? .green : .secondary.opacity(0.5))
         }
     }
 
@@ -891,7 +1007,7 @@ struct VoicePickerRow: View {
                         Text(voice.name).tag(voice.voice_id)
                     }
                 }
-                .onChange(of: settings.selectedVoiceID) { newID in
+                .onChange(of: settings.selectedVoiceID) { _, newID in
                     if let voice = tts.availableVoices.first(where: { $0.voice_id == newID }) {
                         settings.selectedVoiceName = voice.name
                     }

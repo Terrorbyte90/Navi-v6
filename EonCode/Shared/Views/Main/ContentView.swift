@@ -479,14 +479,6 @@ struct MacTabPill: View {
     }
 }
 
-struct TabButton: View {
-    let title: String; let icon: String; let tab: MacEditorTab
-    @Binding var selected: MacEditorTab
-    var isSelected: Bool { selected == tab }
-    var body: some View {
-        MacTabPill(title: title, icon: icon, tab: tab, selected: $selected)
-    }
-}
 #endif
 
 // MARK: - iOS file tree + editor

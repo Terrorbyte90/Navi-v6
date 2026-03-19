@@ -1,6 +1,23 @@
 #if os(macOS)
 import Foundation
 
+// MARK: - Thread-safe data box for concurrent closure capture
+
+private final class LockedData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+
+    func append(_ data: Data) {
+        lock.withLock { storage.append(data) }
+    }
+
+    var data: Data {
+        lock.withLock { storage }
+    }
+}
+
+// MARK: - MacTerminalExecutor
+
 // macOS terminal executor — used by ToolExecutor on Mac
 enum MacTerminalExecutor {
 
@@ -40,14 +57,15 @@ enum MacTerminalExecutor {
             env["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:" + (env["PATH"] ?? "")
             process.environment = env
 
-            var outputData = Data()
-            var errorData = Data()
+            // Thread-safe collection via reference types (Swift 6 safe)
+            let outputBox = LockedData()
+            let errorBox  = LockedData()
 
             outPipe.fileHandleForReading.readabilityHandler = { handle in
-                outputData.append(handle.availableData)
+                outputBox.append(handle.availableData)
             }
             errPipe.fileHandleForReading.readabilityHandler = { handle in
-                errorData.append(handle.availableData)
+                errorBox.append(handle.availableData)
             }
 
             do {
@@ -69,11 +87,11 @@ enum MacTerminalExecutor {
                 errPipe.fileHandleForReading.readabilityHandler = nil
 
                 // Read remaining
-                outputData.append(outPipe.fileHandleForReading.readDataToEndOfFile())
-                errorData.append(errPipe.fileHandleForReading.readDataToEndOfFile())
+                outputBox.append(outPipe.fileHandleForReading.readDataToEndOfFile())
+                errorBox.append(errPipe.fileHandleForReading.readDataToEndOfFile())
 
-                let output = String(data: outputData, encoding: .utf8) ?? ""
-                let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
+                let output      = String(data: outputBox.data, encoding: .utf8) ?? ""
+                let errorOutput = String(data: errorBox.data,  encoding: .utf8) ?? ""
 
                 continuation.resume(returning: CommandResult(
                     output: output,
@@ -103,7 +121,8 @@ enum MacTerminalExecutor {
             env["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:" + (env["PATH"] ?? "")
             process.environment = env
 
-            var allOutput = Data()
+            // Thread-safe collection via reference type (Swift 6 safe)
+            let allOutput = LockedData()
 
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
@@ -123,7 +142,7 @@ enum MacTerminalExecutor {
             process.terminationHandler = { p in
                 pipe.fileHandleForReading.readabilityHandler = nil
                 allOutput.append(pipe.fileHandleForReading.readDataToEndOfFile())
-                let output = String(data: allOutput, encoding: .utf8) ?? ""
+                let output = String(data: allOutput.data, encoding: .utf8) ?? ""
                 continuation.resume(returning: CommandResult(output: output, errorOutput: "", exitCode: p.terminationStatus))
             }
         }

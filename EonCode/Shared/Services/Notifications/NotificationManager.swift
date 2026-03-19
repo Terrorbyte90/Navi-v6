@@ -58,6 +58,17 @@ final class NotificationManager: NSObject, ObservableObject {
         let tokenString = token.map { String(format: "%02.2hhx", $0) }.joined()
         deviceToken = tokenString
         NaviLog.info("APNs device token: \(tokenString.prefix(16))...")
+        // Register with server for background push
+        Task {
+            await NaviBrainService.shared.registerPushToken(tokenString)
+        }
+    }
+
+    func registerTokenWithServer() {
+        guard let token = deviceToken, !token.isEmpty else { return }
+        Task {
+            await NaviBrainService.shared.registerPushToken(token)
+        }
     }
 
     func handleRegistrationError(_ error: Error) {
@@ -136,7 +147,7 @@ final class NotificationManager: NSObject, ObservableObject {
         isPollingNtfy = false
     }
 
-    private func handleNtfyMessage(title: String, message: String, tags: [String], priority: Int) async {
+    func handleNtfyMessage(title: String, message: String, tags: [String], priority: Int) async {
         let category = NotificationCategory.from(tags: tags)
 
         let notification = NaviNotification(
@@ -308,6 +319,8 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
+        // Extract Sendable values before entering @Sendable closure
+        let categoryRaw = userInfo["category"] as? String
 
         await MainActor.run {
             // Mark as read when tapped
@@ -316,15 +329,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             }
 
             // Handle notification tap based on category
-            if let categoryRaw = userInfo["category"] as? String,
+            if let categoryRaw = categoryRaw,
                let category = NotificationCategory(rawValue: categoryRaw) {
-                handleNotificationTap(category: category, userInfo: userInfo)
+                handleNotificationTap(category: category)
             }
         }
     }
 
     @MainActor
-    private func handleNotificationTap(category: NotificationCategory, userInfo: [AnyHashable: Any]) {
+    private func handleNotificationTap(category: NotificationCategory) {
         switch category {
         case .taskCompleted:
             // Navigate to server view to see result

@@ -205,14 +205,16 @@ final class PeerSyncEngine: ObservableObject {
             let length = data.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
 
             // Read payload
-            connection.receive(minimumIncompleteLength: Int(length), maximumLength: Int(length)) { payloadData, _, _, _ in
+            connection.receive(minimumIncompleteLength: Int(length), maximumLength: Int(length)) { [weak self] payloadData, _, _, _ in
                 if let payloadData = payloadData, let packet = try? payloadData.decoded(as: SyncPacket.self) {
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
                         self?.handleReceivedPacket(packet)
                     }
                 }
                 if !isComplete {
-                    self?.receiveLoop(connection: connection)
+                    Task { @MainActor [weak self] in
+                        self?.receiveLoop(connection: connection)
+                    }
                 }
             }
         }

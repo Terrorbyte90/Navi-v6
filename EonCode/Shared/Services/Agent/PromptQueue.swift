@@ -65,6 +65,14 @@ final class PromptQueue: ObservableObject {
         return q
     }
 
+    /// Remove and cancel the queue for a deleted project.
+    static func remove(for projectID: UUID) {
+        if let q = queues.removeValue(forKey: projectID) {
+            q.processingTask?.cancel()
+            q.items.removeAll()
+        }
+    }
+
     // MARK: - State
 
     let projectID: UUID
@@ -167,14 +175,27 @@ final class PromptQueue: ObservableObject {
                     try? await Task.sleep(for: .milliseconds(200))
                 }
 
-                // Send the prompt
+                // Send the prompt — with 10-minute timeout guard against hung continuations
+                let resumeOnce = ResumeOnce()
+                let timeoutTask = Task { @MainActor [weak resumeOnce] in
+                    try? await Task.sleep(for: .seconds(600))
+                    if resumeOnce?.fire() == true {
+                        NaviLog.warning("PromptQueue: agent svarade inte inom 10 min — hoppar över")
+                        success = false
+                    }
+                }
                 await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    resumeOnce.setContinuation(cont)
                     agent.sendMessage(
                         item.text + iterLabel,
                         isAgentMode: item.isAgentMode,
-                        onComplete: { cont.resume() }
+                        onComplete: {
+                            timeoutTask.cancel()
+                            _ = resumeOnce.fire()
+                        }
                     )
                 }
+                if !success { break }
 
                 // Update iteration count
                 if let currentIdx = self.items.firstIndex(where: { $0.id == item.id }) {
@@ -232,5 +253,29 @@ final class PromptQueue: ObservableObject {
         } catch {
             // File doesn't exist yet — that's fine
         }
+    }
+}
+
+// MARK: - ResumeOnce — thread-safe single-fire continuation wrapper
+
+private final class ResumeOnce: @unchecked Sendable {
+    private var cont: CheckedContinuation<Void, Never>?
+    private var fired = false
+    private let lock = NSLock()
+
+    func setContinuation(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock(); defer { lock.unlock() }
+        cont = continuation
+    }
+
+    /// Returns true if this was the first (and only) fire.
+    @discardableResult
+    func fire() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !fired, let c = cont else { return false }
+        fired = true
+        cont = nil
+        c.resume()
+        return true
     }
 }

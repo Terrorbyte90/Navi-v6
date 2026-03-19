@@ -392,7 +392,7 @@ struct RepoWorkView: View {
         }
         .background(Color.chatBackground)
         .onAppear { loadData() }
-        .onChange(of: currentRepo.currentBranch) { _ in reloadCommits() }
+        .onChange(of: currentRepo.currentBranch) { _, _ in reloadCommits() }
         .sheet(isPresented: $showCreateBranch) {
             CreateBranchSheet(repo: currentRepo, baseBranch: currentRepo.currentBranch)
         }

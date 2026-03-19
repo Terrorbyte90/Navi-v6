@@ -182,11 +182,11 @@ struct PureChatView: View {
                         chatInputBar.background(Color.chatBackground)
                     }
                     .onAppear { scrollProxy = proxy; scrollToBottom(proxy, animated: false) }
-                    .onChange(of: conv.messages.count) { scrollToBottom(proxy, animated: true) }
-                    .onChange(of: manager.streamingScrollTick) { _ in
+                    .onChange(of: conv.messages.count) { _, _ in scrollToBottom(proxy, animated: true) }
+                    .onChange(of: manager.streamingScrollTick) { _, _ in
                         scrollToBottom(proxy, animated: false)
                     }
-                    .onChange(of: manager.isStreaming) { streaming in
+                    .onChange(of: manager.isStreaming) { _, streaming in
                         if !streaming && conv.messages.last?.role == .assistant {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                 showCompletion = true
@@ -465,100 +465,132 @@ struct PureChatBubble: View, Equatable {
     }
 
     @State private var isSpeaking = false
+    @State private var showTime = false
 
     var isUser: Bool { message.role == .user }
 
     var body: some View {
         if isUser {
-            // Right-aligned warm user bubble
-            HStack(alignment: .top) {
-                Spacer(minLength: 80)
-                VStack(alignment: .trailing, spacing: 6) {
-                    if let imgs = message.imageData, !imgs.isEmpty {
-                        imageRow(imgs)
+            // Right-aligned user bubble — #1c1c2e dark, 16pt radius, max 85% width
+            GeometryReader { geo in
+                HStack(alignment: .top) {
+                    Spacer(minLength: 0)
+                    VStack(alignment: .trailing, spacing: 8) {
+                        if let imgs = message.imageData, !imgs.isEmpty {
+                            imageRow(imgs)
+                        }
+                        Text(message.content)
+                            .font(NaviTheme.bodyFont(size: 17))
+                            .foregroundColor(.white)
+                            .lineSpacing(5)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color(hex: "#1c1c2e"))
+                            )
+                            .textSelection(.enabled)
+                            .frame(maxWidth: geo.size.width * 0.85, alignment: .trailing)
+                        if showTime {
+                            Text(message.timestamp, style: .time)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    Text(message.content)
-                        .font(NaviTheme.bodyFont(size: 17))
-                        .foregroundColor(.primary)
-                        .lineSpacing(5)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 18).fill(Color.userBubble))
-                        .textSelection(.enabled)
                 }
+                .contentShape(Rectangle())
+                .onTapGesture { showTime.toggle() }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
         } else {
-            // Left-aligned: glass orb avatar, no bubble background
-            HStack(alignment: .top, spacing: 10) {
-                ThinkingOrb(size: 24, isAnimating: false)
+            // Left-aligned: 28pt avatar, full-width content area, 8pt leading padding
+            HStack(alignment: .top, spacing: 0) {
+                AssistantAvatar(size: 28)
                     .padding(.top, 2)
+                    .padding(.leading, 0)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     // Tool call pill — shown when model executed tools
                     if let tools = message.toolCallNames, !tools.isEmpty {
                         NaviActivityPill(
-                            statusText: tools.count == 1 ? "1 verktyg" : "\(tools.count) verktyg",
+                            statusText: tools.count == 1 ? "1 verktyg användes" : "\(tools.count) verktyg användes",
                             items: tools,
                             isLive: false
                         )
                     }
 
                     MarkdownTextView(text: message.content)
-                        .equatable()
                         .textSelection(.enabled)
 
-                    // Actions row
-                    HStack(spacing: 12) {
-                        Button {
-                            #if os(iOS)
-                            UIPasteboard.general.string = message.content
-                            #else
-                            NSPasteboard.general.setString(message.content, forType: .string)
-                            #endif
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            if isSpeaking {
-                                ElevenLabsClient.shared.stop()
-                                isSpeaking = false
-                            } else {
-                                isSpeaking = true
-                                Task {
-                                    await ElevenLabsClient.shared.speak(message.content)
-                                    isSpeaking = false
-                                }
-                            }
-                        } label: {
-                            Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.1")
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-
-                        // Cost badge
-                        if let cost = message.costSEK, cost > 0 {
-                            CostBadge(costSEK: cost, usage: message.tokenUsage, model: message.model)
-                        }
-                    }
-                    .foregroundColor(.secondary.opacity(0.5))
-                    .padding(.top, 2)
+                    // Actions row — subtle, appears below message
+                    assistantActionsRow
 
                     // Memory chips
                     if !message.memoriesInContext.isEmpty {
                         MemoryChipsRow(facts: message.memoriesInContext)
                     }
                 }
+                .padding(.leading, 8)
 
-                Spacer(minLength: 40)
+                Spacer(minLength: 32)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
         }
+    }
+
+    // MARK: - Assistant action row (extracted for readability)
+
+    @ViewBuilder
+    private var assistantActionsRow: some View {
+        HStack(spacing: 4) {
+            // Copy button
+            Button {
+                #if os(iOS)
+                UIPasteboard.general.string = message.content
+                #else
+                NSPasteboard.general.setString(message.content, forType: .string)
+                #endif
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary.opacity(0.45))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // TTS button
+            Button {
+                if isSpeaking {
+                    ElevenLabsClient.shared.stop()
+                    isSpeaking = false
+                } else {
+                    isSpeaking = true
+                    Task {
+                        await ElevenLabsClient.shared.speak(message.content)
+                        isSpeaking = false
+                    }
+                }
+            } label: {
+                Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.1")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSpeaking ? Color.accentNavi : .secondary.opacity(0.45))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // Cost badge
+            if let cost = message.costSEK, cost > 0 {
+                CostBadge(costSEK: cost, usage: message.tokenUsage, model: message.model)
+            }
+        }
+        .padding(.top, 2)
     }
 
     @ViewBuilder
@@ -583,7 +615,7 @@ struct PureChatBubble: View, Equatable {
     }
 }
 
-// MARK: - Streaming Bubble — glass orb breathing animation
+// MARK: - Streaming Bubble — glass orb with live typing cursor
 
 struct StreamingBubble: View {
     let text: String
@@ -592,24 +624,58 @@ struct StreamingBubble: View {
     var codeSnippet: String = ""
     var todoItems: [ProjectAgent.AgentTodoItem] = []
 
+    @StateObject private var markdownBuffer = StreamingMarkdownBuffer()
+
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
+        HStack(alignment: .top, spacing: 0) {
+            AssistantAvatar(size: 28)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
                 if text.isEmpty {
-                    NaviActivityPill(statusText: "Tänker")
+                    // Empty state: three-bar wave animation
+                    StreamingThinkingView()
                 } else {
-                    MarkdownTextView(text: text)
-                        .textSelection(.enabled)
+                    // Text is streaming: render markdown + StreamingCursor at end
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .bottom, spacing: 2) {
+                            MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
+                                .textSelection(.enabled)
+                            StreamingCursor()
+                        }
+                    }
                 }
             }
+            .padding(.leading, 8)
 
             Spacer(minLength: 40)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Streaming Thinking View — three dot wave shown before text arrives
+
+private struct StreamingThinkingView: View {
+    @State private var phase = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.accentNavi.opacity(0.55))
+                    .frame(width: 5, height: phase ? 14 : 5)
+                    .animation(
+                        .spring(response: 0.45, dampingFraction: 0.55)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.14),
+                        value: phase
+                    )
+            }
+        }
+        .frame(height: 18, alignment: .center)
+        .onAppear { phase = true }
     }
 }
 
@@ -735,152 +801,6 @@ struct ProjectContextBanner: View {
                         .strokeBorder(Color.dividerColor.opacity(0.3), lineWidth: 0.5)
                 )
         )
-    }
-}
-
-// MARK: - Markdown text renderer
-
-struct MarkdownTextView: View, Equatable {
-    let text: String
-    private let blocks: [Block]
-
-    init(text: String) {
-        self.text = text
-        self.blocks = Self.parseBlocks(text)
-    }
-
-    static func == (lhs: MarkdownTextView, rhs: MarkdownTextView) -> Bool {
-        lhs.text == rhs.text
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .text(let t):
-                    Self.renderMarkdownText(t)
-                        .fixedSize(horizontal: false, vertical: true)
-                case .code(let lang, let code):
-                    MarkdownCodeBlock(language: lang, code: code)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private static func renderMarkdownText(_ raw: String) -> some View {
-        if let attributed = try? AttributedString(
-            markdown: raw,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            Text(attributed)
-                .font(NaviTheme.bodyFont(size: 17))
-                .lineSpacing(6)
-        } else {
-            Text(raw)
-                .font(NaviTheme.bodyFont(size: 17))
-                .lineSpacing(6)
-        }
-    }
-
-    enum Block { case text(String); case code(String, String) }
-
-    static func parseBlocks(_ raw: String) -> [Block] {
-        var blocks: [Block] = []
-        let lines = raw.components(separatedBy: "\n")
-        var inCode = false
-        var lang = ""
-        var codeBuf: [String] = []
-        var textBuf: [String] = []
-
-        for line in lines {
-            if line.hasPrefix("```") {
-                if inCode {
-                    blocks.append(.code(lang, codeBuf.joined(separator: "\n")))
-                    codeBuf = []; inCode = false; lang = ""
-                } else {
-                    if !textBuf.isEmpty {
-                        blocks.append(.text(textBuf.joined(separator: "\n")))
-                        textBuf = []
-                    }
-                    lang = String(line.dropFirst(3))
-                    inCode = true
-                }
-            } else if inCode {
-                codeBuf.append(line)
-            } else {
-                textBuf.append(line)
-            }
-        }
-        if !codeBuf.isEmpty { blocks.append(.code(lang, codeBuf.joined(separator: "\n"))) }
-        if !textBuf.isEmpty { blocks.append(.text(textBuf.joined(separator: "\n"))) }
-        return blocks
-    }
-}
-
-// MARK: - Markdown Code Block
-
-struct MarkdownCodeBlock: View {
-    let language: String
-    let code: String
-    @State private var copied = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header: language label + copy button
-            HStack {
-                Text(language.isEmpty ? "code" : language)
-                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.5))
-                    .textCase(.uppercase)
-                Spacer()
-                Button { copyCode() } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 10.5))
-                        Text(copied ? "Kopierad!" : "Kopiera")
-                            .font(.system(size: 11.5, weight: .medium))
-                    }
-                    .foregroundColor(copied ? NaviTheme.success : .secondary.opacity(0.45))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(copied ? NaviTheme.success.opacity(0.1) : Color.primary.opacity(0.04)))
-                }
-                .buttonStyle(.plain)
-                .animation(.easeInOut(duration: 0.15), value: copied)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(NaviTheme.codeHeader)
-
-            // Code content
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 13.5, design: .monospaced))
-                    .foregroundColor(NaviTheme.codeText)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .textSelection(.enabled)
-            }
-        }
-        .background(NaviTheme.codeBG)
-        .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(NaviTheme.codeBorder, lineWidth: 0.5)
-        )
-    }
-
-    private func copyCode() {
-        #if os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(code, forType: .string)
-        #else
-        UIPasteboard.general.string = code
-        #endif
-        copied = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
     }
 }
 
@@ -1222,25 +1142,41 @@ struct ChatToolCallStrip: View {
 
 struct CompletionIndicator: View {
     @State private var appeared = false
+    @State private var checkScale: CGFloat = 0.4
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13))
-                .foregroundColor(NaviTheme.success)
+        HStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .fill(NaviTheme.success.opacity(0.12))
+                    .frame(width: 22, height: 22)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(NaviTheme.success)
+                    .scaleEffect(checkScale)
+            }
             Text("Klar")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(NaviTheme.success.opacity(0.8))
+                .foregroundStyle(NaviTheme.success.opacity(0.85))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(NaviTheme.success.opacity(0.08))
-        .cornerRadius(8)
-        .scaleEffect(appeared ? 1.0 : 0.8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(NaviTheme.success.opacity(0.08))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(NaviTheme.success.opacity(0.2), lineWidth: 0.75)
+                )
+        )
+        .scaleEffect(appeared ? 1.0 : 0.75)
         .opacity(appeared ? 1.0 : 0)
         .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
                 appeared = true
+            }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.55).delay(0.1)) {
+                checkScale = 1.0
             }
         }
     }

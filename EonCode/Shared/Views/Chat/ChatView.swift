@@ -96,10 +96,10 @@ struct ChatView: View {
                             .padding(.vertical, 4)
                     }
                 }
-                .onChange(of: agent.conversation.messages.count) { _ in
+                .onChange(of: agent.conversation.messages.count) { _, _ in
                     scrollToBottom(proxy: proxy, animated: true)
                 }
-                .onChange(of: agent.streamingText.count / 80) { _ in
+                .onChange(of: agent.streamingText.count / 80) { _, _ in
                     // Throttled scroll during streaming — only scrolls every ~80 chars
                     scrollToBottom(proxy: proxy, animated: false)
                 }
@@ -376,27 +376,41 @@ struct CircularProgress: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    @State private var showTime = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if message.role == .user {
-                // User message: right-aligned subtle pill
-                HStack {
-                    Spacer(minLength: 60)
-                    contentView
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color.userBubble)
-                        )
+                // User message: right-aligned #1c1c2e bubble, 16pt radius, max 85% width
+                GeometryReader { geo in
+                    HStack {
+                        Spacer(minLength: 0)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            contentView
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(Color(hex: "#1c1c2e"))
+                                )
+                                .frame(maxWidth: geo.size.width * 0.85, alignment: .trailing)
+                            if showTime {
+                                Text(Date(), style: .time)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { showTime.toggle() }
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 8)
             } else {
-                // Assistant message: full-width, no bubble, with icon
-                HStack(alignment: .top, spacing: 12) {
-                    AssistantAvatar()
+                // Assistant message: full-width, no bubble, 28pt avatar, 8pt leading padding
+                HStack(alignment: .top, spacing: 0) {
+                    AssistantAvatar(size: 28)
                         .padding(.top, 2)
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -408,6 +422,7 @@ struct MessageBubble: View {
                         contentView
 
                     }
+                    .padding(.leading, 8)
 
                     Spacer(minLength: 20)
                 }
@@ -433,7 +448,6 @@ struct MessageBubble: View {
                                 .textSelection(.enabled)
                         } else {
                             MarkdownTextView(text: cleaned)
-                                .equatable()
                                 .textSelection(.enabled)
                         }
                     }
@@ -599,11 +613,11 @@ struct AgentStreamingBubble: View {
     var codeSnippet: String = ""
     var todoItems: [ProjectAgent.AgentTodoItem] = []
     @StateObject private var buffer = StreamingBuffer()
-    @State private var cursorVisible = true
+    @StateObject private var markdownBuffer = StreamingMarkdownBuffer()
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            AssistantAvatar()
+        HStack(alignment: .top, spacing: 0) {
+            AssistantAvatar(size: 28)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -626,23 +640,14 @@ struct AgentStreamingBubble: View {
                 }
 
                 if !text.isEmpty || !buffer.displayText.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        MarkdownTextView(text: buffer.displayText)
-                            .equatable()
+                    HStack(alignment: .bottom, spacing: 2) {
+                        MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
                             .textSelection(.enabled)
-
-                        // Blinking cursor
-                        HStack(spacing: 0) {
-                            Spacer().frame(width: 0)
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(Color.accentNavi.opacity(0.8))
-                                .frame(width: 2, height: 16)
-                                .opacity(cursorVisible ? 1 : 0)
-                        }
-                        .frame(height: 4)
+                        StreamingCursor()
                     }
                 }
             }
+            .padding(.leading, 8)
 
             Spacer(minLength: 40)
         }
@@ -650,12 +655,7 @@ struct AgentStreamingBubble: View {
         .padding(.vertical, 12)
         .animation(.easeInOut(duration: 0.25), value: activeFiles)
         .animation(.easeInOut(duration: 0.25), value: todoItems.count)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                cursorVisible = false
-            }
-        }
-        .onChange(of: text) { newText in
+        .onChange(of: text) { _, newText in
             buffer.update(newText)
         }
         .onDisappear {

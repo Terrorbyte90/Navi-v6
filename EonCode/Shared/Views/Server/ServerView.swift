@@ -435,12 +435,12 @@ struct TerminalView: View {
                     .padding(.vertical, 12)
                 }
                 .background(Color(naviHex: "0d1117"))
-                .onChange(of: brain.terminalLines.count) { _ in
+                .onChange(of: brain.terminalLines.count) { _, _ in
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                .onChange(of: brain.isTerminalSending) { sending in
+                .onChange(of: brain.isTerminalSending) { _, sending in
                     if sending {
                         withAnimation { proxy.scrollTo("cursor", anchor: .bottom) }
                     }
@@ -575,7 +575,7 @@ struct TerminalView: View {
             prefix = "  "
         }
 
-        return Text(prefix + text)
+        Text(prefix + text)
             .font(.system(size: 12, design: .monospaced))
             .foregroundColor(color)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -810,12 +810,12 @@ struct BrainChatView: View {
                 }
                 .padding(.vertical, 8)
             }
-            .onChange(of: messages.count) { _ in
+            .onChange(of: messages.count) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo("brainBottom", anchor: .bottom)
                 }
             }
-            .onChange(of: isSending) { sending in
+            .onChange(of: isSending) { _, sending in
                 if sending {
                     showCompletion = false
                     withAnimation { proxy.scrollTo("thinking", anchor: .bottom) }
@@ -920,7 +920,6 @@ struct BrainChatView: View {
                     }
 
                     MarkdownTextView(text: msg.content)
-                        .equatable()
                         .textSelection(.enabled)
 
                     HStack(spacing: 4) {
@@ -1175,7 +1174,7 @@ struct LogsView: View {
                         .padding(.vertical, 4)
                         Color.clear.frame(height: 1).id("logsBottom")
                     }
-                    .onChange(of: brain.logs.count) { _ in
+                    .onChange(of: brain.logs.count) { _, _ in
                         withAnimation(.easeOut(duration: 0.3)) {
                             proxy.scrollTo("logsBottom", anchor: .bottom)
                         }

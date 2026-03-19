@@ -5,6 +5,23 @@ final class CostCalculator {
     static let shared = CostCalculator()
     private init() {}
 
+    // MARK: - OpenRouter pricing
+
+    private struct OpenRouterPricing {
+        let inputPerMillion: Double
+        let outputPerMillion: Double
+    }
+    private static let openRouterPrices: [String: OpenRouterPricing] = [
+        "minimax":  OpenRouterPricing(inputPerMillion: 0.30, outputPerMillion: 1.10),
+        "qwen":     OpenRouterPricing(inputPerMillion: 0.00, outputPerMillion: 0.00),
+        "deepseek": OpenRouterPricing(inputPerMillion: 0.55, outputPerMillion: 2.19),
+    ]
+    static func calculateOpenRouter(inputTokens: Int, outputTokens: Int, model: String) -> Double {
+        let pricing = openRouterPrices[model] ?? OpenRouterPricing(inputPerMillion: 0.50, outputPerMillion: 1.50)
+        return Double(inputTokens) / 1_000_000 * pricing.inputPerMillion
+             + Double(outputTokens) / 1_000_000 * pricing.outputPerMillion
+    }
+
     func calculate(usage: TokenUsage, model: ClaudeModel) -> (usd: Double, sek: Double) {
         let inputPrice = model.inputPricePerMTok / 1_000_000
         let outputPrice = model.outputPricePerMTok / 1_000_000
@@ -37,7 +54,7 @@ final class CostCalculator {
     }
 
     func costDescription(usage: TokenUsage, model: ClaudeModel) -> String {
-        let (usd, sek) = calculate(usage: usage, model: model)
+        let (_, sek) = calculate(usage: usage, model: model)
         return "\(formatSEK(sek)) · \(usage.inputTokens)→\(usage.outputTokens) tok"
     }
 }

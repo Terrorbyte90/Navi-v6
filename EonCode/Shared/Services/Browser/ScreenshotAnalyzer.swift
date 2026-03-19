@@ -13,6 +13,7 @@ typealias PlatformImage = NSImage
 
 struct ScreenshotAnalyzer {
 
+    @MainActor
     static func takeScreenshot(from webView: WKWebView) async throws -> Data {
         return try await withCheckedThrowingContinuation { cont in
             let config = WKSnapshotConfiguration()

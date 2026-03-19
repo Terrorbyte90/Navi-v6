@@ -170,7 +170,7 @@ struct AgentRowView: View {
                     withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulsing = true }
                 }
             }
-            .onChange(of: agent.status.isActive) { active in
+            .onChange(of: agent.status.isActive) { _, active in
                 if active { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulsing = true } }
                 else { pulsing = false }
             }
@@ -396,10 +396,10 @@ struct AgentDetailView: View {
                 }
                 .padding(.vertical, 8)
             }
-            .onChange(of: agent.runLog.count) { _ in
+            .onChange(of: agent.runLog.count) { _, _ in
                 proxy.scrollTo(agent.runLog.last?.id, anchor: .bottom)
             }
-            .onChange(of: runner.streamingText) { _ in
+            .onChange(of: runner.streamingText) { _, _ in
                 proxy.scrollTo("streaming", anchor: .bottom)
             }
         }
@@ -656,7 +656,7 @@ struct AgentSettingsEditor: View {
                     } header: { Text("Åtgärder") }
                 }
                 .onAppear { loadFromAgent(agent) }
-                .onChange(of: agentID) { _ in if let a = self.agent { loadFromAgent(a) } }
+                .onChange(of: agentID) { _, _ in if let a = self.agent { loadFromAgent(a) } }
             }
         }
     }

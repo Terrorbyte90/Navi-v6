@@ -64,7 +64,7 @@ struct BrowserAgentLogView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
                     }
-                    .onChange(of: agent.log.count) { _ in
+                    .onChange(of: agent.log.count) { _, _ in
                         if let last = agent.log.last {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }

@@ -310,6 +310,17 @@ final class NaviBrainService: ObservableObject {
         }
     }
 
+    func registerPushToken(_ token: String) async {
+        guard let url = URL(string: "\(Self.baseURL)/register-push") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["deviceToken": token, "platform": "ios"]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await urlSession.data(for: req)
+    }
+
     func fetchLiveStatus() async {
         guard let url = URL(string: "\(Self.baseURL)/brain/live-status") else { return }
         var req = URLRequest(url: url, timeoutInterval: 3)

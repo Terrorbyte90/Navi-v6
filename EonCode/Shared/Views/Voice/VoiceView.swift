@@ -211,16 +211,22 @@ private struct TTSTab: View {
             Button {
                 Task { await generate() }
             } label: {
-                Label(isGenerating ? "Genererar…" : "Generera tal",
-                      systemImage: isGenerating ? "hourglass" : "waveform.badge.plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(inputText.isBlank || isGenerating ? Color.secondary.opacity(0.3) : Color.accentNavi)
-                    )
+                HStack(spacing: 8) {
+                    if isGenerating {
+                        ProgressView().scaleEffect(0.7).tint(.white)
+                    } else {
+                        Image(systemName: "waveform.badge.plus")
+                    }
+                    Text(isGenerating ? "Genererar…" : "Generera tal")
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(inputText.isBlank || isGenerating ? Color.secondary.opacity(0.3) : Color.accentNavi)
+                )
             }
             .buttonStyle(.plain)
             .disabled(inputText.isBlank || isGenerating)
@@ -453,16 +459,22 @@ private struct SoundTab: View {
             Button {
                 Task { await generate() }
             } label: {
-                Label(isGenerating ? "Genererar…" : "Generera ljud",
-                      systemImage: isGenerating ? "hourglass" : "music.note.badge.plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(prompt.isBlank || isGenerating ? Color.secondary.opacity(0.3) : Color.accentNavi)
-                    )
+                HStack(spacing: 8) {
+                    if isGenerating {
+                        ProgressView().scaleEffect(0.7).tint(.white)
+                    } else {
+                        Image(systemName: "music.note.badge.plus")
+                    }
+                    Text(isGenerating ? "Genererar…" : "Generera ljud")
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(prompt.isBlank || isGenerating ? Color.secondary.opacity(0.3) : Color.accentNavi)
+                )
             }
             .buttonStyle(.plain)
             .disabled(prompt.isBlank || isGenerating)
@@ -701,17 +713,23 @@ private struct VoiceDesignTab: View {
         Button {
             Task { await generate() }
         } label: {
-            Label(isGenerating ? "Genererar röster…" : "Generera röstförhandsvisningar",
-                  systemImage: isGenerating ? "hourglass" : "sparkles")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(voiceDescription.isBlank || previewText.isBlank || isGenerating
-                              ? Color.secondary.opacity(0.3) : Color.accentNavi)
-                )
+            HStack(spacing: 8) {
+                if isGenerating {
+                    ProgressView().scaleEffect(0.7).tint(.white)
+                } else {
+                    Image(systemName: "sparkles")
+                }
+                Text(isGenerating ? "Genererar röster…" : "Generera röstförhandsvisningar")
+            }
+            .font(.system(size: 14, weight: .medium))
+            .foregroundColor(.white)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(voiceDescription.isBlank || previewText.isBlank || isGenerating
+                          ? Color.secondary.opacity(0.3) : Color.accentNavi)
+            )
         }
         .buttonStyle(.plain)
         .disabled(voiceDescription.isBlank || previewText.isBlank || isGenerating)

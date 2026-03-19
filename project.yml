@@ -48,6 +48,8 @@ targets:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
         Release:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
+    dependencies:
+      - target: NaviWidget
     entitlements:
       path: EonCode/iOS/Navi-iOS.entitlements
     info:
@@ -89,6 +91,23 @@ targets:
         BGTaskSchedulerPermittedIdentifiers:
           - com.tedsvard.navi.ios.refresh
           - com.tedsvard.navi.ios.sync
+
+  NaviWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: NaviWidget
+        excludes:
+          - "**/*.DS_Store"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tedsvard.navi.ios.widget
+        INFOPLIST_FILE: NaviWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: NaviWidget/NaviWidget.entitlements
+        DEVELOPMENT_TEAM: DV646H5VDP
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.9"
 
   Navi-macOS:
     type: application

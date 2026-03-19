@@ -13,7 +13,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execSync, exec } = require('child_process');
+const { promisify } = require('util');
+const execPromise = promisify(exec);
+const { WebSocketServer } = require('ws');
 const telephony = require('./telephony');
+const codeAgent = require('./code-agent');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -46,6 +50,9 @@ const MODELS = {
   deepseek: 'deepseek/deepseek-r1',
   opus: 'claude-sonnet-4-6',   // runs via Anthropic API
 };
+
+// Push notification tokens (for background notifications)
+const pushTokens = new Set();
 
 // ============================================================
 // AUTH MIDDLEWARE
@@ -613,7 +620,17 @@ const SYSTEM_PROMPT = `Du är Navi Brain — en autonom AI-agent skapad av Ted S
 Du kör på en dedikerad Ubuntu-server (209.38.98.107).
 Du har tillgång till verktyg: run_command, read_file, write_file, list_files.
 
-VIKTIGT:
+## Svarsformatering (VIKTIGT)
+Strukturera ALLTID svar såhär:
+- Emoji + rubrik för varje sektion: ## 🎯 Rubrik
+- Avdelare --- mellan sektioner
+- Punktlistor med - för åtgärder och steg
+  - Undernivå med   - för sub-punkter
+- ❌ / ✅ / 👉 som visuella markörer i punktlistor
+- **Fetstil** för nyckelord och viktiga termer
+- Korta, direkta stycken — aldrig långa textväggar
+
+## Regler
 - Tänk steg-för-steg (ReAct: Tanke → Åtgärd → Observation → upprepa).
 - Använd verktygen aktivt för att utforska, läsa och modifiera filer.
 - Svara alltid på svenska om inte annat begärs.
@@ -1263,30 +1280,104 @@ telephony.register(app, auth, addLog);
 // Telephony scheduler — check every 30 seconds
 setInterval(() => telephony.runScheduler(addLog), 30000);
 
-app.listen(PORT, '0.0.0.0', () => {
-  addLog('BOOT', `Navi Brain v3.3 startad på port ${PORT}`);
+// ============================================================
+// CODE AGENT routes
+// ============================================================
+
+// GET /code/sessions/:id/snapshot — returns live state of session workDir
+app.get('/code/sessions/:id/snapshot', auth, async (req, res) => {
+  const session = codeAgent.getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  const workDir = session.workDir;
+  if (!workDir || !fs.existsSync(workDir)) return res.status(400).json({ error: 'workDir does not exist' });
+
+  try {
+    const [fileTree, gitLog, gitStatus] = await Promise.all([
+      execPromise(`find "${workDir}" -type f -not -path "*/.git/*" -not -path "*/node_modules/*" | sort | head -100`, { timeout: 8000 }).then(r => r.stdout).catch(() => ''),
+      execPromise(`git -C "${workDir}" log --oneline -10`, { timeout: 5000 }).then(r => r.stdout).catch(() => '(no git history)'),
+      execPromise(`git -C "${workDir}" status --short`, { timeout: 5000 }).then(r => r.stdout).catch(() => '(no git status)'),
+    ]);
+    res.json({ fileTree, gitLog, gitStatus });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.use('/code', auth, codeAgent.createRouter(express));
+
+// ============================================================
+// PUSH TOKEN REGISTRATION
+// ============================================================
+
+// Register iOS push token for background notifications
+app.post('/register-push', auth, (req, res) => {
+  const { deviceToken, platform } = req.body;
+  if (!deviceToken) return res.status(400).json({ error: 'deviceToken required' });
+  pushTokens.add(deviceToken);
+  console.log(`[PUSH] Registered token for ${platform}: ${deviceToken.substring(0, 16)}...`);
+  res.json({ ok: true, registered: pushTokens.size });
+});
+
+// Get registered push tokens (for debugging)
+app.get('/push-tokens', auth, (req, res) => {
+  res.json({ count: pushTokens.size, tokens: Array.from(pushTokens).map(t => t.substring(0, 16) + '...') });
+});
+
+// ============================================================
+// HTTP SERVER + WEBSOCKET
+// ============================================================
+
+const httpServer = http.createServer(app);
+
+const wss = new WebSocketServer({ noServer: true });
+
+codeAgent.init(wss, {
+  dataDir: DATA_DIR,
+  openrouterKey: OPENROUTER_KEY,
+  anthropicKey: process.env.ANTHROPIC_API_KEY || '',
+});
+
+// Route WebSocket upgrades for /code/ws to the code agent WS server
+httpServer.on('upgrade', (request, socket, head) => {
+  // Simple auth: check ?key= or X-Api-Key header
+  const url = new URL(request.url, 'http://localhost');
+  const wsKey = url.searchParams.get('key') || request.headers['x-api-key'] || '';
+  if (wsKey !== API_KEY) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  if (request.url.startsWith('/code/ws')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+httpServer.listen(PORT, '0.0.0.0', () => {
+  addLog('BOOT', `Navi Brain v3.4 startad på port ${PORT}`);
   addLog('BOOT', `Modeller: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
   addLog('BOOT', `ntfy.sh topic: ${NTFY_TOPIC}`);
   addLog('BOOT', `Persistens: ${DATA_DIR}`);
-  console.log(`\n🧠 Navi Brain v3.3 running on port ${PORT}`);
+  addLog('BOOT', `Code Agent WebSocket: ws://0.0.0.0:${PORT}/code/ws`);
+  console.log(`\n🧠 Navi Brain v3.4 running on port ${PORT}`);
   console.log(`   ntfy topic: ${NTFY_TOPIC}`);
   console.log(`   Models: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
+  console.log(`   Code Agent WS: ws://0.0.0.0:${PORT}/code/ws`);
   console.log(`   Data dir: ${DATA_DIR}\n`);
 });
 
 // Graceful shutdown — save state
-process.on('SIGTERM', () => {
+function gracefulShutdown() {
   console.log('[SHUTDOWN] Saving state...');
   saveTasks();
   saveSessions();
   saveCosts();
   process.exit(0);
-});
+}
 
-process.on('SIGINT', () => {
-  console.log('[SHUTDOWN] Saving state...');
-  saveTasks();
-  saveSessions();
-  saveCosts();
-  process.exit(0);
-});
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT',  gracefulShutdown);
