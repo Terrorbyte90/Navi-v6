@@ -373,10 +373,11 @@ Håll planen kortfattad och handlingsbar. Max 500 ord.`;
   try {
     let planText = '';
     await streamOpenRouter(messages, modelInfo, [], key, (delta) => { planText += delta; }, null);
-    // Inject plan as system message in session history
+    // ⚠️ Anthropic API rejects role:'system' inside messages array — use role:'user' with prefix marker instead.
+    // This works for all models (OpenRouter and Anthropic).
     session.messages.unshift({
-      role: 'system',
-      content: `[PlannerAgent analys]\n${planText}`,
+      role: 'user',
+      content: `[SYSTEM: PlannerAgent analys — följ denna plan]\n${planText}`,
     });
     session.emit({ type: 'TEXT_COMMIT', text: `## 🗺️ Plan skapad av PlannerAgent\n${planText}`, role: 'planner' });
   } catch (e) {
@@ -476,7 +477,8 @@ Om du hittar problem, skriv dem som en numrerad lista.`;
   try {
     let reviewText = '';
     await streamAnthropic(messages, key, '', modelInfo, (delta) => { reviewText += delta; }, null, []); // [] = no tools
-    session.messages.push({ role: 'system', content: `[ReviewerAgent feedback]\n${reviewText}` });
+    // ⚠️ role:'system' not allowed in Anthropic messages array — use role:'user' with prefix
+    session.messages.push({ role: 'user', content: `[SYSTEM: ReviewerAgent feedback]\n${reviewText}` });
     session.emit({ type: 'TEXT_COMMIT', text: `## 🔍 Kodgranskning (ReviewerAgent)\n${reviewText}`, role: 'reviewer' });
   } catch (e) {
     session.emit({ type: 'INFO', message: `reviewer_agent failed: ${e.message}` });
@@ -503,7 +505,8 @@ And change the `tools:` line in the request body from:
 ```
 To:
 ```javascript
-      tools: toolsOverride !== null ? toolsOverride : toolsToAnthropic(),
+      // ⚠️ Anthropic API rejects tools:[] — omit the field entirely when no tools needed
+      tools: toolsOverride === null ? toolsToAnthropic() : (toolsOverride.length > 0 ? toolsOverride : undefined),
 ```
 
 - [ ] **Step 2: Trigger ReviewerAgent in `executeTool` after successful `run_tests` — blocking**
@@ -724,7 +727,8 @@ In the WebSocket message handler where `type === 'START'` is processed, after th
     if (msg.contextSnapshot) {
       const snap = msg.contextSnapshot;
       const contextMsg = `[Ärvd kontext från föregående session]\n\nFilstruktur:\n${snap.fileTree || ''}\n\nGit-historik:\n${snap.gitLog || ''}\n\nGit-status:\n${snap.gitStatus || ''}`;
-      session.messages.unshift({ role: 'system', content: contextMsg });
+      // ⚠️ role:'system' not allowed in Anthropic messages array — use role:'user' with prefix
+      session.messages.unshift({ role: 'user', content: `[SYSTEM: ${contextMsg}]` });
     }
 ```
 
