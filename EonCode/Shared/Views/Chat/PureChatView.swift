@@ -465,39 +465,52 @@ struct PureChatBubble: View, Equatable {
     }
 
     @State private var isSpeaking = false
+    @State private var showTime = false
 
     var isUser: Bool { message.role == .user }
 
     var body: some View {
         if isUser {
-            // Right-aligned warm user bubble — generous padding, tight leading
-            HStack(alignment: .top) {
-                Spacer(minLength: 72)
-                VStack(alignment: .trailing, spacing: 8) {
-                    if let imgs = message.imageData, !imgs.isEmpty {
-                        imageRow(imgs)
+            // Right-aligned user bubble — #1c1c2e dark, 16pt radius, max 85% width
+            GeometryReader { geo in
+                HStack(alignment: .top) {
+                    Spacer(minLength: 0)
+                    VStack(alignment: .trailing, spacing: 8) {
+                        if let imgs = message.imageData, !imgs.isEmpty {
+                            imageRow(imgs)
+                        }
+                        Text(message.content)
+                            .font(NaviTheme.bodyFont(size: 17))
+                            .foregroundColor(.white)
+                            .lineSpacing(5)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color(hex: "#1c1c2e"))
+                            )
+                            .textSelection(.enabled)
+                            .frame(maxWidth: geo.size.width * 0.85, alignment: .trailing)
+                        if showTime {
+                            Text(message.timestamp, style: .time)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    Text(message.content)
-                        .font(NaviTheme.bodyFont(size: 17))
-                        .foregroundColor(.primary)
-                        .lineSpacing(5)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color.userBubble)
-                        )
-                        .textSelection(.enabled)
                 }
+                .contentShape(Rectangle())
+                .onTapGesture { showTime.toggle() }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16)
             .padding(.top, 6)
             .padding(.bottom, 2)
         } else {
-            // Left-aligned: glass orb avatar, full-width content area
-            HStack(alignment: .top, spacing: 12) {
-                ThinkingOrb(size: 26, isAnimating: false)
-                    .padding(.top, 3)
+            // Left-aligned: 28pt avatar, full-width content area, 8pt leading padding
+            HStack(alignment: .top, spacing: 0) {
+                AssistantAvatar(size: 28)
+                    .padding(.top, 2)
+                    .padding(.leading, 0)
 
                 VStack(alignment: .leading, spacing: 10) {
                     // Tool call pill — shown when model executed tools
@@ -520,12 +533,13 @@ struct PureChatBubble: View, Equatable {
                         MemoryChipsRow(facts: message.memoriesInContext)
                     }
                 }
+                .padding(.leading, 8)
 
                 Spacer(minLength: 32)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
         }
     }
 
@@ -611,11 +625,10 @@ struct StreamingBubble: View {
     var todoItems: [ProjectAgent.AgentTodoItem] = []
 
     @StateObject private var markdownBuffer = StreamingMarkdownBuffer()
-    @State private var cursorVisible = true
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
+        HStack(alignment: .top, spacing: 0) {
+            AssistantAvatar(size: 28)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -623,30 +636,22 @@ struct StreamingBubble: View {
                     // Empty state: three-bar wave animation
                     StreamingThinkingView()
                 } else {
-                    // Text is streaming: render markdown + blinking cursor at end
+                    // Text is streaming: render markdown + StreamingCursor at end
                     VStack(alignment: .leading, spacing: 0) {
-                        MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
-                            .textSelection(.enabled)
-
-                        // Blinking cursor appended after last line
-                        Rectangle()
-                            .fill(Color.accentNavi.opacity(cursorVisible ? 0.7 : 0.0))
-                            .frame(width: 2, height: 16)
-                            .cornerRadius(1)
-                            .padding(.top, 3)
+                        HStack(alignment: .bottom, spacing: 2) {
+                            MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
+                                .textSelection(.enabled)
+                            StreamingCursor()
+                        }
                     }
                 }
             }
+            .padding(.leading, 8)
 
             Spacer(minLength: 40)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.52).repeatForever(autoreverses: true)) {
-                cursorVisible = false
-            }
-        }
+        .padding(.vertical, 12)
     }
 }
 
