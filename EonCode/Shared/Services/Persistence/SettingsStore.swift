@@ -52,6 +52,12 @@ final class SettingsStore: ObservableObject {
     @Published var macRemoteEnabled: Bool {
         didSet { save("macRemoteEnabled", value: macRemoteEnabled) }
     }
+    @Published var chatModel: String {
+        didSet { save("chatModel", value: chatModel) }
+    }
+    @Published var codeModel: String {
+        didSet { save("codeModel", value: codeModel) }
+    }
 
     // MARK: - ElevenLabs Voice Preferences
     // Defaults tuned for natural, slightly expressive speech at a comfortable pace.
@@ -88,6 +94,8 @@ final class SettingsStore: ObservableObject {
         selectedVoiceName = UserDefaults.standard.string(forKey: "selectedVoiceName") ?? "Rachel"
         macHandoffEnabled = UserDefaults.standard.value(forKey: "macHandoffEnabled") as? Bool ?? false
         macRemoteEnabled = UserDefaults.standard.value(forKey: "macRemoteEnabled") as? Bool ?? false
+        chatModel = UserDefaults.standard.string(forKey: "chatModel") ?? "claude-sonnet-4-6"
+        codeModel = UserDefaults.standard.string(forKey: "codeModel") ?? "minimax"
         // Voice preferences — sensible defaults for natural-sounding speech
         voiceStability      = UserDefaults.standard.object(forKey: "voiceStability") as? Double ?? 0.45
         voiceSimilarityBoost = UserDefaults.standard.object(forKey: "voiceSimilarityBoost") as? Double ?? 0.75
