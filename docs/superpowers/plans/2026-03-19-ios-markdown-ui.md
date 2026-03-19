@@ -457,7 +457,9 @@ struct MarkdownTextView: View {
         .onAppear {
             if isStreaming { buffer.update(text: text, animated: true) }
         }
-        .onChange(of: text) { _, newText in
+        // ⚠️ Two-argument onChange { _, newText in } requires iOS 17+.
+        // Use single-argument form (iOS 14+) for backwards compatibility:
+        .onChange(of: text) { newText in
             if isStreaming { buffer.update(text: newText, animated: true) }
         }
     }
@@ -936,7 +938,7 @@ struct StreamingCursor: View {
     var body: some View {
         Rectangle()
             .fill(Color.accentColor)
-            .frame(width: 2, height: 16)
+            .frame(width: 6, height: 14)  // spec: 6×14pt (not 2×16)
             .opacity(visible ? 1 : 0)
             .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: visible)
             .onAppear { visible = false }
@@ -994,15 +996,7 @@ Add:
 case "reviewing": return "Granskar kod..."
 ```
 
-⚠️ **Also add to `ServerEventType` enum in `ServerCodeSession.swift`** — without this, the server's `PHASE: "reviewing"` event decodes as `.unknown` and the label never updates:
-```swift
-// In the ServerEventType enum (or equivalent phase enum) in ServerCodeSession.swift:
-case reviewing = "reviewing"
-```
-Verify the enum name:
-```bash
-grep -n "enum.*EventType\|enum.*Phase\|case thinking\|case tools" "EonCode/Shared/Services/Code/ServerCodeSession.swift" | head -10
-```
+⚠️ **No change needed in `ServerCodeSession.swift`** — `ServerEventType` handles AG-UI event *types* (CONNECTED, PHASE, etc.), not phase *values*. The phase value is a free string in `event.phase`, read via `@Published var phase: String`. Adding `case reviewing` to `ServerEventType` would cause a compile error (duplicate `.phase` case). The only required change is the `phaseLabelFromPhase(_:)` mapping above.
 
 - [ ] **Step 2: Replace phaseStrip with 3pt progress bar**
 
@@ -1054,12 +1048,11 @@ struct ToolPill: View {
     }
 
     private var pillLabel: String {
-        // ⚠️ ServerToolEvent.name is non-optional (String, not String?). Use directly.
-        // ⚠️ ServerToolEvent has no `keyParam` property. Check what fields exist:
-        //    grep -n "struct ServerToolEvent" "EonCode/Shared/Services/Code/ServerCodeSession.swift"
-        // Use the first value from `args` dict if present, or omit param entirely.
+        // ⚠️ ServerToolEvent.name is non-optional (String). Use directly.
+        // ⚠️ ServerToolEvent has `params: [String: String]` (not `args` or `keyParam`).
+        //    See ServerCodeSession.swift line ~170.
         let name = event.name
-        let param = event.args?.values.first ?? ""
+        let param = event.params.values.first ?? ""
         let duration = event.durationMs.map { " · \($0 / 1000 > 0 ? "\($0/1000)s" : "\($0)ms")" } ?? ""
         return param.isEmpty ? "\(name)\(duration)" : "\(name) \(param)\(duration)"
     }
@@ -1104,11 +1097,15 @@ Read SidebarView structure:
 grep -n "Section\|NavigationLink\|List\|ForEach\|struct" "EonCode/Shared/Views/Main/SidebarView.swift" | head -25
 ```
 
-Add a new `Section("Senaste kod-sessioner")` that reads from `CodeSessionsStore.shared.recentSessions(limit: 5)`:
+Add a new `Section("Senaste kod-sessioner")`. First check what the store exposes:
+```bash
+grep -n "var sessions\|recentSessions\|func recent" "EonCode/Shared/Services/Code/CodeSessionsStore.swift" | head -5
+```
+⚠️ There may already be a `recentSessions` computed property with a different signature (e.g. no `limit:` parameter). Use `sessions.sorted { $0.updatedAt > $1.updatedAt }.prefix(5)` directly if needed to avoid conflicts.
 
 ```swift
 Section("Senaste kod-sessioner") {
-    ForEach(codeSessionsStore.recentSessions(limit: 5)) { session in
+    ForEach(Array(codeSessionsStore.sessions.sorted { $0.updatedAt > $1.updatedAt }.prefix(5))) { session in
         HStack(spacing: 8) {
             Circle()
                 .fill(statusColor(session.status))
@@ -1128,24 +1125,25 @@ Section("Senaste kod-sessioner") {
 
 `statusColor`: `"done"/"idle"` → green, `"error"/"stopped"` → gray, `"running"` → orange.
 
-- [ ] **Step 2: Verify `CodeSessionsStore` exposes `recentSessions(limit:)` and `selectedSessionId`**
+- [ ] **Step 2: Verify `CodeSessionsStore` has `sessions` array and `switchToSession(_:)`**
 
 ```bash
-grep -n "recentSessions\|allSessions\|sessions\|selectedSessionId" "EonCode/Shared/Services/Code/CodeSessionsStore.swift" | head -10
+grep -n "var sessions\|func switchToSession\|func recent" "EonCode/Shared/Services/Code/CodeSessionsStore.swift" | head -10
 ```
 
-If `recentSessions(limit:)` doesn't exist, add it:
+The sidebar uses `codeSessionsStore.sessions` sorted inline (no `recentSessions(limit:)` method needed). If `switchToSession(_:)` doesn't exist, add it to `CodeSessionsStore.swift`.
+
+⚠️ **Navigation — use `switchToSession()` instead of `selectedSessionId`** (`switchToSession` already exists, see `CodeSessionsStore.swift:192`). The tap gesture should be:
 ```swift
-func recentSessions(limit: Int) -> [CodeSession] {
-    Array(sessions.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
+.onTapGesture {
+    selectedSection = .code
+    codeSessionsStore.switchToSession(session)
 }
 ```
-
-⚠️ If `selectedSessionId` doesn't exist, also add it as a published property:
-```swift
-@Published var selectedSessionId: String? = nil
+Verify method signature:
+```bash
+grep -n "switchToSession\|func switch" "EonCode/Shared/Services/Code/CodeSessionsStore.swift" | head -5
 ```
-Without this, `codeSessionsStore.selectedSessionId = session.id` in the tap gesture will not compile.
 
 - [ ] **Step 3: Add empty state to PureChatView**
 
@@ -1215,13 +1213,25 @@ The existing `CostTracker.swift` has **two** record methods that are no-ops:
 1. `func record(usage: TokenUsage, model: ClaudeModel) {}` — used by Anthropic chat (re-enable this)
 2. A new `func record(usd: Double)` — add this for OpenRouter
 
-**Re-enable `record(usage:model:)` by replacing the no-op body:**
+First read the existing `CostTracker.swift` to understand all tracked fields (totalRequests, totalInputTokens, sessionUSD, etc.):
+```bash
+cat "EonCode/Shared/Services/ClaudeAPI/CostTracker.swift"
+```
+
+**Re-enable `record(usage:model:)` — restore ALL tracked fields, not just USD:**
 ```swift
 func record(usage: TokenUsage, model: ClaudeModel) {
     let (usd, _) = CostCalculator.shared.calculate(usage: usage, model: model)
-    record(usd: usd)  // delegate to the new method below
+    // ⚠️ Also update token counts and session fields that the original tracked:
+    totalRequests += 1
+    totalInputTokens += usage.inputTokens
+    totalOutputTokens += usage.outputTokens
+    sessionRequests += 1
+    sessionUSD += usd
+    record(usd: usd)  // delegate USD + monthly tracking
 }
 ```
+Adapt property names to match the actual fields in the existing CostTracker (read the file first in Step 1).
 
 **Add new `record(usd:)` method with monthly tracking:**
 ```swift
@@ -1387,16 +1397,19 @@ Section("Modell") {
 
 - [ ] **Step 4: Add API key status indicators**
 
-⚠️ API keys are stored in `KeychainManager`, **not** `SettingsStore`. Use `KeychainManager.shared` to check presence:
+⚠️ API keys are stored in `KeychainManager`, **not** `SettingsStore`. Use the existing convenience properties (not `get(key:)` which throws):
+```bash
+grep -n "anthropicAPIKey\|openRouterAPIKey\|var.*Key\|KeychainManager" "EonCode/Shared/Services/Code/ServerCodeSession.swift" | head -5
+grep -n "var anthropic\|var openRouter\|var.*APIKey" "EonCode/Shared/Utilities/KeychainManager.swift" | head -5
+```
+
 ```swift
 Section("API-nycklar") {
-    // ⚠️ Check KeychainManager for actual key values — not settings.anthropicKey (doesn't exist)
-    apiKeyRow("Anthropic", hasKey: (KeychainManager.shared.get(key: "anthropicAPIKey") ?? "").isEmpty == false)
-    apiKeyRow("OpenRouter", hasKey: (KeychainManager.shared.get(key: "openRouterAPIKey") ?? "").isEmpty == false)
+    // ⚠️ KeychainManager.get(key:) is `throws` — use convenience properties instead
+    // e.g. KeychainManager.shared.anthropicAPIKey and KeychainManager.shared.openRouterAPIKey
+    apiKeyRow("Anthropic", hasKey: !(KeychainManager.shared.anthropicAPIKey ?? "").isEmpty)
+    apiKeyRow("OpenRouter", hasKey: !(KeychainManager.shared.openRouterAPIKey ?? "").isEmpty)
 }
-
-// Check the exact Keychain key names first:
-// grep -n "anthropicAPIKey\|openRouterAPIKey\|KeychainManager" "EonCode/Shared/Services/Code/ServerCodeSession.swift" | head -5
 
 func apiKeyRow(_ name: String, hasKey: Bool) -> some View {
     HStack {
