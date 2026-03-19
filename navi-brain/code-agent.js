@@ -1000,6 +1000,52 @@ function streamAnthropic(messages, anthropicKey, systemPrompt, modelInfo, onDelt
 }
 
 // ============================================================
+// PLANNER AGENT
+// ============================================================
+
+async function runPlannerAgent(session) {
+  const modelInfo = MODELS.minimax; // always MiniMax, regardless of session model
+  const key = session.openrouterKey || DEFAULT_OPENROUTER_KEY;
+  const plannerPrompt = `Du är en expert kodarkitekt och planerare. Din uppgift är att analysera projektet i sessionens arbetskatalog och skapa en tydlig, strukturerad plan för att lösa den ursprungliga uppgiften.
+
+Ursprunglig uppgift: ${session.initialTask}
+
+Arbetsdir: ${session.workDir}
+
+Analysera:
+1. Kör mentalt igenom vad du behöver förstå: README, package.json, filstruktur, befintliga mönster
+2. Identifiera tech stack och beroenden
+3. Bryt ner uppgiften i 3-7 konkreta steg med tydliga delmål
+4. Identifiera risker och potentiella problem
+
+Returnera en strukturerad plan i detta format:
+## 📋 Plan
+**Tech stack:** [lista]
+**Risker:** [lista]
+
+### Steg 1: [Titel]
+- Vad: [beskrivning]
+- Filer: [berörda filer]
+
+### Steg 2: ...
+
+Håll planen kortfattad och handlingsbar. Max 500 ord.`;
+
+  const messages = [{ role: 'user', content: plannerPrompt }];
+
+  try {
+    let planText = '';
+    await streamOpenRouter(messages, modelInfo, [], key, (delta) => { planText += delta; }, null);
+    session.messages.unshift({
+      role: 'user',
+      content: `[SYSTEM: PlannerAgent analys — följ denna plan]\n${planText}`,
+    });
+    session.emit({ type: 'TEXT_COMMIT', text: `## 🗺️ Plan skapad av PlannerAgent\n${planText}`, role: 'planner' });
+  } catch (e) {
+    session.emit({ type: 'INFO', message: `planner_agent failed: ${e.message}` });
+  }
+}
+
 // SYSTEM PROMPT
 // ============================================================
 
@@ -1343,6 +1389,11 @@ async function runCodeAgent(session) {
   try {
     for (let iter = 0; iter < MAX_ITER; iter++) {
       if (abortCtrl.aborted || session._stopped) break;
+
+      // Run PlannerAgent once at the start
+      if (iter === 0) {
+        await runPlannerAgent(session);
+      }
 
       session.emit({ type: 'ITERATION', n: iter + 1, maxN: MAX_ITER });
       session.emit({
