@@ -12,7 +12,7 @@ extension Color {
         case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
         case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
         case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default: (a, r, g, b) = (1, 1, 1, 0)
+        default: (a, r, g, b) = (255, 255, 255, 255)  // fallback: opaque white
         }
         self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
     }
@@ -131,13 +131,16 @@ struct SyntaxHighlighter {
             if ch == "\"" {
                 var j = code.index(after: i)
                 while j < code.endIndex && code[j] != "\"" {
-                    if code[j] == "\\" { j = code.index(after: j) }
-                    if j < code.endIndex { j = code.index(after: j) }
+                    if code[j] == "\\" {
+                        j = code.index(after: j)
+                        guard j < code.endIndex else { break }
+                    }
+                    j = code.index(after: j)
                 }
                 if j < code.endIndex { j = code.index(after: j) }
                 let s = String(code[i..<j])
-                let afterJ = j < code.endIndex ? code[j...].first : nil
-                let isKey = afterJ == ":" || code[i..<code.endIndex].dropFirst(s.count).first(where: { !$0.isWhitespace }) == ":"
+                // A quoted string is a JSON key if the next non-whitespace character is ':'
+                let isKey = code[j...].first(where: { !$0.isWhitespace }) == ":"
                 tokens.append(Token(text: s, color: isKey ? type_ : string))
                 i = j
             } else if ch.isNumber || ch == "-" {
