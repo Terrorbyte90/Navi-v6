@@ -78,6 +78,7 @@
 		40E1F3058BD80DF1790FDAD0 /* XcodeCrashHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D282B7114280AA5F0CC2581D /* XcodeCrashHandler.swift */; };
 		428417D243908B69E7070C50 /* ChatConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A865364F7A70D8332F3B693F /* ChatConversation.swift */; };
 		42F0030AF3EE8B1D040E417E /* GlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06075E83F58D9C6DB461B918 /* GlassCard.swift */; };
+		AF26344331294F4EBB5228D1 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2071461ED84E5787842F0D /* MarkdownRenderer.swift */; };
 		43538D939C0A39EF42CC6B87 /* ScheduledTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA46077E6EF10F3DD954F280 /* ScheduledTaskManager.swift */; };
 		449C641DA3D3D2B8630D335A /* GitHubManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6295C999C6C0F33F28E78FC4 /* GitHubManager.swift */; };
 		467E34FCAD9A24DBE9E8A3D6 /* NaviApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B074907A2FB58C840C223A /* NaviApp.swift */; };
@@ -252,6 +253,7 @@
 		F7FABED3C8F85C024687C175 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F42DAA141734671C814B49 /* ContentView.swift */; };
 		F8EEB79C104AE2898C6C35B3 /* NaviTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDC27DAA75627B1862F7AD5 /* NaviTheme.swift */; };
 		F92F4240B746A08236AF5B9E /* GlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06075E83F58D9C6DB461B918 /* GlassCard.swift */; };
+		4FC8FFDC152E43CFAB9F0DBD /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2071461ED84E5787842F0D /* MarkdownRenderer.swift */; };
 		F9FC84F28E6E32579D622444 /* Version.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950D59A59B750776CE0BB2D1 /* Version.swift */; };
 		FB39B62515075377E6F25F61 /* ProactiveNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0056B56FE67BECF3ECB8C293 /* ProactiveNotificationManager.swift */; };
 		FC9C841E512757C215142353 /* CodeProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EC1EF699FA1656785D274F /* CodeProject.swift */; };
@@ -290,6 +292,7 @@
 		05AEADED9151CD7CE33176F8 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		05F8746B0FDC1B0FE7EE2711 /* UserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfile.swift; sourceTree = "<group>"; };
 		06075E83F58D9C6DB461B918 /* GlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassCard.swift; sourceTree = "<group>"; };
+		DB2071461ED84E5787842F0D /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		0B5A4D9585982D08B604BDA2 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		0D37A1D74CF78B28BDF48081 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		0FB5A17185F05630C7E72D86 /* ScheduledTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTask.swift; sourceTree = "<group>"; };
@@ -855,6 +858,7 @@
 				06075E83F58D9C6DB461B918 /* GlassCard.swift */,
 				CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */,
 				75E16C42F31EA3521A28B103 /* PremiumComponents.swift */,
+				DB2071461ED84E5787842F0D /* MarkdownRenderer.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -1165,6 +1169,7 @@
 				B968339E8173B00390155B04 /* KeychainSync.swift in Sources */,
 				67B5C5510E6FA688E3EF7099 /* LocalNetworkServer.swift in Sources */,
 				95F91F1D19BA90AA0A79436F /* MarkdownPreview.swift in Sources */,
+				AF26344331294F4EBB5228D1 /* MarkdownRenderer.swift in Sources */,
 				098656E0D89676C0ADF7E8DE /* MediaGeneration.swift in Sources */,
 				4EC8FA21757084D172F8D0DA /* MediaGenerationManager.swift in Sources */,
 				6636C498CB28794C8C52CEC2 /* MediaVideoPlayer.swift in Sources */,
@@ -1306,6 +1311,7 @@
 				4EDFDC0E22145E26079D1713 /* LocalAgentEngine.swift in Sources */,
 				D40503B0647F9BD53F8BF1C7 /* LocalNetworkServer.swift in Sources */,
 				C15E99F34AF91FF5E12A729B /* MarkdownPreview.swift in Sources */,
+				4FC8FFDC152E43CFAB9F0DBD /* MarkdownRenderer.swift in Sources */,
 				F6F8DA683226BB1D483120D0 /* MediaGeneration.swift in Sources */,
 				BD2B3E8986CB36EC4E66E877 /* MediaGenerationManager.swift in Sources */,
 				E99CD9EF1F6BD11DFA0562B6 /* MediaVideoPlayer.swift in Sources */,
