@@ -245,6 +245,41 @@ const CODE_TOOLS = [
       required: ['key'],
     },
   },
+  {
+    name: 'run_tests',
+    description: 'Run the project test suite. Auto-detects npm/pytest/cargo/go. Returns pass/fail counts.',
+    parameters: {
+      type: 'object',
+      properties: {
+        cwd:     { type: 'string', description: 'Working directory (defaults to session workDir)' },
+        command: { type: 'string', description: 'Explicit test command (overrides auto-detection)' },
+      },
+    },
+  },
+  {
+    name: 'install_package',
+    description: 'Install packages using npm, pip, cargo, or apt. Prefer this over run_command for package installation.',
+    parameters: {
+      type: 'object',
+      properties: {
+        manager:  { type: 'string', enum: ['npm', 'pip', 'cargo', 'apt'], description: 'Package manager' },
+        packages: { type: 'array', items: { type: 'string' }, description: 'Package names to install' },
+        cwd:      { type: 'string', description: 'Working directory' },
+      },
+      required: ['manager', 'packages'],
+    },
+  },
+  {
+    name: 'diff_file',
+    description: 'Show git diff for a specific file since the last commit. Use to review your own changes before committing.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Absolute path to the file' },
+      },
+      required: ['path'],
+    },
+  },
 ];
 
 function toolsToOpenAI() {
@@ -588,6 +623,66 @@ async function executeTool(name, args, session) {
         if (!key) return { result: 'key is required', isError: true };
         const val = session.memory[key];
         return { result: val !== undefined ? val : '(not found)', isError: false };
+      }
+
+      case 'run_tests': {
+        const testCwd = args.cwd || workDir;
+        // Auto-detect test runner
+        const hasPkg   = fs.existsSync(path.join(testCwd, 'package.json'));
+        const hasReqs  = fs.existsSync(path.join(testCwd, 'requirements.txt')) || fs.existsSync(path.join(testCwd, 'pyproject.toml'));
+        const hasCargo = fs.existsSync(path.join(testCwd, 'Cargo.toml'));
+        const hasGo    = fs.existsSync(path.join(testCwd, 'go.mod'));
+
+        let cmd = args.command; // allow explicit override
+        if (!cmd) {
+          if (hasPkg)        cmd = 'npm test --if-present';
+          else if (hasReqs)  cmd = 'python3 -m pytest -v 2>&1 | tail -50';
+          else if (hasCargo) cmd = 'cargo test 2>&1 | tail -50';
+          else if (hasGo)    cmd = 'go test ./... 2>&1 | tail -50';
+          else cmd = 'echo "No test runner detected"';
+        }
+
+        try {
+          const output = await asyncExec(cmd, { cwd: testCwd, timeout: 120000 });
+          const passMatch = output.match(/(\d+)\s+pass(?:ing|ed)?/i);
+          const failMatch = output.match(/(\d+)\s+fail(?:ing|ed)?/i);
+          const passCount = passMatch ? parseInt(passMatch[1]) : null;
+          const failCount = failMatch ? parseInt(failMatch[1]) : 0;
+          return { result: output.substring(0, 8000), isError: false, passCount, failCount };
+        } catch (e) {
+          const out = ((e.stderr || '') + (e.stdout || '') + e.message).substring(0, 5000);
+          return { result: `Tests failed:\n${out}`, isError: true, failCount: 1 };
+        }
+      }
+
+      case 'install_package': {
+        const { manager, packages } = args;
+        if (!packages || packages.length === 0) return { result: 'packages array is required', isError: true };
+        const pkgList = Array.isArray(packages) ? packages.join(' ') : packages;
+        const installCwd = args.cwd || workDir;
+        const cmds = {
+          npm:   `npm install ${pkgList}`,
+          pip:   `pip3 install ${pkgList}`,
+          cargo: `cargo add ${pkgList}`,
+          apt:   `apt-get install -y ${pkgList}`,
+        };
+        const cmd = cmds[manager] || `npm install ${pkgList}`;
+        try {
+          const out = await asyncExec(cmd, { cwd: installCwd, timeout: 120000 });
+          return { result: out.substring(0, 3000), isError: false };
+        } catch (e) {
+          return { result: `Install failed: ${e.message}`, isError: true };
+        }
+      }
+
+      case 'diff_file': {
+        const fp = args.path;
+        try {
+          const out = await asyncExec(`git diff HEAD -- "${fp}"`, { cwd: path.dirname(fp), timeout: 8000 });
+          return { result: out || '(no diff — file unchanged since last commit)', isError: false };
+        } catch (e) {
+          return { result: `git diff failed: ${e.message}`, isError: true };
+        }
       }
 
       default:
