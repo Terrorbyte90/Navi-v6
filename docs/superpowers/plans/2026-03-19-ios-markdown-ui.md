@@ -1053,7 +1053,8 @@ struct ToolPill: View {
         //    See ServerCodeSession.swift line ~170.
         let name = event.name
         let param = event.params.values.first ?? ""
-        let duration = event.durationMs.map { " · \($0 / 1000 > 0 ? "\($0/1000)s" : "\($0)ms")" } ?? ""
+        // ⚠️ durationMs is Int (non-optional) — no .map needed
+        let duration = event.durationMs > 0 ? " · \(event.durationMs < 1000 ? "\(event.durationMs)ms" : String(format: "%.1fs", Double(event.durationMs)/1000))" : ""
         return param.isEmpty ? "\(name)\(duration)" : "\(name) \(param)\(duration)"
     }
 }
@@ -1117,7 +1118,7 @@ Section("Senaste kod-sessioner") {
         .onTapGesture {
             // Navigate to code view and resume this session
             selectedSection = .code
-            codeSessionsStore.selectedSessionId = session.id
+            codeSessionsStore.switchToSession(session)  // use existing API, not selectedSessionId
         }
     }
 }
