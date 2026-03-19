@@ -731,6 +731,8 @@ class CodeSession {
     this.memory        = {};  // key-value store, persisted
     this.reviewerHasRun = false; // not persisted — reset each run
     this.parentSessionId = null;  // set when resuming from another session
+    this._inputTokens  = 0;
+    this._outputTokens = 0;
 
     if (!fs.existsSync(this.workDir)) {
       fs.mkdirSync(this.workDir, { recursive: true });
@@ -862,6 +864,7 @@ function streamOpenRouter(messages, modelInfo, tools, openrouterKey, onDelta, si
       let fullText = '';
       let toolCallMap = {};
       let stopReason = null;
+      let lastUsage = null;
 
       res.on('data', chunk => {
         if (signal?.aborted) { req.destroy(); return; }
@@ -897,6 +900,9 @@ function streamOpenRouter(messages, modelInfo, tools, openrouterKey, onDelta, si
             }
 
             if (choice.finish_reason) stopReason = choice.finish_reason;
+            if (json.usage) {
+              lastUsage = json.usage;
+            }
           } catch {}
         }
       });
@@ -907,7 +913,7 @@ function streamOpenRouter(messages, modelInfo, tools, openrouterKey, onDelta, si
           try { args = JSON.parse(tc.argsStr); } catch {}
           return { id: tc.id, name: tc.name, args };
         });
-        resolve({ fullText, toolCalls, stopReason });
+        resolve({ fullText, toolCalls, stopReason, usage: lastUsage });
       });
 
       res.on('error', reject);
@@ -1523,6 +1529,10 @@ async function runCodeAgent(session) {
           (delta) => session.emit({ type: 'TEXT_DELTA', delta }),
           abortCtrl
         );
+        if (streamResult.usage) {
+          session._inputTokens  += streamResult.usage.prompt_tokens     || 0;
+          session._outputTokens += streamResult.usage.completion_tokens || 0;
+        }
         const assistantMsg = { role: 'assistant', content: streamResult.fullText || '' };
         if (streamResult.toolCalls.length > 0) {
           assistantMsg.tool_calls = streamResult.toolCalls.map(tc => ({
@@ -1652,6 +1662,11 @@ async function runCodeAgent(session) {
         summary: session.todos.length > 0
           ? `${session.todos.filter(t => t.done).length}/${session.todos.length} uppgifter klara`
           : 'Klar',
+        usage: {
+          inputTokens:  session._inputTokens,
+          outputTokens: session._outputTokens,
+          model:        session.model,
+        },
       });
     } else {
       session.status = 'stopped';
