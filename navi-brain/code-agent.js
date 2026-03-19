@@ -222,6 +222,29 @@ const CODE_TOOLS = [
       required: ['url'],
     },
   },
+  {
+    name: 'memory_write',
+    description: 'Save a value to persistent session memory. Use to remember architecture decisions, known bugs, or context you may need later.',
+    parameters: {
+      type: 'object',
+      properties: {
+        key:   { type: 'string', description: 'Memory key (e.g. "architecture", "known_bugs")' },
+        value: { type: 'string', description: 'Value to store' },
+      },
+      required: ['key', 'value'],
+    },
+  },
+  {
+    name: 'memory_read',
+    description: 'Read a value from persistent session memory.',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Memory key to read' },
+      },
+      required: ['key'],
+    },
+  },
 ];
 
 function toolsToOpenAI() {
@@ -550,6 +573,21 @@ async function executeTool(name, args, session) {
 
         if (result.error) return { result: result.text, isError: true };
         return { result: result.text || '(empty response)', isError: false };
+      }
+
+      case 'memory_write': {
+        const { key, value } = args;
+        if (!key) return { result: 'key is required', isError: true };
+        session.memory[key] = String(value ?? '');
+        session.save();
+        return { result: `saved`, isError: false };
+      }
+
+      case 'memory_read': {
+        const { key } = args;
+        if (!key) return { result: 'key is required', isError: true };
+        const val = session.memory[key];
+        return { result: val !== undefined ? val : '(not found)', isError: false };
       }
 
       default:
