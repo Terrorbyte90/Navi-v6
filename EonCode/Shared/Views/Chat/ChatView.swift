@@ -598,6 +598,7 @@ struct AgentStreamingBubble: View {
     var codeSnippet: String = ""
     var todoItems: [ProjectAgent.AgentTodoItem] = []
     @StateObject private var buffer = StreamingBuffer()
+    @StateObject private var markdownBuffer = StreamingMarkdownBuffer()
     @State private var cursorVisible = true
 
     var body: some View {
@@ -626,7 +627,7 @@ struct AgentStreamingBubble: View {
 
                 if !text.isEmpty || !buffer.displayText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        MarkdownTextView(text: buffer.displayText)
+                        MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
                             .textSelection(.enabled)
 
                         // Blinking cursor

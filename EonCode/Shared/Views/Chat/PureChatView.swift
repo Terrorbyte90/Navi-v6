@@ -610,6 +610,7 @@ struct StreamingBubble: View {
     var codeSnippet: String = ""
     var todoItems: [ProjectAgent.AgentTodoItem] = []
 
+    @StateObject private var markdownBuffer = StreamingMarkdownBuffer()
     @State private var cursorVisible = true
 
     var body: some View {
@@ -624,7 +625,7 @@ struct StreamingBubble: View {
                 } else {
                     // Text is streaming: render markdown + blinking cursor at end
                     VStack(alignment: .leading, spacing: 0) {
-                        MarkdownTextView(text: text)
+                        MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
                             .textSelection(.enabled)
 
                         // Blinking cursor appended after last line

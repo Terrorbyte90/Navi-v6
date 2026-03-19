@@ -864,6 +864,7 @@ struct GitCheckpointBadge: View {
 struct ServerStreamingRow: View {
     let text: String
     let phaseLabel: String
+    @StateObject private var markdownBuffer = StreamingMarkdownBuffer()
     @State private var cursorVisible = true
 
     var body: some View {
@@ -879,7 +880,7 @@ struct ServerStreamingRow: View {
                 } else {
                     // Streaming markdown with blinking cursor
                     HStack(alignment: .bottom, spacing: 0) {
-                        MarkdownTextView(text: text)
+                        MarkdownTextView(text: text, isStreaming: true, buffer: markdownBuffer)
                         Rectangle()
                             .fill(Color.accentNavi)
                             .frame(width: 1.5, height: 16)
