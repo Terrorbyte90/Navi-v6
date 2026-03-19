@@ -28,6 +28,14 @@ enum ServerEventType: String, Decodable {
     case unknown
 }
 
+// MARK: - Usage data from server (sent with RUN_FINISHED)
+
+struct ServerUsage: Decodable {
+    let inputTokens: Int
+    let outputTokens: Int
+    let model: String
+}
+
 struct ServerEvent: Decodable {
     let type: ServerEventType
     let seq: Int?
@@ -72,6 +80,7 @@ struct ServerEvent: Decodable {
 
     // RUN_FINISHED
     let summary: String?
+    let usage: ServerUsage?
 
     // LINT_WARN
     let path: String?
@@ -90,7 +99,7 @@ struct ServerEvent: Decodable {
         case isError, durationMs, phase, label, todos, hash, message
         case filesChanged, timestamp, n, maxN, task, model, summary
         case path, error, sessionId, hasHistory, status, createdAt
-        case ok, intervene
+        case ok, intervene, usage
     }
 
     init(from decoder: Decoder) throws {
@@ -118,6 +127,7 @@ struct ServerEvent: Decodable {
         task         = try? c.decode(String.self, forKey: .task)
         model        = try? c.decode(String.self, forKey: .model)
         summary      = try? c.decode(String.self, forKey: .summary)
+        usage        = try? c.decode(ServerUsage.self, forKey: .usage)
         path         = try? c.decode(String.self, forKey: .path)
         error        = try? c.decode(String.self, forKey: .error)
         sessionId    = try? c.decode(String.self, forKey: .sessionId)
@@ -662,6 +672,16 @@ final class ServerCodeSession: ObservableObject {
             }
             streamingText = ""
             accumulatedText = ""
+
+            // Track cost from server usage
+            if let u = event.usage {
+                let usd = CostCalculator.calculateOpenRouter(
+                    inputTokens: u.inputTokens,
+                    outputTokens: u.outputTokens,
+                    model: u.model
+                )
+                CostTracker.shared.record(usd: usd)
+            }
 
             // End Live Activity
             #if os(iOS)
