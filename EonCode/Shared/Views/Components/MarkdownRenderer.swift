@@ -158,3 +158,144 @@ struct SyntaxHighlighter {
         return tokens
     }
 }
+
+// MARK: - StreamingMarkdownBuffer
+
+@MainActor
+final class StreamingMarkdownBuffer: ObservableObject {
+    @Published private(set) var displayText: String = ""
+    private var targetText: String = ""
+    private var timer: Timer?
+
+    // Dummy singleton for non-streaming callers — avoids creating a new instance on every render.
+    static let dummy = StreamingMarkdownBuffer()
+
+    func update(text: String, animated: Bool) {
+        targetText = text
+        if !animated {
+            displayText = text
+            timer?.invalidate()
+            timer = nil
+            return
+        }
+        if timer == nil { startTimer() }
+    }
+
+    func reset() {
+        timer?.invalidate()
+        timer = nil
+        displayText = ""
+        targetText = ""
+    }
+
+    private func startTimer() {
+        // Use Task { @MainActor in ... } — safe even if timer fires off-main-thread
+        timer = Timer.scheduledTimer(withTimeInterval: 0.008, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.displayText.count < self.targetText.count {
+                    let offset = self.displayText.count + 1
+                    guard offset <= self.targetText.count else { return }
+                    let idx = self.targetText.index(self.targetText.startIndex, offsetBy: offset)
+                    self.displayText = String(self.targetText[..<idx])
+                } else {
+                    self.timer?.invalidate()
+                    self.timer = nil
+                }
+            }
+        }
+    }
+}
+
+// MARK: - MarkdownCodeBlock
+
+struct MarkdownCodeBlock: View {
+    let language: String
+    let code: String
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header bar
+            HStack {
+                if !language.isEmpty {
+                    Text(language.lowercased())
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button(action: copyCode) {
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 11))
+                        Text(copied ? "Kopierat" : "Kopiera")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color(hex: "#2a2a3a"))
+
+            // Code content
+            ScrollView(.horizontal, showsIndicators: false) {
+                highlightedCode
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+            }
+        }
+        .background(SyntaxHighlighter.background)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var highlightedCode: some View {
+        let tokens = SyntaxHighlighter.tokenize(code, language: language)
+        let lines = code.components(separatedBy: "\n")
+        let showLineNumbers = lines.count > 10
+
+        if showLineNumbers {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .trailing, spacing: 0) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { i, _ in
+                        Text("\(i + 1)")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color(hex: "#546e7a"))
+                            .frame(minWidth: 24, alignment: .trailing)
+                    }
+                }
+                tokenText(tokens)
+            }
+        } else {
+            tokenText(tokens)
+        }
+    }
+
+    private func tokenText(_ tokens: [SyntaxHighlighter.Token]) -> some View {
+        tokens.reduce(Text("")) { acc, token in
+            acc + Text(token.text)
+                .foregroundColor(token.color)
+        }
+        .font(.system(size: 13, design: .monospaced))
+    }
+
+    private func copyCode() {
+        #if os(iOS)
+        UIPasteboard.general.string = code
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+        #else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+        #endif
+        withAnimation { copied = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { copied = false }
+        }
+    }
+}
