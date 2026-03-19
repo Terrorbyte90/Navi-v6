@@ -16,7 +16,7 @@ struct MarkdownPreview: View {
     }
 
     @ViewBuilder
-    private func renderBlock(_ block: MarkdownBlock) -> some View {
+    private func renderBlock(_ block: MarkdownPreviewBlock) -> some View {
         switch block {
         case .heading(let text, let level):
             Text(text)
@@ -138,8 +138,8 @@ struct MarkdownPreview: View {
         return result
     }
 
-    private func parseBlocks(_ text: String) -> [MarkdownBlock] {
-        var blocks: [MarkdownBlock] = []
+    private func parseBlocks(_ text: String) -> [MarkdownPreviewBlock] {
+        var blocks: [MarkdownPreviewBlock] = []
         let lines = text.components(separatedBy: "\n")
         var i = 0
 
@@ -210,7 +210,7 @@ struct MarkdownPreview: View {
     }
 }
 
-enum MarkdownBlock {
+private enum MarkdownPreviewBlock {
     case heading(String, level: Int)
     case paragraph(String)
     case code(String, String?)

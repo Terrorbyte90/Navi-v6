@@ -433,7 +433,6 @@ struct MessageBubble: View {
                                 .textSelection(.enabled)
                         } else {
                             MarkdownTextView(text: cleaned)
-                                .equatable()
                                 .textSelection(.enabled)
                         }
                     }
@@ -628,7 +627,6 @@ struct AgentStreamingBubble: View {
                 if !text.isEmpty || !buffer.displayText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         MarkdownTextView(text: buffer.displayText)
-                            .equatable()
                             .textSelection(.enabled)
 
                         // Blinking cursor

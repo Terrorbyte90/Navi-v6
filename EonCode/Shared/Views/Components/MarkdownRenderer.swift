@@ -299,3 +299,330 @@ struct MarkdownCodeBlock: View {
         }
     }
 }
+
+// MARK: - MarkdownTextView
+
+struct MarkdownTextView: View {
+    let text: String
+    var isStreaming: Bool = false
+    // Call site owns the buffer as @StateObject and passes it in.
+    // For non-streaming (historical) messages, pass nil — falls back to dummy singleton.
+    @ObservedObject var buffer: StreamingMarkdownBuffer
+
+    init(text: String, isStreaming: Bool = false, buffer: StreamingMarkdownBuffer? = nil) {
+        self.text = text
+        self.isStreaming = isStreaming
+        self.buffer = buffer ?? .dummy
+    }
+
+    private var blocks: [MarkdownBlock] {
+        MarkdownBlock.parse(isStreaming ? buffer.displayText : text)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { i, block in
+                blockView(block, isFirst: i == 0)
+            }
+        }
+        .onAppear {
+            if isStreaming { buffer.update(text: text, animated: true) }
+        }
+        .onChange(of: text) { _, newText in
+            if isStreaming { buffer.update(text: newText, animated: true) }
+        }
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: MarkdownBlock, isFirst: Bool) -> some View {
+        switch block {
+        case .paragraph(let t):
+            inlineText(t)
+                .fixedSize(horizontal: false, vertical: true)
+        case .header(let level, let t):
+            headerView(level: level, text: t)
+                .padding(.top, isFirst ? 0 : (level <= 2 ? 12 : 6))
+        case .code(let lang, let code):
+            MarkdownCodeBlock(language: lang, code: code)
+        case .bulletList(let items):
+            bulletListView(items)
+        case .numberedList(let items):
+            numberedListView(items)
+        case .blockquote(let t):
+            blockquoteView(t)
+        case .table(let headers, let rows):
+            tableView(headers: headers, rows: rows)
+        case .divider:
+            Divider().opacity(0.15).padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func inlineText(_ raw: String) -> some View {
+        if let attributed = try? AttributedString(
+            markdown: raw,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            Text(attributed)
+                .font(.system(size: 16, weight: .regular, design: .default))
+                .lineSpacing(6)
+                .tracking(-0.1)
+        } else {
+            Text(raw)
+                .font(.system(size: 16, weight: .regular, design: .default))
+                .lineSpacing(6)
+                .tracking(-0.1)
+        }
+    }
+
+    @ViewBuilder
+    private func headerView(level: Int, text: String) -> some View {
+        let config: (size: CGFloat, weight: Font.Weight) = {
+            switch level {
+            case 1:  return (22, .bold)
+            case 2:  return (19, .semibold)
+            default: return (16, .semibold)
+            }
+        }()
+        Group {
+            if let attributed = try? AttributedString(
+                markdown: text,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            ) {
+                Text(attributed)
+                    .font(.system(size: config.size, weight: config.weight))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(text)
+                    .font(.system(size: config.size, weight: config.weight))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bulletListView(_ items: [(level: Int, text: String)]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("·")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 16, alignment: .center)
+                        .padding(.leading, CGFloat(item.level) * 16)
+                    inlineText(item.text)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func numberedListView(_ items: [(number: Int, text: String)]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\(item.number).")
+                        .font(.system(size: 16, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(minWidth: 24, alignment: .trailing)
+                    inlineText(item.text)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func blockquoteView(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: 3)
+            inlineText(text)
+                .italic()
+                .opacity(0.8)
+                .padding(.leading, 12)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func tableView(headers: [String], rows: [[String]]) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
+                    Text(h)
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                }
+            }
+            .background(Color.white.opacity(0.06))
+            Divider().opacity(0.15)
+            ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
+                HStack(spacing: 0) {
+                    ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                        Text(cell)
+                            .font(.system(size: 14))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                    }
+                }
+                .background(rowIdx % 2 == 0 ? Color.clear : Color.white.opacity(0.03))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - MarkdownBlock parser
+
+enum MarkdownBlock {
+    case paragraph(String)
+    case header(Int, String)
+    case code(String, String)
+    case bulletList([(level: Int, text: String)])
+    case numberedList([(number: Int, text: String)])
+    case blockquote(String)
+    case table([String], [[String]])
+    case divider
+
+    static func parse(_ text: String) -> [MarkdownBlock] {
+        var blocks: [MarkdownBlock] = []
+        let lines = text.components(separatedBy: "\n")
+        var i = 0
+
+        while i < lines.count {
+            let line = lines[i]
+
+            // Fenced code block
+            if line.hasPrefix("```") {
+                let lang = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                var codeLines: [String] = []
+                i += 1
+                while i < lines.count && !lines[i].hasPrefix("```") {
+                    codeLines.append(lines[i])
+                    i += 1
+                }
+                blocks.append(.code(lang, codeLines.joined(separator: "\n")))
+                i += 1
+                continue
+            }
+
+            // Divider
+            if line.hasPrefix("---") || line.hasPrefix("***") || line.hasPrefix("___") {
+                blocks.append(.divider)
+                i += 1
+                continue
+            }
+
+            // Header
+            if line.hasPrefix("#") {
+                var level = 0
+                var rest = line
+                while rest.hasPrefix("#") { level += 1; rest = String(rest.dropFirst()) }
+                level = min(level, 3)
+                let title = rest.trimmingCharacters(in: .whitespaces)
+                blocks.append(.header(level, title))
+                i += 1
+                continue
+            }
+
+            // Bullet list
+            if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("• ") {
+                var items: [(level: Int, text: String)] = []
+                while i < lines.count && (lines[i].hasPrefix("- ") || lines[i].hasPrefix("* ") || lines[i].hasPrefix("  ")) {
+                    let l = lines[i]
+                    let indent = l.prefix(while: { $0 == " " }).count / 2
+                    let text = l.drop(while: { $0 == " " || $0 == "-" || $0 == "*" })
+                        .trimmingCharacters(in: .whitespaces)
+                    if !text.isEmpty { items.append((level: indent, text: text)) }
+                    i += 1
+                }
+                if !items.isEmpty { blocks.append(.bulletList(items)) }
+                continue
+            }
+
+            // Numbered list
+            if line.range(of: #"^\d+\. "#, options: .regularExpression) != nil {
+                var items: [(number: Int, text: String)] = []
+                var num = 1
+                while i < lines.count,
+                      let r = lines[i].range(of: #"^\d+\. "#, options: .regularExpression) {
+                    let text = String(lines[i][r.upperBound...]).trimmingCharacters(in: .whitespaces)
+                    items.append((number: num, text: text))
+                    num += 1
+                    i += 1
+                }
+                if !items.isEmpty { blocks.append(.numberedList(items)) }
+                continue
+            }
+
+            // Blockquote
+            if line.hasPrefix("> ") {
+                let text = String(line.dropFirst(2))
+                blocks.append(.blockquote(text))
+                i += 1
+                continue
+            }
+
+            // Table
+            if line.contains("|") && i + 1 < lines.count && lines[i + 1].contains("---") {
+                let headers = line.split(separator: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                i += 2
+                var rows: [[String]] = []
+                while i < lines.count && lines[i].contains("|") {
+                    let row = lines[i].split(separator: "|")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
+                    if !row.isEmpty { rows.append(row) }
+                    i += 1
+                }
+                blocks.append(.table(headers, rows))
+                continue
+            }
+
+            // Paragraph
+            if !line.isEmpty {
+                var paraLines = [line]
+                i += 1
+                while i < lines.count && !lines[i].isEmpty
+                    && !lines[i].hasPrefix("#")
+                    && !lines[i].hasPrefix("```")
+                    && !lines[i].hasPrefix("- ")
+                    && !lines[i].hasPrefix("* ")
+                    && !lines[i].hasPrefix("> ") {
+                    paraLines.append(lines[i])
+                    i += 1
+                }
+                blocks.append(.paragraph(paraLines.joined(separator: "\n")))
+            } else {
+                i += 1
+            }
+        }
+
+        return blocks
+    }
+}
+
+// MARK: - StreamingCursor
+
+struct StreamingCursor: View {
+    @State private var visible = true
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.accentColor)
+            .frame(width: 6, height: 14)  // spec: 6×14pt
+            .opacity(visible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: visible)
+            .onAppear { visible = false }
+    }
+}

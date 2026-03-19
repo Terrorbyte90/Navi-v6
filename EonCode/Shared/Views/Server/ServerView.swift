@@ -920,7 +920,6 @@ struct BrainChatView: View {
                     }
 
                     MarkdownTextView(text: msg.content)
-                        .equatable()
                         .textSelection(.enabled)
 
                     HStack(spacing: 4) {
