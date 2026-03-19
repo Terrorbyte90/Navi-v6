@@ -1740,6 +1740,14 @@ function handleWebSocket(ws, req) {
         codeSessions[id] = s;
         sendRaw({ type: 'CONNECTED', sessionId: id, hasHistory: false });
         s.save();
+        if (msg.inheritSessionId) {
+          s.parentSessionId = msg.inheritSessionId;
+        }
+        if (msg.contextSnapshot) {
+          const snap = msg.contextSnapshot;
+          const contextMsg = `[Ärvd kontext från föregående session]\n\nFilstruktur:\n${snap.fileTree || ''}\n\nGit-historik:\n${snap.gitLog || ''}\n\nGit-status:\n${snap.gitStatus || ''}`;
+          s.messages.unshift({ role: 'user', content: `[SYSTEM: ${contextMsg}]` });
+        }
         runCodeAgent(s).catch(e => {
           console.error('[CODE-AGENT] Unhandled:', e.message);
         });
@@ -1880,4 +1888,4 @@ function init(wss, config = {}) {
     .join(', '));
 }
 
-module.exports = { init, createRouter, codeSessions, MODELS };
+module.exports = { init, createRouter, codeSessions, MODELS, getSession: (id) => codeSessions[id] || null };

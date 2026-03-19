@@ -13,6 +13,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execSync, exec } = require('child_process');
+const { promisify } = require('util');
+const execPromise = promisify(exec);
 const { WebSocketServer } = require('ws');
 const telephony = require('./telephony');
 const codeAgent = require('./code-agent');
@@ -1281,6 +1283,25 @@ setInterval(() => telephony.runScheduler(addLog), 30000);
 // ============================================================
 // CODE AGENT routes
 // ============================================================
+
+// GET /code/sessions/:id/snapshot — returns live state of session workDir
+app.get('/code/sessions/:id/snapshot', auth, async (req, res) => {
+  const session = codeAgent.getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  const workDir = session.workDir;
+  if (!workDir || !fs.existsSync(workDir)) return res.status(400).json({ error: 'workDir does not exist' });
+
+  try {
+    const [fileTree, gitLog, gitStatus] = await Promise.all([
+      execPromise(`find "${workDir}" -type f -not -path "*/.git/*" -not -path "*/node_modules/*" | sort | head -100`, { timeout: 8000 }).then(r => r.stdout).catch(() => ''),
+      execPromise(`git -C "${workDir}" log --oneline -10`, { timeout: 5000 }).then(r => r.stdout).catch(() => '(no git history)'),
+      execPromise(`git -C "${workDir}" status --short`, { timeout: 5000 }).then(r => r.stdout).catch(() => '(no git status)'),
+    ]);
+    res.json({ fileTree, gitLog, gitStatus });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.use('/code', auth, codeAgent.createRouter(express));
 
