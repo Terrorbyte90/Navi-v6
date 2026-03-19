@@ -583,6 +583,9 @@ class CodeSession {
     this._ws      = null;
     this._stopped = false;
     this._seq     = 0;
+    this.memory        = {};  // key-value store, persisted
+    this.reviewerHasRun = false; // not persisted — reset each run
+    this.parentSessionId = null;  // set when resuming from another session
 
     if (!fs.existsSync(this.workDir)) {
       fs.mkdirSync(this.workDir, { recursive: true });
@@ -630,6 +633,8 @@ class CodeSession {
       workDir:     this.workDir,
       createdAt:   this.createdAt,
       updatedAt:   this.updatedAt,
+      memory:          this.memory,
+      parentSessionId: this.parentSessionId,
     };
   }
 
@@ -644,6 +649,8 @@ class CodeSession {
     s.workDir        = data.workDir     || s.workDir;
     s.createdAt      = data.createdAt   || s.createdAt;
     s.updatedAt      = data.updatedAt   || s.updatedAt;
+    s.memory          = data.memory          || {};
+    s.parentSessionId = data.parentSessionId || null;
     // Restore _seq to one past the highest seq in persisted events
     s._seq = s.events.reduce((m, e) => Math.max(m, (e.seq ?? 0) + 1), 0);
     return s;
