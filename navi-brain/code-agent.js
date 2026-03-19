@@ -654,7 +654,13 @@ async function executeTool(name, args, session) {
           const failMatch = output.match(/(\d+)\s+fail(?:ing|ed)?/i);
           const passCount = passMatch ? parseInt(passMatch[1]) : null;
           const failCount = failMatch ? parseInt(failMatch[1]) : 0;
-          return { result: output.substring(0, 8000), isError: false, passCount, failCount };
+          const toolResult = { result: output.substring(0, 8000), isError: false, passCount, failCount: failCount ?? 0 };
+          // Trigger ReviewerAgent on first successful test run — blocking
+          if ((toolResult.failCount === 0) && !session.reviewerHasRun) {
+            session.reviewerHasRun = true;
+            await runReviewerAgent(session);
+          }
+          return toolResult;
         } catch (e) {
           const out = ((e.stderr || '') + (e.stdout || '') + e.message).substring(0, 5000);
           return { result: `Tests failed:\n${out}`, isError: true, failCount: 1 };
@@ -918,14 +924,14 @@ function streamOpenRouter(messages, modelInfo, tools, openrouterKey, onDelta, si
 // ANTHROPIC STREAMING
 // ============================================================
 
-function streamAnthropic(messages, anthropicKey, systemPrompt, modelInfo, onDelta, signal) {
+function streamAnthropic(messages, anthropicKey, systemPrompt, modelInfo, onDelta, signal, toolsOverride = null) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: modelInfo.id,
       max_tokens: modelInfo.maxTokens,
       system: systemPrompt,
       messages,
-      tools: toolsToAnthropic(),
+      tools: toolsOverride === null ? toolsToAnthropic() : (toolsOverride.length > 0 ? toolsOverride : undefined),
       stream: true,
     });
 
@@ -1044,6 +1050,66 @@ Håll planen kortfattad och handlingsbar. Max 500 ord.`;
   } catch (e) {
     session.emit({ type: 'INFO', message: `planner_agent failed: ${e.message}` });
   }
+}
+
+// REVIEWER AGENT
+// ============================================================
+
+async function runReviewerAgent(session) {
+  const anthropicKey = session.anthropicKey || DEFAULT_ANTHROPIC_KEY;
+  if (!anthropicKey) return; // no key — skip silently
+
+  // Get list of changed files since last commit
+  let changedFiles = '';
+  try {
+    changedFiles = await asyncExec(`git diff HEAD --name-only`, { cwd: session.workDir, timeout: 8000 });
+  } catch {
+    changedFiles = '(could not determine changed files)';
+  }
+
+  // Read changed file contents (first 3 files, max 3000 chars each)
+  const fileNames = changedFiles.trim().split('\n').filter(Boolean).slice(0, 3);
+  let fileContents = '';
+  for (const fn of fileNames) {
+    try {
+      const fp = path.join(session.workDir, fn);
+      if (fs.existsSync(fp)) {
+        const content = fs.readFileSync(fp, 'utf8').substring(0, 3000);
+        fileContents += `\n\n### ${fn}\n\`\`\`\n${content}\n\`\`\``;
+      }
+    } catch {}
+  }
+
+  session.emit({ type: 'PHASE', phase: 'reviewing', label: 'Granskar kod...' });
+
+  const reviewPrompt = `Du är en expert kodgranskare. Granska dessa nyligen ändrade filer och ge konkret feedback.
+
+Projekt: ${session.initialTask}
+Ändrade filer: ${changedFiles || '(inga)'}\n${fileContents}
+
+Granska för:
+1. Säkerhetshål (injection, exponerade hemligheter, osäkra operationer)
+2. Logikfel (edge cases som saknas, felaktig felhantering)
+3. Platshållare (// TODO, pass, stub-funktioner, "implement later")
+4. Inkonsistenser med professionell kodstandard
+
+Var konkret och specifik — ange filnamn och radnummer om möjligt.
+Om allt ser bra ut, skriv: "✅ Koden ser bra ut."
+Om du hittar problem, skriv dem som en numrerad lista.`;
+
+  const messages = [{ role: 'user', content: reviewPrompt }];
+  const modelInfo = MODELS.claude;
+
+  try {
+    let reviewText = '';
+    await streamAnthropic(messages, anthropicKey, '', modelInfo, (delta) => { reviewText += delta; }, null, []); // [] = no tools
+    session.messages.push({ role: 'user', content: `[SYSTEM: ReviewerAgent feedback]\n${reviewText}` });
+    session.emit({ type: 'TEXT_COMMIT', text: `## 🔍 Kodgranskning (ReviewerAgent)\n${reviewText}`, role: 'reviewer' });
+  } catch (e) {
+    session.emit({ type: 'INFO', message: `reviewer_agent failed: ${e.message}` });
+  }
+
+  session.emit({ type: 'PHASE', phase: 'tools', label: '' });
 }
 
 // SYSTEM PROMPT
