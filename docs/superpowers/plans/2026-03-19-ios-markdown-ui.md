@@ -41,9 +41,29 @@ This is the largest single file. Build it in parts, starting with `SyntaxHighlig
 
 - [ ] **Step 1: Create file with SyntaxHighlighter**
 
+⚠️ **Add `Color(hex:)` extension first** — SyntaxHighlighter and MarkdownCodeBlock both use `Color(hex:)`. Add it at the top of the new file before the SyntaxHighlighter struct (and also add to `EonCode/Shared/Utilities/Extensions.swift` if not already there so other files can use it):
 ```swift
 import SwiftUI
 
+// MARK: - Color hex init (add to Extensions.swift if not already present)
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default: (a, r, g, b) = (1, 1, 1, 0)
+        }
+        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
+    }
+}
+```
+
+```swift
 // MARK: - SyntaxHighlighter
 
 struct SyntaxHighlighter {
@@ -241,9 +261,14 @@ class StreamingMarkdownBuffer: ObservableObject {
         targetText = ""
     }
 
+    // Dummy singleton for non-streaming callers — avoids creating a new instance on every render.
+    static let dummy = StreamingMarkdownBuffer()
+
     private func startTimer() {
+        // ⚠️ MainActor.assumeIsolated is a precondition crash if fired off-main.
+        // Use Task { @MainActor in ... } instead — safe even if timer fires off-main.
         timer = Timer.scheduledTimer(withTimeInterval: 0.008, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 if self.displayText.count < self.targetText.count {
                     let offset = self.displayText.count + 1
@@ -359,26 +384,13 @@ struct MarkdownCodeBlock: View {
 }
 ```
 
-- [ ] **Step 3: Add `Color(hex:)` extension if not already in codebase**
+- [ ] **Step 3: Verify `Color(hex:)` added to `Extensions.swift`**
 
-Check if it exists:
+`Color(hex:)` was added in Task 1 Step 1. Verify it's present in `Extensions.swift` (it must be accessible across the whole project):
 ```bash
-grep -r "Color(hex:" "EonCode/Shared/Utilities/Extensions.swift" | head -5
+grep -r "init(hex:" "EonCode/Shared/Utilities/Extensions.swift" | head -3
 ```
-If not found, add to `Extensions.swift`:
-```swift
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let r = Double((int >> 16) & 0xFF) / 255
-        let g = Double((int >> 8) & 0xFF) / 255
-        let b = Double(int & 0xFF) / 255
-        self.init(red: r, green: g, blue: b)
-    }
-}
-```
+If not found there yet, move the extension from `MarkdownRenderer.swift` to `Extensions.swift` (or duplicate it there).
 
 - [ ] **Step 4: Verify compilation**
 ```bash
@@ -412,28 +424,27 @@ struct MarkdownTextView: View {
     var isStreaming: Bool = false
     // Call site owns the buffer (passed as @ObservedObject) when isStreaming=true.
     // When isStreaming=false (historical), pass nil — MarkdownTextView renders text directly.
+    // ⚠️ IMPORTANT: Do NOT use @StateObject here — in a struct with custom init it resets on every render.
+    // The call site owns the buffer as @StateObject and passes it in. For non-streaming (historical)
+    // messages, pass nil — we fall back to StreamingMarkdownBuffer.dummy (a static singleton).
     @ObservedObject var buffer: StreamingMarkdownBuffer
 
     init(text: String, isStreaming: Bool = false, buffer: StreamingMarkdownBuffer? = nil) {
         self.text = text
         self.isStreaming = isStreaming
-        // Use provided buffer or a shared dummy (historical messages don't animate)
-        self.buffer = buffer ?? StreamingMarkdownBuffer()
+        // Use provided buffer or the shared dummy singleton — never create a new instance here
+        // (that would reset the animation on every re-render).
+        self.buffer = buffer ?? .dummy
     }
 
     private var blocks: [MarkdownBlock] {
         MarkdownBlock.parse(isStreaming ? buffer.displayText : text)
     }
 
-    init(text: String, isStreaming: Bool = false) {
-        self.text = text
-        self.isStreaming = isStreaming
-        self.blocks = MarkdownBlock.parse(text)
-    }
-
-    static func == (lhs: MarkdownTextView, rhs: MarkdownTextView) -> Bool {
-        lhs.text == rhs.text && lhs.isStreaming == rhs.isStreaming
-    }
+    // ⚠️ No second init(text:isStreaming:) — `blocks` is a computed property (not stored),
+    // and a duplicate init would conflict. One init only.
+    // ⚠️ No Equatable conformance — @ObservedObject wraps a reference type (not Equatable),
+    // and a custom == would silently ignore buffer inequality causing wrong SwiftUI diffing.
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -983,9 +994,14 @@ Add:
 case "reviewing": return "Granskar kod..."
 ```
 
-Also add in `ServerCodeSession.swift`:
+⚠️ **Also add to `ServerEventType` enum in `ServerCodeSession.swift`** — without this, the server's `PHASE: "reviewing"` event decodes as `.unknown` and the label never updates:
 ```swift
-case reviewing = "reviewing"  // in the phase enum if one exists
+// In the ServerEventType enum (or equivalent phase enum) in ServerCodeSession.swift:
+case reviewing = "reviewing"
+```
+Verify the enum name:
+```bash
+grep -n "enum.*EventType\|enum.*Phase\|case thinking\|case tools" "EonCode/Shared/Services/Code/ServerCodeSession.swift" | head -10
 ```
 
 - [ ] **Step 2: Replace phaseStrip with 3pt progress bar**
@@ -1038,8 +1054,12 @@ struct ToolPill: View {
     }
 
     private var pillLabel: String {
-        let name = event.name ?? "tool"
-        let param = event.keyParam ?? ""
+        // ⚠️ ServerToolEvent.name is non-optional (String, not String?). Use directly.
+        // ⚠️ ServerToolEvent has no `keyParam` property. Check what fields exist:
+        //    grep -n "struct ServerToolEvent" "EonCode/Shared/Services/Code/ServerCodeSession.swift"
+        // Use the first value from `args` dict if present, or omit param entirely.
+        let name = event.name
+        let param = event.args?.values.first ?? ""
         let duration = event.durationMs.map { " · \($0 / 1000 > 0 ? "\($0/1000)s" : "\($0)ms")" } ?? ""
         return param.isEmpty ? "\(name)\(duration)" : "\(name) \(param)\(duration)"
     }
@@ -1108,18 +1128,24 @@ Section("Senaste kod-sessioner") {
 
 `statusColor`: `"done"/"idle"` → green, `"error"/"stopped"` → gray, `"running"` → orange.
 
-- [ ] **Step 2: Verify `CodeSessionsStore` exposes `recentSessions(limit:)`**
+- [ ] **Step 2: Verify `CodeSessionsStore` exposes `recentSessions(limit:)` and `selectedSessionId`**
 
 ```bash
-grep -n "recentSessions\|allSessions\|sessions" "EonCode/Shared/Services/Code/CodeSessionsStore.swift" | head -10
+grep -n "recentSessions\|allSessions\|sessions\|selectedSessionId" "EonCode/Shared/Services/Code/CodeSessionsStore.swift" | head -10
 ```
 
-If the method doesn't exist, add it:
+If `recentSessions(limit:)` doesn't exist, add it:
 ```swift
 func recentSessions(limit: Int) -> [CodeSession] {
     Array(sessions.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
 }
 ```
+
+⚠️ If `selectedSessionId` doesn't exist, also add it as a published property:
+```swift
+@Published var selectedSessionId: String? = nil
+```
+Without this, `codeSessionsStore.selectedSessionId = session.id` in the tap gesture will not compile.
 
 - [ ] **Step 3: Add empty state to PureChatView**
 
@@ -1223,18 +1249,22 @@ Persist `monthlyUSD` and `monthlyResetDate` alongside `totalUSD` in the existing
 
 OpenRouter pricing for MiniMax M2.5 (as of 2026-03): $0.30/M input, $1.10/M output (verify current pricing at openrouter.ai if needed).
 
+⚠️ `OpenRouterPricing` and `openRouterPrices` must be at **class/type scope**, not inside the function body — Swift does not allow nested type declarations inside a method.
+
 ```swift
-struct OpenRouterPricing {
+// At class scope (inside CostCalculator class body, alongside existing properties):
+private struct OpenRouterPricing {
     let inputPerMillion: Double
     let outputPerMillion: Double
 }
 
-static let openRouterPrices: [String: OpenRouterPricing] = [
-    "minimax": OpenRouterPricing(inputPerMillion: 0.30, outputPerMillion: 1.10),
-    "qwen":    OpenRouterPricing(inputPerMillion: 0.00, outputPerMillion: 0.00),  // free
-    "deepseek": OpenRouterPricing(inputPerMillion: 0.55, outputPerMillion: 2.19),
+private static let openRouterPrices: [String: OpenRouterPricing] = [
+    "minimax":   OpenRouterPricing(inputPerMillion: 0.30, outputPerMillion: 1.10),
+    "qwen":      OpenRouterPricing(inputPerMillion: 0.00, outputPerMillion: 0.00),  // free
+    "deepseek":  OpenRouterPricing(inputPerMillion: 0.55, outputPerMillion: 2.19),
 ]
 
+// Static method (implicitly @MainActor on a @MainActor class — call site in handleEvent is fine):
 static func calculateOpenRouter(inputTokens: Int, outputTokens: Int, model: String) -> Double {
     let pricing = openRouterPrices[model] ?? OpenRouterPricing(inputPerMillion: 0.50, outputPerMillion: 1.50)
     let inputCost  = Double(inputTokens)  / 1_000_000 * pricing.inputPerMillion
@@ -1271,8 +1301,21 @@ struct ServerUsage: Decodable {
     let model: String
 }
 
-// Inside ServerEvent struct (line ~31 of ServerCodeSession.swift), add:
+// Inside ServerEvent struct, add the field:
 // let usage: ServerUsage?
+```
+
+⚠️ **`ServerEvent` uses a manual `CodingKeys` enum** (line ~88). You must add the key and decode line or `usage` will always decode as `nil`:
+```swift
+// In CodingKeys enum:
+case usage
+
+// In init(from decoder:):
+usage = try? c.decode(ServerUsage.self, forKey: .usage)
+```
+Verify the manual decode:
+```bash
+grep -n "CodingKeys\|usage\|case type\|case text" "EonCode/Shared/Services/Code/ServerCodeSession.swift" | head -20
 ```
 
 - [ ] **Step 5: Verify**
@@ -1309,7 +1352,7 @@ Section("Kostnad") {
         Label("Denna månad", systemImage: "calendar")
         Spacer()
         VStack(alignment: .trailing, spacing: 2) {
-            Text(formatSEK(costTracker.monthlyUSD * exchangeRate.sekPerUSD))
+            Text(formatSEK(costTracker.monthlyUSD * ExchangeRateService.shared.usdToSEK))
                 .font(.system(size: 15, weight: .semibold))
             Text(String(format: "$%.4f", costTracker.monthlyUSD))
                 .font(.caption)
@@ -1319,7 +1362,7 @@ Section("Kostnad") {
     HStack {
         Label("Totalt", systemImage: "chart.bar")
         Spacer()
-        Text(formatSEK(costTracker.totalUSD * exchangeRate.sekPerUSD))
+        Text(formatSEK(costTracker.totalUSD * ExchangeRateService.shared.usdToSEK))
             .foregroundColor(.secondary)
     }
 }
@@ -1344,20 +1387,25 @@ Section("Modell") {
 
 - [ ] **Step 4: Add API key status indicators**
 
+⚠️ API keys are stored in `KeychainManager`, **not** `SettingsStore`. Use `KeychainManager.shared` to check presence:
 ```swift
 Section("API-nycklar") {
-    apiKeyRow("Anthropic", key: settings.anthropicKey)
-    apiKeyRow("OpenRouter", key: settings.openRouterKey)
+    // ⚠️ Check KeychainManager for actual key values — not settings.anthropicKey (doesn't exist)
+    apiKeyRow("Anthropic", hasKey: (KeychainManager.shared.get(key: "anthropicAPIKey") ?? "").isEmpty == false)
+    apiKeyRow("OpenRouter", hasKey: (KeychainManager.shared.get(key: "openRouterAPIKey") ?? "").isEmpty == false)
 }
 
-func apiKeyRow(_ name: String, key: String) -> some View {
+// Check the exact Keychain key names first:
+// grep -n "anthropicAPIKey\|openRouterAPIKey\|KeychainManager" "EonCode/Shared/Services/Code/ServerCodeSession.swift" | head -5
+
+func apiKeyRow(_ name: String, hasKey: Bool) -> some View {
     HStack {
         Text(name)
         Spacer()
         Circle()
-            .fill(key.isEmpty ? Color.red : Color.green)
+            .fill(hasKey ? Color.green : Color.red)
             .frame(width: 8, height: 8)
-        Text(key.isEmpty ? "Ej satt" : "Aktiv")
+        Text(hasKey ? "Aktiv" : "Ej satt")
             .font(.caption)
             .foregroundColor(.secondary)
     }
