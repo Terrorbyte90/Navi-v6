@@ -6,17 +6,17 @@ import SwiftUI
 
 enum NaviTheme {
 
-    // MARK: - Claude iOS Accent Colors
+    // MARK: - Dark Teal Accent Colors
 
-    /// Terra cotta — Claude iOS primary accent (#da7756)
-    static let accent      = Color(naviHex: "da7756")
-    static let accentLight = Color(naviHex: "e8a08a")
-    static let accentBg    = Color(naviHex: "da7756").opacity(0.10)
-    static let accentBorder = Color(naviHex: "da7756").opacity(0.25)
+    /// Bright mint — primary accent (#1ECC9A)
+    static let accent      = Color(naviHex: "1ECC9A")
+    static let accentLight = Color(naviHex: "5EDDB8")
+    static let accentBg    = Color(naviHex: "1ECC9A").opacity(0.12)
+    static let accentBorder = Color(naviHex: "1ECC9A").opacity(0.25)
 
-    /// Dark mode accent — slightly lighter terra cotta for contrast
-    static let accentDark  = Color(naviHex: "e8a08a")
-    static let accentDarkBg = Color(naviHex: "da7756").opacity(0.12)
+    /// Dark mode accent — slightly lighter mint for contrast
+    static let accentDark  = Color(naviHex: "5EDDB8")
+    static let accentDarkBg = Color(naviHex: "1ECC9A").opacity(0.15)
 
     // MARK: - Surfaces (Claude iOS style)
 
@@ -59,18 +59,12 @@ enum NaviTheme {
 
     // MARK: - Code blocks — adaptive warm tones
 
-    /// Code background: warm sand in light mode, soft slate in dark mode
+    /// Code background: dark forest teal on iOS, adaptive on macOS
     static var codeBG: Color {
         #if os(iOS)
-        Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.14, green: 0.14, blue: 0.16, alpha: 1)
-            : UIColor(red: 0.96, green: 0.94, blue: 0.92, alpha: 1)
-        })
+        Color(UIColor { _ in UIColor(red: 0.05, green: 0.10, blue: 0.08, alpha: 1) })
         #else
-        Color(NSColor(name: nil) { $0.bestMatch(from: [.darkAqua]) != nil
-            ? NSColor(red: 0.14, green: 0.14, blue: 0.16, alpha: 1)
-            : NSColor(red: 0.96, green: 0.94, blue: 0.92, alpha: 1)
-        })
+        Color(NSColor(name: nil) { _ in NSColor(red: 0.05, green: 0.10, blue: 0.08, alpha: 1) })
         #endif
     }
     /// Code header: slightly deeper than background

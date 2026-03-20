@@ -479,7 +479,7 @@ struct PureChatBubble: View, Equatable {
                     }
                     Text(message.content)
                         .font(NaviTheme.bodyFont(size: 17))
-                        .foregroundColor(.primary)
+                        .foregroundColor(.black)
                         .lineSpacing(5)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)

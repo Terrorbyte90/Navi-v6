@@ -642,7 +642,7 @@ struct ServerMessageRow: View {
             Spacer(minLength: 60)
             Text(message.text)
                 .font(NaviTheme.bodyFont(size: 16))
-                .foregroundColor(.primary)
+                .foregroundColor(.black)
                 .lineSpacing(4)
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(RoundedRectangle(cornerRadius: 18).fill(Color.userBubble))

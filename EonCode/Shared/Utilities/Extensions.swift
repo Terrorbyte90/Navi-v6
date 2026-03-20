@@ -140,7 +140,7 @@ extension View {
     }
 }
 
-// MARK: - Color (Claude iOS palette — warm cream/charcoal, terra cotta accent)
+// MARK: - Color (Navi dark teal palette)
 extension Color {
     static var codeBackground: Color {
         Color(red: 0.10, green: 0.10, blue: 0.11)
@@ -149,45 +149,32 @@ extension Color {
         #if os(macOS)
         Color(NSColor.windowBackgroundColor)
         #else
-        // Claude iOS: warm cream #F5F5F0 light, warm charcoal #2b2a27 dark
-        Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.17, green: 0.16, blue: 0.15, alpha: 1)   // #2b2a27
-            : UIColor(red: 0.96, green: 0.96, blue: 0.94, alpha: 1)   // #F5F5F0
-        })
+        // Dark forest teal — always dark
+        Color(UIColor { _ in UIColor(red: 0.059, green: 0.090, blue: 0.071, alpha: 1) })
         #endif
     }
     static var sidebarBackground: Color {
         #if os(macOS)
         Color(NSColor.controlBackgroundColor)
         #else
-        Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.13, green: 0.12, blue: 0.12, alpha: 1)
-            : UIColor(red: 0.93, green: 0.92, blue: 0.90, alpha: 1)
-        })
+        Color(UIColor { _ in UIColor(red: 0.043, green: 0.067, blue: 0.055, alpha: 1) })
         #endif
     }
-    /// Terra cotta accent — Claude iOS (#da7756)
-    static var accentNavi: Color { Color(naviHex: "da7756") }
+    /// Bright mint accent — Navi dark teal theme (#1ECC9A)
+    static var accentNavi: Color { Color(naviHex: "1ECC9A") }
     static var assistantBubble: Color { Color.clear }
     static var userBubble: Color {
         #if os(macOS)
         Color(NSColor.controlColor)
         #else
-        // Claude iOS user bubble: #DDD9CE light, #393937 dark
-        Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.22, green: 0.22, blue: 0.22, alpha: 1)   // #393937
-            : UIColor(red: 0.87, green: 0.85, blue: 0.81, alpha: 1)   // #DDD9CE
-        })
+        Color(UIColor { _ in UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1) })
         #endif
     }
     static var inputBackground: Color {
         #if os(macOS)
         Color(NSColor.controlBackgroundColor)
         #else
-        Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.15, green: 0.15, blue: 0.14, alpha: 1)
-            : UIColor(red: 0.94, green: 0.93, blue: 0.91, alpha: 1)
-        })
+        Color(UIColor { _ in UIColor(red: 0.10, green: 0.15, blue: 0.12, alpha: 1) })
         #endif
     }
     static var inputBorder: Color {
@@ -199,12 +186,9 @@ extension Color {
     }
     static var surfaceHover: Color {
         #if os(macOS)
-        Color(NSColor.selectedContentBackgroundColor).opacity(0.08)
+        Color(NSColor.controlBackgroundColor).opacity(0.6)
         #else
-        Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(white: 0.16, alpha: 1)
-            : UIColor(red: 0.91, green: 0.90, blue: 0.87, alpha: 1)
-        })
+        Color(UIColor { _ in UIColor(red: 0.10, green: 0.15, blue: 0.12, alpha: 1) })
         #endif
     }
     static var dividerColor: Color {
