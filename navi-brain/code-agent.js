@@ -42,6 +42,45 @@ function filterToolXML(text) {
 const WORK_DIR      = () => path.join(DATA_DIR, 'workspaces');
 
 // ============================================================
+// KNOWLEDGE BASE — load MD files from knowledge/ dir
+// ============================================================
+const KNOWLEDGE_DIR = path.join(__dirname, 'knowledge');
+
+let _knowledgeCache = '';
+let _knowledgeLoadedAt = 0;
+
+function getKnowledge() {
+  const now = Date.now();
+  // Reload every 10 minutes in case files change
+  if (_knowledgeCache && now - _knowledgeLoadedAt < 10 * 60 * 1000) {
+    return _knowledgeCache;
+  }
+  try {
+    if (!fs.existsSync(KNOWLEDGE_DIR)) {
+      _knowledgeCache = '';
+      return '';
+    }
+    const files = fs.readdirSync(KNOWLEDGE_DIR)
+      .filter(f => f.endsWith('.md') && !f.startsWith('_') && !f.includes('/'))
+      .sort();
+    _knowledgeCache = files.map(f => {
+      try {
+        const content = fs.readFileSync(path.join(KNOWLEDGE_DIR, f), 'utf8');
+        return `\n\n---\n## ${f.replace('.md', '').toUpperCase()}\n\n${content}`;
+      } catch { return ''; }
+    }).filter(Boolean).join('');
+    _knowledgeLoadedAt = now;
+    if (files.length > 0) {
+      console.log(`[KNOWLEDGE] Loaded ${files.length} MD files: ${files.join(', ')}`);
+    }
+  } catch (e) {
+    console.error('[KNOWLEDGE] Load error:', e.message);
+    _knowledgeCache = '';
+  }
+  return _knowledgeCache;
+}
+
+// ============================================================
 // MODELS — with per-model context window limits
 // MiniMax M2.5:  1 000 000 token context (80.2% SWE-bench)
 // Qwen3-Coder:     128 000 token context (free)
@@ -869,6 +908,11 @@ function streamAnthropic(messages, anthropicKey, systemPrompt, modelInfo, onDelt
 // ============================================================
 
 function buildSystemPrompt(session) {
+  const knowledge = getKnowledge();
+  const knowledgeSection = knowledge
+    ? `# KUNSKAPSBAS — Läs och följ dessa riktlinjer\n${knowledge}\n\n${'='.repeat(60)}\n\n`
+    : '';
+
   const modelInfo = MODELS[session.model] || MODELS.minimax;
   const ghToken = DEFAULT_GITHUB_TOKEN;
   const githubSection = ghToken ? `
@@ -896,7 +940,7 @@ Använd GitHub API via fetch_url med header "Authorization: Bearer ${ghToken}":
   - Hämta fil: GET https://api.github.com/repos/Terrorbyte90/REPO/contents/PATH
   - Eller kör: gh api /repos/Terrorbyte90/REPO/... (om gh CLI är installerat)` : '';
 
-  return `Du är Navi — världens mest avancerade autonoma kodagent. Du opererar på nivån av ett senior-ingenjörsteam. Din uppgift är att lösa problem fullständigt, autonomt, och med professionell kvalitet — från tiny bugfixar till att bygga hela projekt från scratch.
+  return `${knowledgeSection}Du är Navi — världens mest avancerade autonoma kodagent. Du opererar på nivån av ett senior-ingenjörsteam. Din uppgift är att lösa problem fullständigt, autonomt, och med professionell kvalitet — från tiny bugfixar till att bygga hela projekt från scratch.
 
 **VIKTIGT: Svara ALLTID på svenska. All kommunikation ska vara på svenska.**
 
