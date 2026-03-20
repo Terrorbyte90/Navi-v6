@@ -1656,4 +1656,29 @@ function init(wss, config = {}) {
     .join(', '));
 }
 
-module.exports = { init, createRouter, codeSessions, MODELS };
+function getRecentCompletedSessions(limit = 5) {
+  const allSessions = Object.values(codeSessions || {});
+  return allSessions
+    .filter(s => s.status === 'done' || s.status === 'error' || s.status === 'stopped')
+    .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+    .slice(0, limit)
+    .map(s => ({
+      id: s.id,
+      task: s.initialTask || s.task || '(okänd uppgift)',
+      status: s.status,
+      model: s.model || 'okänd',
+      messageCount: (s.messages || []).length,
+      todoCount: (s.todos || []).length,
+      todoDoneCount: (s.todos || []).filter(t => t.done).length,
+      lastAssistantText: (s.messages || [])
+        .filter(m => m.role === 'assistant')
+        .map(m => typeof m.content === 'string' ? m.content :
+          (Array.isArray(m.content) ? m.content.filter(c => c.type === 'text').map(c => c.text).join('') : ''))
+        .filter(Boolean)
+        .slice(-1)[0]?.slice(0, 800) || '(ingen output)',
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    }));
+}
+
+module.exports = { init, createRouter, codeSessions, MODELS, getRecentCompletedSessions };

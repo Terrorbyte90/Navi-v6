@@ -1354,6 +1354,129 @@ httpServer.on('upgrade', (request, socket, head) => {
   }
 });
 
+// ============================================================
+// HOURLY SESSION SUMMARIZER
+// Reads recent completed sessions, asks AI to extract learnings,
+// writes MD files to knowledge/learnings/
+// ============================================================
+
+const LEARNINGS_DIR = path.join(__dirname, 'knowledge', 'learnings');
+
+async function summarizeRecentSessions() {
+  try {
+    if (!fs.existsSync(LEARNINGS_DIR)) {
+      fs.mkdirSync(LEARNINGS_DIR, { recursive: true });
+    }
+
+    const recentSessions = codeAgent.getRecentCompletedSessions(5);
+    if (!recentSessions || recentSessions.length === 0) {
+      addLog('SUMMARIZER', 'Inga avslutade sessioner att sammanfatta ännu');
+      return;
+    }
+
+    addLog('SUMMARIZER', `Sammanfattar ${recentSessions.length} sessioner...`);
+
+    const sessionText = recentSessions.map((s, i) => `
+### Session ${i + 1}
+**Uppgift:** ${s.task}
+**Status:** ${s.status}
+**Modell:** ${s.model}
+**Meddelanden:** ${s.messageCount}
+**TODOs:** ${s.todoDoneCount}/${s.todoCount} klara
+**Senaste output:**
+${s.lastAssistantText}
+`.trim()).join('\n\n---\n\n');
+
+    const prompt = `Du är en lärande AI-agent. Analysera dessa nyligen avslutade Navi-sessioner och extrahera värdefulla lärdomar.
+
+## Sessioner att analysera
+
+${sessionText}
+
+## Uppgift
+
+Skriv en strukturerad Markdown-sammanfattning på svenska med exakt detta format:
+
+# Session-lärdomar ${new Date().toISOString().slice(0, 16).replace('T', ' ')}
+
+## Sessioner
+
+${recentSessions.map((s, i) => `### ${i + 1}. ${s.task.slice(0, 80)}
+- **Vad frågades:** [beskriv uppgiften kort]
+- **Vad gjordes:** [vilka steg togs, vilka verktyg användes]
+- **Resultat:** [vad producerades, status: ${s.status}]
+- **Lärdom:** [konkret, handlingsbar lärdom för framtida sessioner]`).join('\n\n')}
+
+## Mönster och insikter
+[Identifiera återkommande mönster, vanliga problem, framgångsfaktorer]
+
+## Föreslagna förbättringar
+[Konkreta förslag på hur agenten kan bli bättre — ändra strategi, använda andra verktyg, etc.]
+
+Var konkret och handlingsbar. Fokusera på lärdomar som gör agenten bättre nästa gång.`;
+
+    // Use minimax for summarization (fast and cheap)
+    const key = OPENROUTER_KEY;
+    if (!key) {
+      addLog('SUMMARIZER', 'Ingen OPENROUTER_KEY — hoppar över sammanfattning');
+      return;
+    }
+
+    // Simple OpenRouter call (non-streaming)
+    const summaryText = await new Promise((resolve, reject) => {
+      const body = JSON.stringify({
+        model: MODELS.minimax,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2000,
+        temperature: 0.4,
+      });
+
+      const req = https.request({
+        hostname: 'openrouter.ai',
+        path: '/api/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+          'HTTP-Referer': 'https://navi-brain.io',
+          'X-Title': 'Navi Session Summarizer',
+        },
+        timeout: 60000,
+      }, (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            resolve(parsed.choices?.[0]?.message?.content || '(ingen output från modellen)');
+          } catch (e) {
+            reject(new Error('JSON parse failed: ' + data.slice(0, 200)));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+      req.write(body);
+      req.end();
+    });
+
+    // Save to learnings dir
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const filename = path.join(LEARNINGS_DIR, `${timestamp}.md`);
+    fs.writeFileSync(filename, summaryText, 'utf8');
+    addLog('SUMMARIZER', `Lärdomsfil sparad: ${path.basename(filename)} (${summaryText.length} tecken)`);
+
+  } catch (e) {
+    addLog('SUMMARIZER', `Fel vid sammanfattning: ${e.message}`);
+    console.error('[SUMMARIZER] Error:', e);
+  }
+}
+
+// Run hourly
+setInterval(summarizeRecentSessions, 60 * 60 * 1000);
+// Run 3 minutes after startup (gives sessions time to load)
+setTimeout(summarizeRecentSessions, 3 * 60 * 1000);
+
 httpServer.listen(PORT, '0.0.0.0', () => {
   addLog('BOOT', `Navi Brain v3.4 startad på port ${PORT}`);
   addLog('BOOT', `Modeller: MiniMax M2.5, Qwen3-Coder, DeepSeek R1, Claude Sonnet 4.6`);
