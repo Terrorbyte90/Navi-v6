@@ -102,19 +102,12 @@ struct CodeView: View {
             .padding(.vertical, 10)
             .frame(minHeight: 44)
 
-            // Phase progress strip — visible while running
-            if session.isRunning {
-                phaseStrip
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
             // TODO panel — inline expandable
             if showTodoPanel && !session.todos.isEmpty {
                 todoPanelView
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .animation(NaviTheme.Spring.smooth, value: session.isRunning)
         .animation(NaviTheme.Spring.smooth, value: showTodoPanel)
     }
 
