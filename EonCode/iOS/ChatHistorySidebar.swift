@@ -277,7 +277,12 @@ struct ChatHistorySidebar: View {
                 }
             }
         }
-        .onAppear { codeSessionsStore.startPolling() }
+        .onAppear {
+            codeSessionsStore.startPolling()
+            if codeSessionsStore.sessions.isEmpty {
+                Task { await codeSessionsStore.fetchSessions() }
+            }
+        }
     }
 
     @ViewBuilder

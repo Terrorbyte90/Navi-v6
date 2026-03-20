@@ -79,7 +79,9 @@ final class CodeSessionsStore: ObservableObject {
     @Published var isLoading = false
     @Published var fetchError: String?
 
-    private init() {}
+    private init() {
+        startPolling()
+    }
 
     private var pollTask: Task<Void, Never>?
 
@@ -98,7 +100,7 @@ final class CodeSessionsStore: ObservableObject {
         Task { await fetchSessions() }          // immediate first load
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
                 await self?.fetchSessions()
             }
         }
