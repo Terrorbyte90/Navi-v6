@@ -131,6 +131,12 @@ struct ContentView: View {
                 showSidebar = false
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToCodeSession)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                selectedTab = .code
+                showSidebar = false
+            }
+        }
     }
 
     private func updateViewContext() {

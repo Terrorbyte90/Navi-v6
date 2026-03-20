@@ -321,11 +321,23 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         // Extract Sendable values before entering @Sendable closure
         let categoryRaw = userInfo["category"] as? String
+        let sessionId = userInfo["sessionId"] as? String
 
         await MainActor.run {
             // Mark as read when tapped
             if self.unreadCount > 0 {
                 self.unreadCount -= 1
+            }
+
+            // Handle code session tap (APNs push with sessionId)
+            if let sessionId = sessionId {
+                ServerCodeSession.shared.resumeSession(sessionId)
+                NotificationCenter.default.post(
+                    name: .navigateToCodeSession,
+                    object: nil,
+                    userInfo: ["sessionId": sessionId]
+                )
+                return
             }
 
             // Handle notification tap based on category
@@ -409,4 +421,5 @@ enum NotificationSource: String {
 extension Notification.Name {
     static let navigateToServer = Notification.Name("navigateToServer")
     static let navigateToChat = Notification.Name("navigateToChat")
+    static let navigateToCodeSession = Notification.Name("navi.navigateToCodeSession")
 }
