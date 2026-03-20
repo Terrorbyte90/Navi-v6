@@ -272,6 +272,29 @@ const CODE_TOOLS = [
       required: ['url'],
     },
   },
+  {
+    name: 'glob',
+    description: 'Find files matching a glob pattern. Faster than list_files for locating specific file types across a project.',
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern:   { type: 'string', description: 'Glob pattern, e.g. "**/*.swift", "src/**/*.ts", "*.json"' },
+        base_path: { type: 'string', description: 'Base directory to search from (default: session workspace)' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'create_directory',
+    description: 'Create a directory and all parent directories (mkdir -p).',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Directory path to create' },
+      },
+      required: ['path'],
+    },
+  },
 ];
 
 function toolsToOpenAI() {
@@ -600,6 +623,29 @@ async function executeTool(name, args, session) {
 
         if (result.error) return { result: result.text, isError: true };
         return { result: result.text || '(empty response)', isError: false };
+      }
+
+      case 'glob': {
+        const base = args.base_path || workDir;
+        try {
+          const pattern = (args.pattern || '*').replace(/\*\*\//g, '');
+          const hasDoublestar = (args.pattern || '').includes('**/');
+          const maxDepth = hasDoublestar ? '' : '-maxdepth 2 ';
+          const cmd = `find "${base}" ${maxDepth}-name "${pattern}" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/.build/*" -not -path "*/Pods/*" 2>/dev/null | sort | head -100`;
+          const result = await asyncExec(cmd, { timeout: 10000 });
+          return { result: result.trim() || `(inga filer hittades med mönstret "${args.pattern}" i ${base})`, isError: false };
+        } catch (e) {
+          return { result: `glob misslyckades: ${e.message}`, isError: true };
+        }
+      }
+
+      case 'create_directory': {
+        try {
+          fs.mkdirSync(args.path, { recursive: true });
+          return { result: `Katalog skapad: ${args.path}`, isError: false };
+        } catch (e) {
+          return { result: `create_directory misslyckades: ${e.message}`, isError: true };
+        }
       }
 
       default:
@@ -1036,6 +1082,41 @@ Rapportera vid VARJE milstolpe med tydlig struktur:
 - \`run_command("grep -r 'functionName' src/ --include='*.ts'")\` — sök i kod
 - \`web_search("error message site:stackoverflow.com")\` — sök lösning
 - \`fetch_url("https://docs.example.com/api")\` — hämta dokumentation
+- \`glob("**/*.swift")\` — hitta alla Swift-filer i projektet
+- \`glob("src/**/*.ts", "/path/to/project")\` — hitta TypeScript-filer i specifik katalog
+- \`create_directory("/path/to/new/dir")\` — skapa katalog med alla föräldrar
+
+## Auto-discovery (alltid vid projektstart)
+\`\`\`bash
+# Steg 1: Förstå projektet
+find . -maxdepth 2 \\( -name 'package.json' -o -name 'Cargo.toml' -o -name 'go.mod' -o -name '*.xcodeproj' -o -name 'pubspec.yaml' -o -name 'pyproject.toml' \\) 2>/dev/null | head -10
+ls -la && git log --oneline -5 2>/dev/null
+
+# Steg 2: Läs dokumentation
+cat README.md 2>/dev/null || cat readme.md 2>/dev/null || echo "(ingen README)"
+
+# Steg 3: Förstå struktur
+# iOS: glob("**/*.swift")
+# Node: glob("**/*.ts") eller glob("**/*.js")
+# Python: glob("**/*.py")
+\`\`\`
+
+## Intelligent felsökning — bättre än Claude Code
+1. **Läs felet NOGA** — förstå exakt vad och var
+2. **Sök direkt:** \`web_search("exakt felmeddelande")\`
+3. **Hämta docs:** \`fetch_url("https://docs.framework.com/api/...")\`
+4. **Isolera:** Minimalt reproducerbart exempel
+5. **Alternativt approach:** Om fastnad >2 iterationer — prova HELT annat tillvägagångssätt
+6. **GE ALDRIG UPP** — varje problem har en lösning
+
+## Kvalitetsmål — överträffa Claude Code & Cursor
+- Förstå HELA kodbasen innan du skriver en enda rad
+- Läs alltid med \`read_file\` innan du editerar
+- Kör alltid bygget och verifiera grönt
+- Committa vid varje fungerande milstolpe
+- Håll TODO-listan uppdaterad i realtid
+- Leverera produktionsklar kod — aldrig prototyper
+- Förklara ditt resonemang tydligt på svenska
 
 ## Miljö — din server
 - Plattform: Ubuntu Linux med root-access
