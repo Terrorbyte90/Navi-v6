@@ -28,6 +28,16 @@ let DEFAULT_ANTHROPIC_KEY  = '';
 let DEFAULT_GITHUB_TOKEN   = process.env.GITHUB_TOKEN || '';
 
 const SESSIONS_FILE = () => path.join(DATA_DIR, 'code-sessions.json');
+
+// Strip raw XML tool call blocks from streamed text (MiniMax sometimes emits these)
+function filterToolXML(text) {
+  if (!text) return text;
+  return text
+    .replace(/<minimax:tool_call[\s\S]*?<\/minimax:tool_call>/g, '')
+    .replace(/<invoke[\s\S]*?<\/invoke>/g, '')
+    .replace(/<tool_call[\s\S]*?<\/tool_call>/g, '')
+    .trim();
+}
 const WORK_DIR      = () => path.join(DATA_DIR, 'workspaces');
 
 // ============================================================
@@ -1218,7 +1228,10 @@ async function runCodeAgent(session) {
           key,
           systemPrompt,
           modelInfo,
-          (delta) => session.emit({ type: 'TEXT_DELTA', delta }),
+          (delta) => {
+            const clean = filterToolXML(delta);
+            if (clean) session.emit({ type: 'TEXT_DELTA', delta: clean });
+          },
           abortCtrl
         );
         const assistantContent = [];
@@ -1234,7 +1247,10 @@ async function runCodeAgent(session) {
         ];
         streamResult = await streamOpenRouter(
           msgs, modelInfo, CODE_TOOLS, key,
-          (delta) => session.emit({ type: 'TEXT_DELTA', delta }),
+          (delta) => {
+            const clean = filterToolXML(delta);
+            if (clean) session.emit({ type: 'TEXT_DELTA', delta: clean });
+          },
           abortCtrl
         );
         const assistantMsg = { role: 'assistant', content: streamResult.fullText || '' };
@@ -1249,8 +1265,9 @@ async function runCodeAgent(session) {
       }
 
       // Commit text block to UI
-      if (streamResult.fullText?.trim()) {
-        session.emit({ type: 'TEXT_COMMIT', text: streamResult.fullText });
+      const cleanText = filterToolXML(streamResult.fullText);
+      if (cleanText?.trim()) {
+        session.emit({ type: 'TEXT_COMMIT', text: cleanText });
       }
 
       // No tool calls → task complete
