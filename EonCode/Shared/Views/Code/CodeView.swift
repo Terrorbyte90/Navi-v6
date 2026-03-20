@@ -863,45 +863,25 @@ struct GitCheckpointBadge: View {
 struct ServerStreamingRow: View {
     let text: String
     let phaseLabel: String
-    @State private var cursorVisible = true
-
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             ThinkingOrb(size: 22, isAnimating: true)
                 .padding(.top, 3)
-
             VStack(alignment: .leading, spacing: 4) {
-                if text.isEmpty {
+                if !phaseLabel.isEmpty {
                     Text(phaseLabel)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary.opacity(0.5))
-                } else {
-                    // Streaming markdown with blinking cursor
-                    HStack(alignment: .bottom, spacing: 0) {
-                        #if os(iOS)
-                        MarkdownWebView(text: text)
-                        #else
-                        Text(text)
-                            .font(NaviTheme.bodyFont(size: 16))
-                        #endif
-                        Rectangle()
-                            .fill(Color.accentNavi)
-                            .frame(width: 1.5, height: 16)
-                            .opacity(cursorVisible ? 1 : 0)
-                            .padding(.bottom, 2)
-                    }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.accentNavi.opacity(0.7))
                 }
+                Text(text)
+                    .font(NaviTheme.bodyFont(size: 16))
+                    .foregroundColor(Color(red: 0.831, green: 0.910, blue: 0.863))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
             Spacer(minLength: 32)
         }
-        .padding(.horizontal, 16).padding(.vertical, 5)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                cursorVisible = false
-            }
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
 }
 

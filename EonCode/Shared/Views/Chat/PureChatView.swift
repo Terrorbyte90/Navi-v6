@@ -611,52 +611,27 @@ struct PureChatBubble: View, Equatable {
 
 struct StreamingBubble: View {
     let text: String
-    var statusMessage: String = ""
-    var activeFiles: [String] = []
-    var codeSnippet: String = ""
-    var todoItems: [ProjectAgent.AgentTodoItem] = []
-
-    @State private var cursorVisible = true
-
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ThinkingOrb(size: 24, isAnimating: true)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: 12) {
+            ThinkingOrb(size: 26, isAnimating: true)
+                .padding(.top, 3)
+            VStack(alignment: .leading, spacing: 0) {
                 if text.isEmpty {
-                    // Empty state: three-bar wave animation
-                    StreamingThinkingView()
+                    Text("Tänker…")
+                        .font(NaviTheme.bodyFont(size: 17))
+                        .foregroundColor(.secondary)
                 } else {
-                    // Text is streaming: render markdown + blinking cursor at end
-                    VStack(alignment: .leading, spacing: 0) {
-                        #if os(iOS)
-                        MarkdownWebView(text: text)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        #else
-                        MarkdownTextView(text: text)
-                            .textSelection(.enabled)
-                        #endif
-
-                        // Blinking cursor appended after last line
-                        Rectangle()
-                            .fill(Color.accentNavi.opacity(cursorVisible ? 0.7 : 0.0))
-                            .frame(width: 2, height: 16)
-                            .cornerRadius(1)
-                            .padding(.top, 3)
-                    }
+                    Text(text)
+                        .font(NaviTheme.bodyFont(size: 17))
+                        .foregroundColor(Color(red: 0.831, green: 0.910, blue: 0.863))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-
-            Spacer(minLength: 40)
+            Spacer(minLength: 32)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.52).repeatForever(autoreverses: true)) {
-                cursorVisible = false
-            }
-        }
+        .padding(.top, 6)
+        .padding(.bottom, 2)
     }
 }
 
