@@ -432,9 +432,15 @@ struct MessageBubble: View {
                                 .lineSpacing(4)
                                 .textSelection(.enabled)
                         } else {
+                            #if os(iOS)
+                            MarkdownWebView(text: cleaned)
+                                .equatable()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            #else
                             MarkdownTextView(text: cleaned)
                                 .equatable()
                                 .textSelection(.enabled)
+                            #endif
                         }
                     }
                 case .image(let data, _):
@@ -627,9 +633,15 @@ struct AgentStreamingBubble: View {
 
                 if !text.isEmpty || !buffer.displayText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
+                        #if os(iOS)
+                        MarkdownWebView(text: buffer.displayText)
+                            .equatable()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        #else
                         MarkdownTextView(text: buffer.displayText)
                             .equatable()
                             .textSelection(.enabled)
+                        #endif
 
                         // Blinking cursor
                         HStack(spacing: 0) {

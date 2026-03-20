@@ -664,8 +664,14 @@ struct ServerMessageRow: View {
 
                 // Message text (markdown)
                 if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    MarkdownTextView(text: message.text)
+                    #if os(iOS)
+                    MarkdownWebView(text: message.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    #else
+                    Text(message.text)
+                        .font(NaviTheme.bodyFont(size: 16))
                         .textSelection(.enabled)
+                    #endif
                 }
 
                 // Git checkpoint badge
@@ -872,7 +878,12 @@ struct ServerStreamingRow: View {
                 } else {
                     // Streaming markdown with blinking cursor
                     HStack(alignment: .bottom, spacing: 0) {
-                        MarkdownTextView(text: text)
+                        #if os(iOS)
+                        MarkdownWebView(text: text)
+                        #else
+                        Text(text)
+                            .font(NaviTheme.bodyFont(size: 16))
+                        #endif
                         Rectangle()
                             .fill(Color.accentNavi)
                             .frame(width: 1.5, height: 16)

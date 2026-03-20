@@ -509,9 +509,15 @@ struct PureChatBubble: View, Equatable {
                         )
                     }
 
+                    #if os(iOS)
+                    MarkdownWebView(text: message.content)
+                        .equatable()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    #else
                     MarkdownTextView(text: message.content)
                         .equatable()
                         .textSelection(.enabled)
+                    #endif
 
                     // Actions row — subtle, appears below message
                     assistantActionsRow
@@ -625,8 +631,13 @@ struct StreamingBubble: View {
                 } else {
                     // Text is streaming: render markdown + blinking cursor at end
                     VStack(alignment: .leading, spacing: 0) {
+                        #if os(iOS)
+                        MarkdownWebView(text: text)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        #else
                         MarkdownTextView(text: text)
                             .textSelection(.enabled)
+                        #endif
 
                         // Blinking cursor appended after last line
                         Rectangle()

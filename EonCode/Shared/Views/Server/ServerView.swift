@@ -919,9 +919,15 @@ struct BrainChatView: View {
                         toolCallStrip(tools: tools)
                     }
 
+                    #if os(iOS)
+                    MarkdownWebView(text: msg.content)
+                        .equatable()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    #else
                     MarkdownTextView(text: msg.content)
                         .equatable()
                         .textSelection(.enabled)
+                    #endif
 
                     HStack(spacing: 4) {
                         if let model = msg.model {
