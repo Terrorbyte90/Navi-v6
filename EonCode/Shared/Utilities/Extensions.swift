@@ -161,7 +161,7 @@ extension Color {
         #endif
     }
     /// Bright mint accent — Navi dark teal theme (#1ECC9A)
-    static var accentNavi: Color { Color(naviHex: "1ECC9A") }
+    static var accentNavi: Color { Color(red: 0.118, green: 0.800, blue: 0.604) }
     static var assistantBubble: Color { Color.clear }
     static var userBubble: Color {
         #if os(macOS)
