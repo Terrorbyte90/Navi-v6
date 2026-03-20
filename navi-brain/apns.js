@@ -48,7 +48,9 @@ async function sendPush({ tokens, title, body, data = {}, badge = 1 }) {
   note.badge     = badge;
   note.sound     = 'default';
   note.alert     = { title, body };
-  note.payload   = { ...data, aps: { 'content-available': 1 } };
+  note.payload        = { ...data };
+  note.contentAvailable = 1;
+  note.pushType       = 'alert';
   note.topic     = process.env.APN_BUNDLE_ID || 'com.tedsvard.navi.ios';
 
   try {

@@ -39,6 +39,18 @@ struct MarkdownWebView: UIViewRepresentable {
 
     class Coordinator: NSObject, WKNavigationDelegate {
         var lastText = ""
+
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.navigationType == .linkActivated,
+               let url = navigationAction.request.url {
+                UIApplication.shared.open(url)
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
     }
 }
 
@@ -46,15 +58,7 @@ struct MarkdownWebView: UIViewRepresentable {
 
 private func htmlTemplate(text: String, fontSize: CGFloat) -> String {
     let dark = UITraitCollection.current.userInterfaceStyle == .dark
-    let fg         = dark ? "#e2e2e2" : "#1a1a1a"
-    let codeBg     = dark ? "#1a1a2e" : "#f3f3f6"
-    let codeColor  = dark ? "#cdd6f4" : "#2d2d2d"
-    let quoteBg    = dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"
-    let quoteLine  = dark ? "#555" : "#d0d0d0"
-    let tableBdr   = dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"
-    let tableHead  = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"
-    let hrColor    = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)"
-    let link       = "#FF8C42"
+    let link = "#FF8C42"
 
     let escaped = text
         .replacingOccurrences(of: "\\", with: "\\\\")
@@ -70,12 +74,26 @@ private func htmlTemplate(text: String, fontSize: CGFloat) -> String {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
 <style>
+:root {
+  --fg: #1a1a1a; --code-bg: #f3f3f6; --code-color: #2d2d2d;
+  --quote-bg: rgba(0,0,0,0.04); --quote-line: #d0d0d0;
+  --table-bdr: rgba(0,0,0,0.1); --table-head: rgba(0,0,0,0.04);
+  --hr: rgba(0,0,0,0.1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e2e2e2; --code-bg: #1a1a2e; --code-color: #cdd6f4;
+    --quote-bg: rgba(255,255,255,0.04); --quote-line: #555;
+    --table-bdr: rgba(255,255,255,0.1); --table-head: rgba(255,255,255,0.06);
+    --hr: rgba(255,255,255,0.08);
+  }
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
   font-size: \(Int(fontSize))px;
   line-height: 1.65;
-  color: \(fg);
+  color: var(--fg);
   background: transparent;
   word-break: break-word;
   overflow-wrap: break-word;
@@ -104,14 +122,14 @@ em { font-style: italic; }
 code {
   font-family: "SF Mono", "Fira Code", Menlo, monospace;
   font-size: 0.875em;
-  background: \(codeBg);
-  color: \(codeColor);
+  background: var(--code-bg);
+  color: var(--code-color);
   padding: 1px 5px;
   border-radius: 4px;
   white-space: pre-wrap;
 }
 pre {
-  background: \(codeBg);
+  background: var(--code-bg);
   border-radius: 10px;
   padding: 14px 16px;
   margin: 0.7em 0;
@@ -127,8 +145,8 @@ pre code {
   border-radius: 0;
 }
 blockquote {
-  border-left: 3px solid \(quoteLine);
-  background: \(quoteBg);
+  border-left: 3px solid var(--quote-line);
+  background: var(--quote-bg);
   padding: 8px 14px;
   margin: 0.6em 0;
   border-radius: 0 6px 6px 0;
@@ -141,18 +159,25 @@ table {
   font-size: 0.9em;
 }
 th, td {
-  border: 1px solid \(tableBdr);
+  border: 1px solid var(--table-bdr);
   padding: 7px 12px;
   text-align: left;
 }
-th { font-weight: 600; background: \(tableHead); }
-hr { border: none; border-top: 1px solid \(hrColor); margin: 1em 0; }
+th { font-weight: 600; background: var(--table-head); }
+hr { border: none; border-top: 1px solid var(--hr); margin: 1em 0; }
 img { max-width: 100%; border-radius: 8px; }
 </style>
 </head>
 <body>
 <div id="md"></div>
 <script>
+// Fallback if CDN fails to load
+if (typeof marked === 'undefined') {
+  window.marked = { parse: function(t) { return '<pre>' + t.replace(/</g, '&lt;') + '</pre>'; }, use: function() {} };
+}
+if (typeof hljs === 'undefined') {
+  window.hljs = { highlightElement: function() {} };
+}
 marked.use({ gfm: true, breaks: true });
 function updateContent(md) {
   document.getElementById('md').innerHTML = marked.parse(md || '');

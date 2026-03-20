@@ -626,14 +626,24 @@ async function executeTool(name, args, session) {
       }
 
       case 'glob': {
-        const base = args.base_path || workDir;
+        const base = args.base_path || session.workDir || '/tmp';
+        const rawPattern = args.pattern || '*';
         try {
-          const pattern = (args.pattern || '*').replace(/\*\*\//g, '');
-          const hasDoublestar = (args.pattern || '').includes('**/');
-          const maxDepth = hasDoublestar ? '' : '-maxdepth 2 ';
-          const cmd = `find "${base}" ${maxDepth}-name "${pattern}" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/.build/*" -not -path "*/Pods/*" 2>/dev/null | sort | head -100`;
+          let cmd;
+          if (rawPattern.includes('**/')) {
+            // Deep search: "**/*.swift" → find base -name "*.swift"
+            // "src/**/*.ts" → find base/src -name "*.ts"
+            const parts = rawPattern.split('**/');
+            const prefix = parts[0]; // e.g. "src/" or ""
+            const namePattern = parts[parts.length - 1]; // e.g. "*.swift"
+            const searchBase = prefix ? `"${base}/${prefix.replace(/\/$/, '')}"` : `"${base}"`;
+            cmd = `find ${searchBase} -name "${namePattern}" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/.build/*" -not -path "*/Pods/*" 2>/dev/null | sort | head -100`;
+          } else {
+            // Shallow: "*.json" → find base -maxdepth 1 -name "*.json"
+            cmd = `find "${base}" -maxdepth 2 -name "${rawPattern}" -not -path "*/.git/*" -not -path "*/node_modules/*" 2>/dev/null | sort | head -100`;
+          }
           const result = await asyncExec(cmd, { timeout: 10000 });
-          return { result: result.trim() || `(inga filer hittades med mönstret "${args.pattern}" i ${base})`, isError: false };
+          return { result: result.trim() || `(inga filer hittades med mönstret "${rawPattern}" i ${base})`, isError: false };
         } catch (e) {
           return { result: `glob misslyckades: ${e.message}`, isError: true };
         }
@@ -1741,7 +1751,11 @@ function getRecentCompletedSessions(limit = 5) {
   const allSessions = Object.values(codeSessions || {});
   return allSessions
     .filter(s => s.status === 'done' || s.status === 'error' || s.status === 'stopped')
-    .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+    .sort((a, b) => {
+      const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      return dateB - dateA;
+    })
     .slice(0, limit)
     .map(s => ({
       id: s.id,

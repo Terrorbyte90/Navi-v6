@@ -40,6 +40,7 @@ process.env.FORTYSIX_ELKS_NUMBER = process.env.FORTYSIX_ELKS_NUMBER || '+4600110
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const COSTS_FILE = path.join(DATA_DIR, 'costs.json');
+const PUSH_TOKENS_FILE = path.join(DATA_DIR, 'push-tokens.json');
 const startTime = Date.now();
 
 // Model IDs
@@ -161,11 +162,28 @@ function loadCosts() {
   }
 }
 
+function savePushTokens() {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(PUSH_TOKENS_FILE, JSON.stringify(Array.from(pushTokens)), 'utf8');
+  } catch (e) { console.error('[PERSIST] Failed to save push tokens:', e.message); }
+}
+
+function loadPushTokens() {
+  try {
+    if (!fs.existsSync(PUSH_TOKENS_FILE)) return;
+    const tokens = JSON.parse(fs.readFileSync(PUSH_TOKENS_FILE, 'utf8'));
+    tokens.forEach(t => pushTokens.add(t));
+    addLog('PERSIST', `Laddade ${tokens.length} push-tokens`);
+  } catch (e) { console.error('[PERSIST] Failed to load push tokens:', e.message); }
+}
+
 // Auto-save periodically (every 60 seconds)
 setInterval(() => {
   saveTasks();
   saveSessions();
   saveCosts();
+  savePushTokens();
 }, 60_000);
 
 // ============================================================
@@ -1271,6 +1289,7 @@ app.get('/tasks', auth, (req, res) => {
 loadCosts();
 loadTasks();
 loadSessions();
+loadPushTokens();
 telephony.loadAll();
 
 // Register telephony routes
@@ -1294,6 +1313,7 @@ app.post('/register-push', auth, (req, res) => {
   const { deviceToken, platform } = req.body;
   if (!deviceToken) return res.status(400).json({ error: 'deviceToken required' });
   pushTokens.add(deviceToken);
+  savePushTokens();
   console.log(`[PUSH] Registered token for ${platform}: ${deviceToken.substring(0, 16)}...`);
   res.json({ ok: true, registered: pushTokens.size });
 });
@@ -1496,6 +1516,7 @@ function gracefulShutdown() {
   saveTasks();
   saveSessions();
   saveCosts();
+  savePushTokens();
   apns.shutdown();
   process.exit(0);
 }
