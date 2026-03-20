@@ -16,6 +16,7 @@ const { execSync, exec } = require('child_process');
 const { WebSocketServer } = require('ws');
 const telephony = require('./telephony');
 const codeAgent = require('./code-agent');
+const apns      = require('./apns');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -1310,10 +1311,27 @@ const httpServer = http.createServer(app);
 
 const wss = new WebSocketServer({ noServer: true });
 
+apns.init();
+
 codeAgent.init(wss, {
   dataDir: DATA_DIR,
   openrouterKey: OPENROUTER_KEY,
   anthropicKey: process.env.ANTHROPIC_API_KEY || '',
+  onSessionComplete: async (session, { status, task, summary, error }) => {
+    const tokens = Array.from(pushTokens);
+    if (tokens.length === 0) return;
+    const title = status === 'done' ? '✅ Navi — Klar' : '⚠️ Navi — Fel';
+    const body  = status === 'done'
+      ? (summary || `"${(task || '').slice(0, 60)}"`)
+      : `Fel: "${(task || '').slice(0, 50)}"`;
+    await apns.sendPush({
+      tokens,
+      title,
+      body,
+      data: { sessionId: session.id, action: 'open_session' },
+    });
+    console.log(`[SERVER] APNs push sent for session ${session.id}: ${status}`);
+  },
 });
 
 // Route WebSocket upgrades for /code/ws to the code agent WS server
@@ -1355,6 +1373,7 @@ function gracefulShutdown() {
   saveTasks();
   saveSessions();
   saveCosts();
+  apns.shutdown();
   process.exit(0);
 }
 

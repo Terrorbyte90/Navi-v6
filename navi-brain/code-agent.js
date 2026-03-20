@@ -26,6 +26,7 @@ let DATA_DIR = '/tmp/navi-code';
 let DEFAULT_OPENROUTER_KEY = '';
 let DEFAULT_ANTHROPIC_KEY  = '';
 let DEFAULT_GITHUB_TOKEN   = process.env.GITHUB_TOKEN || '';
+let ON_SESSION_COMPLETE    = null; // optional callback(session, {status, task, summary?, error?})
 
 const SESSIONS_FILE = () => path.join(DATA_DIR, 'code-sessions.json');
 
@@ -1384,6 +1385,17 @@ async function runCodeAgent(session) {
           ? `${session.todos.filter(t => t.done).length}/${session.todos.length} uppgifter klara`
           : 'Klar',
       });
+      if (typeof ON_SESSION_COMPLETE === 'function') {
+        ON_SESSION_COMPLETE(session, {
+          status: 'done',
+          task: session.initialTask || session.task || '',
+          summary: (session.messages || [])
+            .filter(m => m.role === 'assistant')
+            .map(m => typeof m.content === 'string' ? m.content : '')
+            .filter(Boolean)
+            .slice(-1)[0]?.slice(0, 200) || '',
+        });
+      }
     } else {
       session.status = 'stopped';
       session.emit({ type: 'RUN_ERROR', error: 'Stoppad av användaren' });
@@ -1393,6 +1405,9 @@ async function runCodeAgent(session) {
     session.status = 'error';
     session.emit({ type: 'RUN_ERROR', error: err.message });
     console.error('[CODE-AGENT] Agent error:', err.message);
+    if (typeof ON_SESSION_COMPLETE === 'function') {
+      ON_SESSION_COMPLETE(session, { status: 'error', task: session.initialTask || session.task || '', error: err?.message || 'Okänt fel' });
+    }
   }
 
   session._abort = null;
@@ -1575,9 +1590,10 @@ function createRouter(express) {
 // ============================================================
 
 function init(wss, config = {}) {
-  DATA_DIR               = config.dataDir      || DATA_DIR;
-  DEFAULT_OPENROUTER_KEY = config.openrouterKey || '';
-  DEFAULT_ANTHROPIC_KEY  = config.anthropicKey  || '';
+  DATA_DIR               = config.dataDir           || DATA_DIR;
+  DEFAULT_OPENROUTER_KEY = config.openrouterKey     || '';
+  DEFAULT_ANTHROPIC_KEY  = config.anthropicKey      || '';
+  if (typeof config.onSessionComplete === 'function') ON_SESSION_COMPLETE = config.onSessionComplete;
 
   if (!fs.existsSync(DATA_DIR))   fs.mkdirSync(DATA_DIR,   { recursive: true });
   if (!fs.existsSync(WORK_DIR())) fs.mkdirSync(WORK_DIR(), { recursive: true });
