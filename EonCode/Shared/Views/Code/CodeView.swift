@@ -665,7 +665,7 @@ struct ServerMessageRow: View {
                 // Message text (markdown)
                 if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     #if os(iOS)
-                    MarkdownWebView(text: message.text)
+                    MarkdownWebViewAutoHeight(text: message.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     #else
                     Text(message.text)

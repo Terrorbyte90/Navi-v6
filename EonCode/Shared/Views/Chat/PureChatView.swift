@@ -510,7 +510,7 @@ struct PureChatBubble: View, Equatable {
                     }
 
                     #if os(iOS)
-                    MarkdownWebView(text: message.content)
+                    MarkdownWebViewAutoHeight(text: message.content)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     #else
                     MarkdownTextView(text: message.content)
