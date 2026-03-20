@@ -78,6 +78,7 @@
 		40E1F3058BD80DF1790FDAD0 /* XcodeCrashHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D282B7114280AA5F0CC2581D /* XcodeCrashHandler.swift */; };
 		428417D243908B69E7070C50 /* ChatConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A865364F7A70D8332F3B693F /* ChatConversation.swift */; };
 		42F0030AF3EE8B1D040E417E /* GlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06075E83F58D9C6DB461B918 /* GlassCard.swift */; };
+		AA11BB22CC33DD44EE55FF66 /* MarkdownWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF67 /* MarkdownWebView.swift */; };
 		43538D939C0A39EF42CC6B87 /* ScheduledTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA46077E6EF10F3DD954F280 /* ScheduledTaskManager.swift */; };
 		449C641DA3D3D2B8630D335A /* GitHubManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6295C999C6C0F33F28E78FC4 /* GitHubManager.swift */; };
 		467E34FCAD9A24DBE9E8A3D6 /* NaviApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B074907A2FB58C840C223A /* NaviApp.swift */; };
@@ -354,6 +355,7 @@
 		753C94C08C53CB40589C21A4 /* Navi-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Navi-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7547E53210F7158811E0657B /* BrowserAgentLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserAgentLogView.swift; sourceTree = "<group>"; };
 		75E16C42F31EA3521A28B103 /* PremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumComponents.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE55FF67 /* MarkdownWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWebView.swift; sourceTree = "<group>"; };
 		778D08B3D0DD0AD571D93118 /* TerminalExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalExecutor.swift; sourceTree = "<group>"; };
 		778D32197C8BE96A9E02A02E /* InstructionQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstructionQueue.swift; sourceTree = "<group>"; };
 		795B4677DD4BE3CF6FFC1AC9 /* ModelRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRouter.swift; sourceTree = "<group>"; };
@@ -853,6 +855,7 @@
 			isa = PBXGroup;
 			children = (
 				06075E83F58D9C6DB461B918 /* GlassCard.swift */,
+				AA11BB22CC33DD44EE55FF67 /* MarkdownWebView.swift */,
 				CB13B4848DCA48457A79A970 /* NaviActivityPill.swift */,
 				75E16C42F31EA3521A28B103 /* PremiumComponents.swift */,
 			);
@@ -1297,6 +1300,7 @@
 				449C641DA3D3D2B8630D335A /* GitHubManager.swift in Sources */,
 				A8D8E988320648E8F0BA4DB5 /* GitHubView.swift in Sources */,
 				F92F4240B746A08236AF5B9E /* GlassCard.swift in Sources */,
+				AA11BB22CC33DD44EE55FF66 /* MarkdownWebView.swift in Sources */,
 				289DC150739137294AFB37AB /* ImagePicker.swift in Sources */,
 				0CCFF3C029AB20589B476477 /* Instruction.swift in Sources */,
 				F53E39014311C18252B33566 /* InstructionComposer.swift in Sources */,

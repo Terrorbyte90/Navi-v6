@@ -921,7 +921,6 @@ struct BrainChatView: View {
 
                     #if os(iOS)
                     MarkdownWebView(text: msg.content)
-                        .equatable()
                         .frame(maxWidth: .infinity, alignment: .leading)
                     #else
                     MarkdownTextView(text: msg.content)

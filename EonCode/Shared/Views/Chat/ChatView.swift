@@ -434,7 +434,6 @@ struct MessageBubble: View {
                         } else {
                             #if os(iOS)
                             MarkdownWebView(text: cleaned)
-                                .equatable()
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             #else
                             MarkdownTextView(text: cleaned)
@@ -635,7 +634,6 @@ struct AgentStreamingBubble: View {
                     VStack(alignment: .leading, spacing: 4) {
                         #if os(iOS)
                         MarkdownWebView(text: buffer.displayText)
-                            .equatable()
                             .frame(maxWidth: .infinity, alignment: .leading)
                         #else
                         MarkdownTextView(text: buffer.displayText)
